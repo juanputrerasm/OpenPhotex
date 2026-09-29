@@ -1,0 +1,39 @@
+{
+  "name": "openphotex",
+  "version": "0.1.0",
+  "description": "Reference implementation of Terminal Reality game data formats (POD archives first), for browsers, Node.js and command-line/agent use.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/juanputrerasm/OpenPhotex.git"
+  },
+  "keywords": ["terminal-reality", "pod", "monster-truck-madness", "mtm2", "cart-precision-racing", "terminal-velocity", "fury3", "hellbender", "4x4-evolution", "reverse-engineering"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "openphotex": "./dist/cli/main.js"
+  },
+  "files": ["dist", "docs", "README.md", "LICENSE"],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json && tsc -p tsconfig.cli.json && chmod +x dist/cli/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.cli.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "test": "npm run build && node --test test/",
+    "vendor": "node scripts/vendor.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}

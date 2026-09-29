@@ -1,0 +1,16 @@
+{
+  /*
+    The core library. It must run unchanged in a browser, a Web Worker and Node.js, so it is
+    compiled against the bare ECMAScript library: no DOM types, no Node types. Using `fs`,
+    `Buffer`, `document`, `navigator`, `File` or the like in src/ is a compile error here.
+    The one host API it relies on, TextDecoder, is declared in src/host.d.ts.
+  */
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": [],
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"]
+}

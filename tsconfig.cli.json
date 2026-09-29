@@ -1,0 +1,14 @@
+{
+  /*
+    The command-line interface. Node-only; it imports the core through the package's own
+    name ("openphotex"), so it is built against dist/ exactly as an external consumer would be.
+  */
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "rootDir": "cli",
+    "outDir": "dist/cli"
+  },
+  "include": ["cli"]
+}
