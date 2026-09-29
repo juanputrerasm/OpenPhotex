@@ -45,6 +45,20 @@ The helpers that interpret the records: **`isDegenerateSlot`** (a slot collapsed
 
 The height of one wall panel is not in the data and stays with the viewer that calibrated it.
 
+### Writing an MTM2 level
+
+The writers lay a file out the way the stock ones are, with the stock value in every field the caller leaves out, and each reads back with the matching reader.
+
+| Writer | File | Notes |
+|---|---|---|
+| `writeMtm2Sit` | `.SIT` | Header, the "Your Truck" slot and the grid, boxes (a model, or a checkpoint's extents), the primary course and the four extended courses. Ramps, cylinders and top crush are written empty. A number is written with two decimals; a string as given. Mass zero means "cannot be moved". |
+| `writeMtm2Lvl` | `.LVL` | The positional header, with the sun on line 17 as 16.16 (east, up, north) and the value after `!waterHeight`. Lines 18-21 default to the values all fifteen stock MTM2 levels share. |
+| `writeTexList`, `writeEmptyList` | `.TEX`; `.TTY`, `.PUP`, `.ANI`, `.TDF`, `.DEF`, `.NAV` | A count, then one name per line; `0` for a list with nothing in it. |
+| `buildMtm2Lte` | `.LTE` | The baked light grid, seven bytes a cell, ground first: Traxx's BuildLte from the heightfield and the sun's horizontal direction, in the 160-255 range stock levels use. |
+| `emptyGroundBoxGrids` | `.RA0`-`.RA5`, `.CL0`-`.CL2` | MTM2 reads all nine for every level. The stock "no boxes" values: zeros, and 0xFF in `.RA2`/`.RA3` for solid rock. |
+
+What goes into the fields (where an object stands, which box type it gets, which course the field follows) is the caller's. JSMTM2Converter's placement rules stay in the converter.
+
 ## Terminal Velocity, Fury3 and Hellbender
 
 **`parseTvLvl(bytes)`** reads the positional `.LVL` header (the slot table is in `src/tv/lvl.ts`). `NULL.xxx` in a slot means none (`isNullAssetName`). Hellbender's `.LVL` carries a `!New ground additions` block, which is how `detectTvLvlOrigin` tells it apart; the origin matters because Hellbender reads its side files on its own placement scale.

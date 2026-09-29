@@ -9,18 +9,18 @@ Line counts in the table are the number of changed lines between copies (`diff -
 | Format | JSPod | JSTruckViewer | JSMTM2Converter | JSTrackViewer | Divergence |
 |---|---|---|---|---|---|
 | POD1, POD2, EPD | **OpenPhotex** | **OpenPhotex** | **OpenPhotex** | **OpenPhotex** | |
-| RAW, ACT, OPA | **OpenPhotex** | **OpenPhotex** | **OpenPhotex** (+ RAW/ACT encoder) | **OpenPhotex** | |
+| RAW, ACT, OPA | **OpenPhotex** | **OpenPhotex** | **OpenPhotex** | **OpenPhotex** | |
 | TIFF (Evo textures) | **OpenPhotex** | **OpenPhotex** | **OpenPhotex** | **OpenPhotex** | |
 | SMF (Evo models) | **OpenPhotex** | **OpenPhotex** | **OpenPhotex** | **OpenPhotex** | |
 | Evo TRK (vehicle manifest) | | **OpenPhotex** | **OpenPhotex** | | |
 | Evo SIT, LVL, WAT, TEX, VEG | | | **OpenPhotex** | **OpenPhotex** | |
 | MTM TRK (truck manifest) | | **OpenPhotex** | | **OpenPhotex** | |
 | CPR CMD, CAR (car models) | CMD (adapter ready) | **OpenPhotex** | | | |
-| BIN (MTM/TV/F3/HB models) | **OpenPhotex** (+ rendering) | **OpenPhotex** | writer | **OpenPhotex** | |
+| BIN (MTM/TV/F3/HB models) | **OpenPhotex** (+ rendering) | **OpenPhotex** | **OpenPhotex** (writer) | **OpenPhotex** | |
 | BinaryReader | removed | removed | | removed | |
 | MTM/CPR SIT, TV/F3/HB LVL, DEF, NAV, PUP, TDF, ANI, CPR TRK/TTX, terrain | | | | **OpenPhotex** | |
-| Palette choice (which .ACT), bundled palettes | **OpenPhotex** | **OpenPhotex** | own (encoder) | **OpenPhotex** | |
-| Writers: BIN, RAW/ACT, MTM2 SIT/LVL/TRK | | | ✔ only | | |
+| Palette choice (which .ACT), bundled palettes | **OpenPhotex** | **OpenPhotex** | | **OpenPhotex** | |
+| Writers: BIN, RAW/ACT, MTM2 SIT/LVL/TEX/LTE/TRK, level palette, fog map | | | **OpenPhotex** | | |
 
 ## Principles for every extraction
 
@@ -68,4 +68,4 @@ The converter's BIN, RAW/ACT, and MTM2 SIT/LVL/TRK writers. Each writer is check
 | 3: MTM TRK, CPR CAR and CMD; JSTruckViewer and JSTrackViewer migrated (JSPod's CMD adapter waits for its untracked file) | done |
 | 4: BIN models; JSTrackViewer, JSTruckViewer and JSPod migrated (BinaryReader no longer needed anywhere) | done |
 | 5: MTM/CPR SIT and LVL, CPR TRK/TTX, TV/F3/HB LVL, DEF, NAV, PUP, TDF, ANI, briefings, terrain, ground boxes, Hellbender cavern, sky; palette ranking and bundled palettes; JSTrackViewer, JSPod and JSTruckViewer migrated | done |
-| 6: writers | next |
+| 6: BIN, RAW/ACT, MTM2 SIT, LVL, TEX, LTE, ground-box grids and TRK writers, level palette and fog map; JSMTM2Converter migrated, output byte-identical | done |

@@ -65,6 +65,12 @@ With `origin` (the caller has read the `.SIT` or `.LVL`) it is an automatic chai
 
 This consolidates JSPod's picker and JSTrackViewer's resolver, and JSTruckViewer's shorter chain. Both JSPod and JSTrackViewer resolve identically on it: the same option list for all 18,348 stock and community RAWs, and the same palette and source for over a million JSTrackViewer lookups. `openphotex texture` still applies only rules 1 and 2 and otherwise asks for a palette rather than guessing one.
 
+### Encoding
+
+`encodeRawTexture(rgba, width, height)` is the inverse of `decodeRawTexture`: a square image becomes a `.RAW` index plane and its own 256-colour `.ACT`, the way Evo's art and MTM2's stock art each carry a palette per texture. The palette is a median cut over the image's exact colours (`sampleForPalette`, `medianCutPalette`), so art with 256 colours or fewer comes back unchanged. An image with any texel under alpha 128 gives index 0 to the colour key (see below), leaves it black, and quantises into the other 255.
+
+`mtm2LevelPalette` builds an MTM2 level palette: the Windows system colours in 0-9, the system and UI band from 230, white at 229 (`FOG\VGA.LTE`'s brightest shade row maps everything there), and the authored band 10-228 median-cut from the track's art. `buildFogMap` builds its `FOG\<track>.MAP`, the 32,768-byte RGB555 lookup the indexed-art loader uses: the nearest authored colour or white for the centre of each RGB555 cell, and 0 in byte zero, which every stock map holds.
+
 ## The classic color key
 
 MTM2 has no alpha channel. For the face types that need see-through texels (glass, trees, fences and grilles, face types `0x11` and `0x33`), the engine cuts every texel whose **palette color is pure black**, whatever its index:

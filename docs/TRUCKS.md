@@ -28,6 +28,12 @@ The code was consolidated from JSTruckViewer's parser and JSTrackViewer's port o
 
 Both adapters reproduce their old output exactly, key order included, on all 382 manifests in the stock and community archives (82 MTM, 29 CPR car, 271 Evo).
 
+### Writing an MTM2 TRK
+
+`writeMtm2Trk` writes the MTM2 2.1 manifest in the stock field order: the "MTM2.1" header that turns on the patched engine's extended loading, wheel anchors grouped by axis (all four x, then y, then z), one `Scrape point N body axis x,y,z` label per point, six-decimal numbers, the lights, and the 2.1 `superiorAxlebarOffset` last. It reads back with `parseMtmTrkLines`.
+
+Every value must sit on its own non-blank line, because the readers drop blank lines and pair what is left: a single empty name moves every later label onto the wrong value. The writer throws on an empty name, wave file or light bitmap rather than write such a file. An MTM1 manifest has no axle, shock or bar texture, so it cannot be rewritten as MTM2 without choosing them.
+
 ## CPR CAR
 
 These are `VEHICLE\<car>.CAR` files:

@@ -44,8 +44,11 @@ export type { CmdModel, CmdPart, CmdFace, CmdCorner } from "./cpr/cmd.ts";
 export type { TruckManifest, TruckManifestKind } from "./truck/manifest.ts";
 export {
   parseBin, MRGL, MRGLMAT, MRGLMAT2, BIN_GEOMETRY_DIVISOR, BIN_TRANSPARENT_FACE_TYPES, BIN_SOLID_FACE_TYPE, BIN_TEXTURE_NAME_MAX,
+  BIN_MAPPED_FACETS, BIN_UNMAPPED_FACETS,
 } from "./model/bin.ts";
 export type { BinModel, BinFace, BinMaterial, BinMaterial2 } from "./model/bin.ts";
+export { writeBin, binFaceNormal, binPlaneTerm } from "./model/bin-write.ts";
+export type { BinWriteModel, BinWriteGroup, BinWriteFace, BinWriteMaterial, BinWriteMaterial2, BinWriteResult } from "./model/bin-write.ts";
 export {
   TV_UNITS_PER_CELL, TV_UNITS_PER_HEIGHT_STEP, tvPlacementToEditor, tvHeightToAltitude, parseIntTriple, toDataLines,
   hbPlacementToEditor, placementToEditor,
@@ -108,6 +111,17 @@ export {
 } from "./evo/coords.ts";
 export { parseEvoAiLine, matchEvoAiLineName, lapRuns } from "./evo/ai-line.ts";
 export type { EvoAiLine } from "./evo/ai-line.ts";
+export { sampleForPalette, medianCutPalette, colourCube, encodeRawTexture } from "./texture/encode.ts";
+export type { ColourHistogram } from "./texture/encode.ts";
+export {
+  MTM2_PALETTE_WHITE_INDEX, MTM2_PALETTE_FIRST_AUTHORED, MTM2_PALETTE_AUTHORED_COUNT, mtm2LevelPalette, buildFogMap,
+} from "./mtm/level-palette.ts";
+export {
+  writeMtm2Sit, writeMtm2Lvl, writeTexList, writeEmptyList, emptyGroundBoxGrids, buildMtm2Lte, writeMtm2Trk,
+} from "./mtm/write.ts";
+export type {
+  SitValue, SitTriple, Mtm2Sit, Mtm2SitTruck, Mtm2SitBox, Mtm2SitCourseSegment, Mtm2Lvl, Mtm2Trk, Mtm2TrkLight,
+} from "./mtm/write.ts";
 export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 

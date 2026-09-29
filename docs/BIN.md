@@ -56,6 +56,17 @@ Editor units per vertex are `(raw >> 1) * 65536 / (magnify * divisor)` (`BIN_GEO
 
 The TV-family engines size a model as `world = raw * 65536 / magnify`. FuryEdit.exe computes model extents exactly that way (at `0x4053b0`). Every `.DEF` hit radius across 193 TV and Fury3 definitions equals the model's vertex radius at that scale, times 1.00 to 1.4 (median 1.15). The same derivation reproduces Hellbender's divisor. JSPod used `10922.667` (2^15 / 3, the vertical height step), which drew TV and Fury3 models at 75% of their width. It now uses 8192.
 
+## Writing
+
+`writeBin` takes what `parseBin` reads back: the raw vertex words, and faces grouped under the texture, facet opcode and optional `MRGL_MATERIAL`/`MRGL_MATERIAL2` they are drawn with. It writes `MRGL_MAGNIFY`, the vertex list, a `MRGL_TEXTURE` (or `MRGL_TEXTURE64` for a name over 15 bytes) whenever the texture changes, each group's materials, the facets and `MRGL_EOL`. Only the facets `parseBin` reads are accepted (`BIN_MAPPED_FACETS`, `BIN_UNMAPPED_FACETS`).
+
+The two per-face values the format stores are derived, never taken from the caller:
+
+- **The stored normal** (`binFaceNormal`) is the unit cross product of the first three corners' words as stored, in 16.16. On every stock model of all six games it points the same way as the stored normal on 99.9 to 100% of faces, and matches to within 1/1000 on 74 to 96%. A face with no area has no normal and is left out (`degenerateFaces` counts them).
+- **The plane term** (`binPlaneTerm`), the header's fourth word, is that normal dotted with the first corner, wrapped to 32 bits. Stock files hold it on 99.96% of 21,053 faces across eight stock tracks, to within rounding.
+
+The writer came from JSMTM2Converter, which keeps its own policy on top: how Evo `.SMF` axes and scale become vertex words, which facet and material each mesh gets for the engine's fast paths, and which repeated faces to drop. Its output is byte-identical to the converter's previous writer on all 793 distinct stock and community Evo models under every option set it uses, and every stock model this writer can express (2,211 models, 214,914 faces) comes back from a rewrite with the same geometry, textures, facets and material flags.
+
 ## Open questions
 
 - **Facet header:** the meaning of its fourth word ("funk", `magic`) and whether any engine uses the stored normal.

@@ -11,6 +11,7 @@ The aim is for OpenPhotex to be the one place where understood format behaviour 
 - **4x4 Evolution data:** `.SIT`, `.LVL`, `.WAT`, `.TEX` and `.VEG` world files, `.SMF` models, `.TRK` vehicle manifests, `.TIF` textures, AI lines and terrain sampling. See [docs/EVO.md](docs/EVO.md).
 - **Models:** `.BIN` (MRGL) models of every MTM, CPR, TV, Fury3 and Hellbender title, including animated frame lists. See [docs/BIN.md](docs/BIN.md).
 - **Levels:** MTM1, MTM2 and CPR `.SIT`, `.LVL`, `.TEX` and `.TTY`; CPR's `.TRK` road layer and `.TTX`; Terminal Velocity, Fury3 and Hellbender `.LVL`, `.DEF`, `.NAV`, `.PUP`, `.TDF`, `.ANI` and briefings; heightfields, ground boxes, Hellbender's cavern and the sky gradient. See [docs/LEVELS.md](docs/LEVELS.md).
+- **Writers:** `.BIN` models, `.RAW`/`.ACT` texture pairs, and MTM2 `.SIT`, `.LVL`, `.TEX`, `.LTE`, ground-box grids, level palette, fog map and 2.1 `.TRK`, each checked by reading its output back. See [docs/BIN.md](docs/BIN.md), [docs/RAW_ACT.md](docs/RAW_ACT.md), [docs/LEVELS.md](docs/LEVELS.md) and [docs/TRUCKS.md](docs/TRUCKS.md).
 - **Palette choice:** which `.ACT` an 8-bit texture should use, as a ranked list, plus the four stock METALCR2 and VGA palettes a single archive lacks. See [docs/RAW_ACT.md](docs/RAW_ACT.md).
 - **Truck and car manifests:** MTM1, MTM2 and MTM2.1 `.TRK`, CPR `.CAR`, and Evo `.TRK`, with dialect detection; CPR `.CMD` car models. See [docs/TRUCKS.md](docs/TRUCKS.md).
 
