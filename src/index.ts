@@ -46,6 +46,68 @@ export {
   parseBin, MRGL, MRGLMAT, MRGLMAT2, BIN_GEOMETRY_DIVISOR, BIN_TRANSPARENT_FACE_TYPES, BIN_SOLID_FACE_TYPE, BIN_TEXTURE_NAME_MAX,
 } from "./model/bin.ts";
 export type { BinModel, BinFace, BinMaterial, BinMaterial2 } from "./model/bin.ts";
+export {
+  TV_UNITS_PER_CELL, TV_UNITS_PER_HEIGHT_STEP, tvPlacementToEditor, tvHeightToAltitude, parseIntTriple, toDataLines,
+  hbPlacementToEditor, placementToEditor,
+} from "./tv/coords.ts";
+export { TV_POWERUPS, tvPowerup, TV_LOGIC_NAMES, TV_WEAPON_NAMES, tvLogicName, tvWeaponName } from "./tv/tables.ts";
+export type { TvPowerup } from "./tv/tables.ts";
+export {
+  NAV_TARGET_LIST, NAV_TUNNEL_ENTRANCE, NAV_CHECKPOINT, NAV_JUMP_ZONE, NAV_TUNNEL_EXIT, NAV_BOSS, NAV_START_POINT,
+  NAV_TYPE_NAMES, parseNavPoints, findStartPoint,
+} from "./tv/nav.ts";
+export type { NavPoint } from "./tv/nav.ts";
+export {
+  HBNAV_TARGET_LIST, HBNAV_TUNNEL_ENTRANCE, HBNAV_CHECKPOINT, HBNAV_JUMP_ZONE, HBNAV_TUNNEL_EXIT, HBNAV_BOSS,
+  HBNAV_START_POINT, HBNAV_SYNC_POINT, HBNAV_RESCUE_BEACON, HBNAV_END_OF_NAVS, HBNAV_ESCORT, HBNAV_RETRIEVE,
+  HBNAV_PURSUE, HBNAV_TYPE_NAMES, parseHbNavPoints,
+} from "./tv/hb-nav.ts";
+export type { HbNavPoint } from "./tv/hb-nav.ts";
+export { parsePowerups } from "./tv/pup.ts";
+export type { Powerup } from "./tv/pup.ts";
+export { TUNNEL_LOGIC_NAMES, parseTunnelDefs } from "./tv/tdf.ts";
+export type { TunnelDef } from "./tv/tdf.ts";
+export { ANIMATION_BASE_FPS, parseAnimations } from "./tv/ani.ts";
+export type { TextureAnimation } from "./tv/ani.ts";
+export { parseHbBriefing } from "./tv/hb-briefing.ts";
+export type { HbBriefing } from "./tv/hb-briefing.ts";
+export {
+  CPR_HEIGHT_DIVISOR, CPR_ALTITUDE_DIVISOR, CPR_HEIGHT_UNIT_SCALE, LEGACY_ALTITUDE_DIVISOR, decodeHeightSample,
+  legacyWholeHeight16, heightAtCell,
+} from "./terrain/height.ts";
+export type { HeightGrid } from "./terrain/height.ts";
+export {
+  parseMtmSit, parseMtmLvl, parseTexList, parseTty, detectSitOrigin, sitTrackTypeName, sitWorldTriplet,
+} from "./mtm/sit.ts";
+export type { MtmSit, MtmLvl, TtyEntry, SitBox, SitCourseSegment, SitTruck, SitArena, SitOrigin } from "./mtm/sit.ts";
+export { parseTvLvl, detectTvLvlOrigin, isNullAssetName, tvLvlFallbackName } from "./tv/lvl.ts";
+export type { TvLvl, TvLvlOrigin } from "./tv/lvl.ts";
+export { parseDef, defPlacementToEditor, TR_ANGLE_TO_RAD } from "./tv/def.ts";
+export type { DefFile, DefDefinition, DefPlacement } from "./tv/def.ts";
+export { SKY_PALETTE_FIRST_SLOT, SKY_ACT_FIRST_COLOUR, SKY_GRADIENT_COLOURS, skyGradient, skyHorizon } from "./texture/sky.ts";
+export { decodeClrWord, decodeGroundBoxes } from "./terrain/ground-boxes.ts";
+export type { GroundBox } from "./terrain/ground-boxes.ts";
+export { HB_UNDERGROUND_BIAS, decodeHbUnderground } from "./terrain/hb-underground.ts";
+export type { HbUnderground } from "./terrain/hb-underground.ts";
+export {
+  CPR_POINT_NAMES, CPR_SLOT_OFF_TRACK, CPR_SLOT_CURB, CPR_SLOT_ROAD, CPR_SLOT_NAMES, CPR_CROSS_SECTION_MIDPOINT,
+  CPR_SURFACE_TYPES, CPR_WALL_TYPE_NAMES, CPR_TEXTURE_INDEX_MASK, CPR_TEXTURE_SLICE_COUNT, cprTextureIndex,
+  cprTextureSlice, cprTextureU, CPR_WALL_LAYERS, CPR_CATCH_FENCE_NAMES, parseCprTrk, parseCprTtx, isDegenerateSlot,
+  cprTrackIsClosed, cprSegmentPairs, cprVisibleSlots, CPR_COURSE_PURPOSES, CPR_CHECKPOINT_ROLES, cprCheckpointRole,
+  isCprPitCheckpoint,
+} from "./cpr/track.ts";
+export type { CprTrk, CprTrackSurface, CprTtxEntry, CprWallLayer, CprCheckpointRole } from "./cpr/track.ts";
+export { BUNDLED_PALETTE_IDS, bundledPalette } from "./texture/bundled-palettes.ts";
+export type { BundledPaletteId } from "./texture/bundled-palettes.ts";
+export {
+  BUNDLED_PALETTE_BY_ORIGIN, TEXTURE_SIBLING_DIRS, findTextureSibling, paletteCandidates, textureStem,
+} from "./texture/palette-rank.ts";
+export type { PaletteCandidate, PaletteCandidateOptions, PaletteOrigin, PaletteTextureKind } from "./texture/palette-rank.ts";
+export {
+  EVO_CELL_SIZE, EVO_HEIGHT_DIVISOR, EVO_WATER_HEIGHT_DIVISOR, EVO_GRID_SIZE, EVO_WORLD_SIZE, evoHeightAtCell, evoHeightAt,
+} from "./evo/coords.ts";
+export { parseEvoAiLine, matchEvoAiLineName, lapRuns } from "./evo/ai-line.ts";
+export type { EvoAiLine } from "./evo/ai-line.ts";
 export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 

@@ -38,6 +38,18 @@ import {
   readPod2AuditTrail,
   readPodEntry,
   verifyPodChecksums,
+  cprTrackIsClosed,
+  findPodEntryByTitle,
+  findStartPoint,
+  parseCprTrk,
+  parseCprTtx,
+  parseDef,
+  parseHbNavPoints,
+  parseMtmSit,
+  parseNavPoints,
+  parseTvLvl,
+  podPathTitle,
+  CPR_SURFACE_TYPES,
 } from "../src/index.ts";
 
 const GAMES = process.env.OPENPHOTEX_GAMES ?? join(process.env.HOME ?? "", "games");
@@ -277,4 +289,64 @@ test("every stock .BIN walks cleanly", { skip: existsSync(GAMES) ? false : `no $
     }
   }
   assert.ok(kinds.mrgl > 0 && faces > 0, JSON.stringify(kinds));
+});
+
+/*
+  The level formats. Every MTM1, MTM2 and CPR .SIT is recognized as its own game; every CPR
+  .TRK is the 20 point, 19 section cross section CPREDIT.EXE names, a closed circuit, with a
+  full header; every TV, Fury3 and Hellbender .LVL is a complete header whose .DEF parses
+  (a tunnel level's may hold no placements).
+*/
+test("every stock level file parses", { skip: existsSync(GAMES) ? false : `no ${GAMES}` }, () => {
+  const sitOrigin: Record<string, string> = { mtm1: "MTM1", mtm2: "MTM2", cpr: "CPR" };
+  const counts = { sit: 0, trk: 0, ttx: 0, lvl: 0, def: 0, nav: 0 };
+  for (const game of ["mtm1", "mtm2", "cpr", "tv", "tf", "hb"]) {
+    const folder = join(GAMES, game);
+    if (!existsSync(folder)) continue;
+    for (const name of readdirSync(folder).filter((n) => /\.pod$/i.test(n))) {
+      const bytes = new Uint8Array(readFileSync(join(folder, name)));
+      const pod = parsePod(bytes);
+      const read = (title: string | null) => {
+        if (!title) return null;
+        const entry = findPodEntry(pod, title) ?? findPodEntryByTitle(pod, podPathTitle(title));
+        return entry ? readPodEntry(bytes, entry) : null;
+      };
+      for (const entry of pod.entries) {
+        const where = `${game}/${name}:${entry.name}`;
+        if (sitOrigin[game] && /\.SI[T2]$/.test(entry.title)) {
+          assert.equal(parseMtmSit(readPodEntry(bytes, entry), entry.title).origin, sitOrigin[game], where);
+          counts.sit++;
+        }
+        if (game === "cpr" && entry.title.endsWith(".TRK")) {
+          const trk = parseCprTrk(readPodEntry(bytes, entry));
+          assert.ok(trk && trk.background && (trk.length ?? 0) > 0, where);
+          assert.equal(trk.surfaces.length, trk.trackCount, where);
+          assert.ok(trk.surfaces.every((s) => s.points.length === 20 && s.segmentTypes.length === 19), where);
+          assert.ok(cprTrackIsClosed(trk.surfaces), where);
+          counts.trk++;
+        }
+        if (game === "cpr" && entry.title.endsWith(".TTX")) {
+          const ttx = parseCprTtx(readPodEntry(bytes, entry));
+          assert.ok(ttx.length > 0 && ttx.every((t) => t.flags >= 0 && t.flags < CPR_SURFACE_TYPES.length), where);
+          counts.ttx++;
+        }
+        if (["tv", "tf", "hb"].includes(game) && entry.title.endsWith(".LVL")) {
+          const lvl = parseTvLvl(readPodEntry(bytes, entry));
+          assert.ok(lvl.complete, where);
+          assert.equal(lvl.origin, game === "hb" ? "HB" : "TV/F3", where);
+          counts.lvl++;
+          const def = read(lvl.defName);
+          if (def) {
+            assert.ok(parseDef(def), where);
+            counts.def++;
+          }
+          const nav = read(lvl.navName);
+          if (nav && lvl.origin === "HB") counts.nav += parseHbNavPoints(nav, 128).length > 0 ? 1 : 0;
+          if (nav && lvl.origin !== "HB") counts.nav += findStartPoint(parseNavPoints(nav, 256)) ? 1 : 0;
+        }
+      }
+    }
+  }
+  if (existsSync(join(GAMES, "cpr"))) assert.equal(counts.trk, 17);
+  assert.ok(counts.sit > 0 && counts.lvl > 0 && counts.def === counts.lvl && counts.nav > 0, JSON.stringify(counts));
 });

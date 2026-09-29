@@ -50,9 +50,20 @@ Choosing a palette is not a property of the `.RAW`, so `decodeRawTexture` takes 
 1. **A same-stem `.ACT`** beside the texture (`FOO.ACT` next to `FOO.RAW`). The archive puts it there deliberately, and it is never overridden. Every one of the 3,757 terrain slots across the four stock Evo tracks has one.
 2. **The POD1 palette record:** the second string in a `.RAW` entry's name field, returned as `PodEntry.paletteName` (see [POD.md](POD.md)). It is a file name, so resolve it by entry file name. It may name a palette from another archive: MTM1's `TRUCK.POD` names `METALCR2.ACT`, which ships in `GAME.POD`.
 
-Rules beyond these depend on the game, such as the track's palette slot in its `.SIT` or `.LVL`, the game's `METALCR2`/`VGA` palette, or a bundled palette. They are left to the consumer. JSTrackViewer's `palette-resolver.js` holds the full order it uses. `openphotex texture` applies rules 1 and 2 and otherwise asks for a palette rather than guessing one.
+Beyond those two, the answer depends on the game, and **`paletteCandidates(archive, { name, entry }, options)`** returns the ranked list. It names entries and bundled palettes rather than holding bytes; the caller reads each in turn and skips any shorter than 768 bytes.
 
-OpenPhotex ships no palettes. The games' own palettes are retail data, and consumers that need a fallback, as JSTrackViewer does, keep their own.
+3. **The archive's own `METALCR2.ACT`, then its `VGA.ACT`.** A POD carrying either says which family it belongs to, and its copy beats a bundled one, because CPR's METALCR2 is not MTM1's.
+4. **A bundled palette** (`bundledPalette`): MTM1's METALCR2 (MTM2 uses the same), CPR's METALCR2, Hellbender's VGA, and Terminal Velocity and Fury3's VGA. Shared MTM and CPR model art is authored against METALCR2, which ships in STARTUP.POD and is never inside a track or truck POD, so a tool given one archive cannot reach the real file.
+5. **Another `.ACT` in the texture's folder.** Offered to a person, never chosen automatically.
+
+Without `origin` the result is a picker list: every rule, all four bundled palettes, the same-folder palettes last, and no entry twice. This is JSPod's palette dropdown.
+
+With `origin` (the caller has read the `.SIT` or `.LVL`) it is an automatic chain: the bundled palette for that game only, no same-folder guesses, and the level's own palette when the caller passes `trackPalette: true`. Where that goes depends on `kind`:
+
+- **Model art in MTM1, MTM2 and CPR, and MTM2 terrain:** the shared palette outranks the level's. The level palette is what the terrain was built against, not the shared object art. Ranking them the other way drew ROCKQRY's checkpoint chevron and start lights as coloured speckle, and CRAZY98's start line as blue.
+- **Everything else, including MTM1 terrain and every flight-game texture:** the level's palette first. The flight games have one global palette and the `.LVL` names it. MTM1 levels name their palette on purpose (Arizona's `DEMO.ACT`).
+
+This consolidates JSPod's picker and JSTrackViewer's resolver, and JSTruckViewer's shorter chain. Both JSPod and JSTrackViewer resolve identically on it: the same option list for all 18,348 stock and community RAWs, and the same palette and source for over a million JSTrackViewer lookups. `openphotex texture` still applies only rules 1 and 2 and otherwise asks for a palette rather than guessing one.
 
 ## The classic color key
 

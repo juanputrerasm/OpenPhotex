@@ -18,8 +18,8 @@ Line counts in the table are the number of changed lines between copies (`diff -
 | CPR CMD, CAR (car models) | CMD (adapter ready) | **OpenPhotex** | | | |
 | BIN (MTM/TV/F3/HB models) | **OpenPhotex** (+ rendering) | **OpenPhotex** | writer | **OpenPhotex** | |
 | BinaryReader | removed | removed | | removed | |
-| MTM/CPR SIT, TV/F3/HB LVL, DEF, NAV, PUP, TDF, ANI, CPR TRK/TTX, terrain | | | | ✔ only | |
-| Palette choice (which .ACT) | ✔ | | ✔ | ✔ | |
+| MTM/CPR SIT, TV/F3/HB LVL, DEF, NAV, PUP, TDF, ANI, CPR TRK/TTX, terrain | | | | **OpenPhotex** | |
+| Palette choice (which .ACT), bundled palettes | **OpenPhotex** | **OpenPhotex** | own (encoder) | **OpenPhotex** | |
 | Writers: BIN, RAW/ACT, MTM2 SIT/LVL/TRK | | | ✔ only | | |
 
 ## Principles for every extraction
@@ -30,7 +30,7 @@ These are the same rules the POD and RAW/ACT extractions followed.
 2. **Neutral data out.** OpenPhotex returns typed arrays and plain objects, never Three.js geometry. Rendering stays in the consumer.
 3. **Prove equivalence.** Before a consumer switches, decode every stock file of that format with both the old code and OpenPhotex and compare the results byte for byte. Any difference is explained and documented, or fixed.
 4. **Thin adapters.** Consumers keep their exported function names, so call sites don't change, and delegate to the vendored OpenPhotex.
-5. **Consumer-only concerns stay put.** Rendering, OPFS, UI, bundled retail data such as palettes, and game-specific policy remain in the consumer until a second consumer needs the same policy.
+5. **Consumer-only concerns stay put.** Rendering, OPFS, UI and game-specific policy remain in the consumer until a second consumer needs the same policy. (The four stock palettes moved in Phase 5, when three consumers carried the same copies.)
 6. **Document the evidence.** Every format gets a `docs/<FORMAT>.md`, and the CLI gains an inspection command when that helps agents.
 
 ## Phases
@@ -67,4 +67,5 @@ The converter's BIN, RAW/ACT, and MTM2 SIT/LVL/TRK writers. Each writer is check
 | 2: 4x4 Evolution SIT, LVL, WAT, TEX, VEG, SMF, TIFF and TRK; all four consumers migrated | done |
 | 3: MTM TRK, CPR CAR and CMD; JSTruckViewer and JSTrackViewer migrated (JSPod's CMD adapter waits for its untracked file) | done |
 | 4: BIN models; JSTrackViewer, JSTruckViewer and JSPod migrated (BinaryReader no longer needed anywhere) | done |
-| 5 | next |
+| 5: MTM/CPR SIT and LVL, CPR TRK/TTX, TV/F3/HB LVL, DEF, NAV, PUP, TDF, ANI, briefings, terrain, ground boxes, Hellbender cavern, sky; palette ranking and bundled palettes; JSTrackViewer, JSPod and JSTruckViewer migrated | done |
+| 6: writers | next |

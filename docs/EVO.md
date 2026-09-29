@@ -35,6 +35,18 @@ These were identical in JSTrackViewer and JSMTM2Converter.
 - **`.TEX`:** holds `ordinaryCount + shadowCount` records exactly, in all four stock tracks. The `.CLR` grid indexes the ordinary group, and `.SDW` indexes the shadow group offset by `ordinaryCount`. The two per-record parameters are kept verbatim because their meaning is unknown.
 - **`.VEG`:** has exactly 256 `treeGrid` blocks, one per terrain row. Each tree's fourth value spans 0 to 255 and its meaning is unknown.
 
+## World space and terrain
+
+Evo is Y-up: a `.SIT` `wPos`, `.SMF` vertices and `.VEG` records are all (x, height, z). The terrain grid is always 256 square (`EVO_GRID_SIZE`) at 32 world units a cell (`EVO_CELL_SIZE`), so the world is 8192 units across. Heights are uint16 little-endian 11.5 fixed point (`EVO_HEIGHT_DIVISOR`, 32), indexed `x + z * 256`: against every `wPos` in the four stock tracks that order lands objects within 12-33 units of the ground, where the transposed and flipped readings miss by 65-407. `evoHeightAtCell` and `evoHeightAt` sample it.
+
+The `.LVL` water height is on a half-unit scale (`EVO_WATER_HEIGHT_DIVISOR`, 2). Taken at face value it would put every stock track's racing line underwater; halved, BAJBEACH's sea sits just above its flat sea floor, under its floating raft and its piers' decks.
+
+## AI lines
+
+`AI\CLASSc\AI_cnTRACK.TXT` is a recorded lap for computer driver line `n` of truck class `c` (`matchEvoAiLineName`). It is a text header (driver, lap time, class, counts) followed by samples of a position line, a speed line and a target checkpoint line (`parseEvoAiLine`, which keeps the header's driver and lap time and the positions).
+
+These are the lines the trucks drive, so they settle what the `.SIT` course cannot say alone: which runs make up a lap. `lapRuns` drops runs at the end of the course list that no recorded line goes near. TERRAMAR's course lists its 23 lap runs and then two on the parallel road beside the start, 96 and 193 units off every line, where lap runs sit 40 or less.
+
 ## .SMF
 
 The four copies shared one parsing layer, a counted state machine with the same validation, and differed only in how they reshaped the result for their renderers:
