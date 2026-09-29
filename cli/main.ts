@@ -11,6 +11,7 @@ import { parseArgs } from "node:util";
 import { EXIT, toCliError, reportError, usageError } from "./output.ts";
 import { podAudit, podExtract, podInfo, podList, podVerify, type PodOptions } from "./pod.ts";
 import { texture } from "./texture.ts";
+import { read, READ_FORMATS } from "./read.ts";
 
 const HELP = `openphotex: Terminal Reality format tools
 
@@ -24,6 +25,8 @@ Usage:
   openphotex texture <file.pod> <entry.raw> -o <out.png> [--palette <entry> | --act <file>]
                      [--opa <entry>] [--family classic|evo] [--cutout] [--force] [--json]
   openphotex texture <file.raw> --act <file.act> -o <out.png> [...]
+  openphotex read <file.pod> <entry> [--json] [--full] [--as <format>]
+  openphotex read <file> [--json] [--full] [--as <format>]     (a loose file)
 
 <entry> is an archive path (any case, / or \\), a file name that matches exactly one
 entry, or #<index>. <pattern> uses * and ?; with a / it matches the full path, otherwise
@@ -41,9 +44,13 @@ Options:
   --opa <e>         texture: a 4x4 Evolution .OPA opacity plane (entry, or file for a loose .RAW)
   --family <f>      texture: size rules, classic (MTM/CPR/TV/F3/HB) or evo; default from the POD
   --cutout          texture: classic colour key, palette-black texels transparent
+  --as <format>     read: the reader to use instead of detecting it (see below)
+  --full            read --json: typed arrays in full rather than as a type and length
   --force           Overwrite existing output files
   -h, --help        Show this help
   -v, --version     Show the version
+
+read formats: ${READ_FORMATS.join(", ")}.
 
 Exit codes: 0 ok, 1 usage, 2 file/IO, 3 unreadable or unsupported format, 4 entry or palette
 not found (or ambiguous), 5 verification failed.
@@ -74,6 +81,8 @@ function main(argv: string[]): number {
         opa: { type: "string" },
         family: { type: "string" },
         cutout: { type: "boolean", default: false },
+        as: { type: "string" },
+        full: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
         version: { type: "boolean", short: "v", default: false },
       },
@@ -97,9 +106,16 @@ function main(argv: string[]): number {
       });
       return EXIT.OK;
     }
+    if (group === "read") {
+      if (positionals.length > 3) throw usageError(`Unexpected argument '${positionals[3]}'.`);
+      read(positionals[1], positionals[2], { json: values.json!, full: values.full!, as: values.as });
+      return EXIT.OK;
+    }
+    const readOnly = (["as", "full"] as const).find((k) => values[k]);
+    if (readOnly) throw usageError(`--${readOnly} only applies to 'read'.`);
     const textureOnly = (["palette", "act", "opa", "family", "cutout"] as const).find((k) => values[k]);
     if (textureOnly) throw usageError(`--${textureOnly} only applies to 'texture'.`);
-    if (group !== "pod") throw usageError(`Unknown command '${group}'. Supported: pod, texture.`);
+    if (group !== "pod") throw usageError(`Unknown command '${group}'. Supported: pod, texture, read.`);
     const options: PodOptions = {
       json: values.json!,
       raw: values.raw!,

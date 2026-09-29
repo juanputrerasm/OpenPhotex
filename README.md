@@ -113,7 +113,13 @@ openphotex pod audit TRACK.POD --filter '*.act'        # POD2: who changed what,
 openphotex texture GAME.POD ART/GRASS.RAW -o grass.png # render a texture to PNG
 openphotex texture TRACK.POD ART/PINE.RAW --opa ART/PINE.OPA -o pine.png
 openphotex texture LOOSE.RAW --act LOOSE.ACT -o loose.png
+openphotex read LAGUNA.POD LAGUNA.TRK                  # what a file says, through its reader
+openphotex read GAME.POD FLOAT.NAV --json              # the reader's result as JSON
+openphotex read TRUCK2.POD BIGFOOT.BIN --json --full   # typed arrays in full
+openphotex read LOOSE.LVL --as tv-lvl                  # a loose file, reader named
 ```
+
+`read` picks the reader from the file's extension, then its content, then the archive it came from: `.SIT` is 4x4 Evolution or MTM by content, a CPR road `.TRK` by its `CRaceTrack.trackCount` label, a Hellbender `.NAV` by its `!priority,time` sections, and a `.LVL` by the archive (POD2 is Evo; a POD1 carrying a `.SIT` or `.SI2` is MTM, any other is the Terminal Velocity family). A loose `.LVL` has no archive to ask, so give `--as`. `openphotex --help` lists every format id. Files with no standalone reader (grids such as `.CLR` and `.RA0`, sound, video) fail with `UNSUPPORTED_FORMAT`.
 
 `texture` draws with, in order:
 
@@ -165,6 +171,7 @@ The `pod list` shape:
 - **`pod extract`:** prints `extracted: [{ index, name, normalizedName, length, output }]`.
 - **`pod verify`:** prints `format`, `ok`, `archive: { stored, computed, ok }`, `entriesChecked` and `mismatches: [{ index, name, stored, computed }]`. The command exits with 5 when `ok` is false.
 - **`pod audit`:** prints `filter`, `auditCount` and `records: [{ index, offset, user, timestamp, actionCode, action, path, oldTimestamp, oldSize, newTimestamp, newSize }]`.
+- **`read`:** prints `file`, `entry` (null for a loose file), `format`, `reader` (the library function used) and `data`, which is that function's return value: its shape is the function's documented type. Typed arrays appear as `{ "typedArray": "Int32Array", "length": n }` unless `--full` is given.
 - **`texture`:** prints `file`, `entry`, `family`, `width`, `height`, `hasAlpha`, `palette: { source, name, depth }`, `opacity` and `output`. The palette `source` is one of `act-file`, `palette-entry`, `same-stem` or `palette-record`.
 
 ### Errors and exit codes
