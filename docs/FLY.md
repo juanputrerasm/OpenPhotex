@@ -66,16 +66,16 @@ Every coverage area is exactly 2x2 globe tiles, and the load area adds one tile 
 Terrain lives in folders `DATA\Dxxxyyy\`, one per globe tile:
 
 - `xxx` is the longitude column: `(lon + 360) / 1.40625`, so 256 columns around the world. San Francisco's `D168156` starts at 123.75 W.
-- `yyy` is the latitude row. The rows are about 1.40625 x cos(latitude) degrees tall (1.12 degrees at San Francisco), which is close to a Mercator row, and they count up from about 128 at the equator. The exact row boundaries are not derived yet; the `.SCF` corners give them for the stock sets.
+- `yyy` is the latitude row. Row 128 starts at the equator, and each row is 1.40625 x cos(its southern edge) degrees tall, so row `k + 1` starts at `lat(k) + 1.40625 * cos(lat(k))`. This reproduces every tile edge named in the five `.SCF` files to within 0.01 arcseconds (row 152 starts at 32.0496 N, row 158 at 38.9591 N).
 
-A globe tile is 64x64 cells, about 2 km each at these latitudes. It is stored as four quadrants of 32x32 cells, `G00`, `G01`, `G10` and `G11`: the first digit is the row half counted from the south, the second the column half counted from the west.
+A globe tile is 64x64 cells, about 2 km each at these latitudes. It is stored as four quadrants of 32x32 cells, `G00`, `G01`, `G10` and `G11`: the first digit is the column half counted from the west, the second the row half counted from the south.
 
 ### Quadrant files (`G<r><c>.*`)
 
 | File | Content |
 |---|---|
-| `.ALT` | 33x33 little-endian float32 corner heights, row by row from the south, west to east. Apparently feet (the Bay Area peaks at 4616). |
-| `.TYP` | text, 1024 lines, one per cell in the same order: `type:<k>: <n>,<n>` |
+| `.ALT` | 33x33 little-endian float32 corner heights in feet, column by column: index `x * 33 + y`, with `x` counted from the west and `y` from the south |
+| `.TYP` | text, 1024 lines, one per cell: `type:<k>: <n>,<n>` (presumably in the `.ALT` order; not yet verified) |
 | `.TEX` | text: a count, then that many texture file names |
 | `.REF` | text: indices into the `.TEX` list, below |
 | `.AL2` | text: extra heights for subdivided cells, below; empty for flat quadrants |
@@ -96,7 +96,9 @@ The `.TYP` kinds seen are:
 
 Terrain textures are 128x128 `.RAW` files, each with its own `.ACT`, and are satellite imagery. Their names are hexadecimal numbers that encode their place: `643A9672` is 1681561202 in decimal, which reads as globe tile `168156` and cell `1202`, where the cell number is `rowFromSouth * 64 + columnFromWest` (here row 18, column 50).
 
-Placing every texture of the four San Francisco tiles by its name alone gives a seamless picture of the Bay Area, which confirms the reading.
+Placing every texture of the four San Francisco tiles by its name alone gives a seamless picture of the Bay Area, correctly oriented, which confirms the reading. Note that the texture numbering is row-major while `.ALT` is column-major.
+
+The `.ALT` layout was checked against known summits. Sampled at the nearest grid points, it gives Mount Diablo 2624 ft (3849 real), Mount Tamalpais 2396 (2571), Mount Saint Helena 3656 (4342) and Mount Hamilton 3740 (4265), and 0 on the open ocean. The row-major reading and the other quadrant order put Mount Tamalpais and Montara Mountain at 0. The peaks read low because the grid points are about 2 km apart; `.AL2` refines some cells.
 
 Sub-folders such as `DATA\D168156\D061050\` hold more detailed textures for one area. Their names use the same scheme: `24637DA0` is 0610500000, sub-folder `D061050` and index 0, and its neighbours are 0001, 0064 and 0065.
 
@@ -132,7 +134,7 @@ Some `.TEX` names, such as `wt000s1.raw` and `wt555s2.raw`, are not in any scene
 
 ## Open questions
 
-- The exact latitude row boundaries of the globe tiles.
-- The units of `.ALT` heights and of `<geop>` altitudes, and the `<iang>` axis order.
+- Whether cells are equal subdivisions of their tile in latitude.
+- The cell order of `.TYP` and `.REF`, and the units of `<geop>` altitudes and the `<iang>` axis order.
 - The order of `.AL2` blocks, and whether `type:2` cells also carry `.AL2` heights.
 - The `.BSP` and `.GTP` formats, the `<flag>` bits, and the order of chart tiles.
