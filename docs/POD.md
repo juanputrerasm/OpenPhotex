@@ -155,17 +155,31 @@ JPod's specification described both layouts but had no POD2 archive to check the
 
 ## EPD
 
-Fly!'s container. It is known from one archive, `SC24.EPD` (54 entries), and OpenPhotex matches JSPod on it entry for entry.
+Fly!'s container. OpenPhotex checks it against all 72 stock archives: 37 sectional-chart archives (`Maps\SC01.EPD` to `SC37.EPD`) and 35 scenery archives (7 for each of five cities). See [FLY.md](FLY.md) for what is inside them.
 
 ```
 0x00   4      "dtxe"
-0x04   4      four-character archive title, returned as the comment
-0x08   136    unidentified, non-zero
-0x90   4      uint32 entry count
-0x94   124    unidentified, non-zero
+0x04   9      archive title: a DOS base name of up to 8 characters, NUL-terminated
+0x0d   247    uninitialised memory, meaningless
+0x104  4      uint32 entry count
+0x108  4      zero in every stock archive
+0x10c  4      unidentified, distinct per archive
 0x110  n*80   directory records
 ...           payloads
 ```
+
+The title is the file's own stem in every stock archive (`SC24`, `LA1`, `CHNIGHT`, `SANFRAN1`) and is returned as the comment. The bytes after its terminator are junk.
+
+### The count was once read at 0x90
+
+OpenPhotex (and JSPod before it) used to read the count at `0x90`, from the single sample `SC24.EPD`, where that word is 54. It is uninitialised memory, like the rest of the header's middle:
+
+- In the chart archives it is 54 (or 1) whatever the real size. `SC24.EPD` has 272 entries, so only the first 54 were listed.
+- In the scenery archives it is garbage (153309048, 3221225472...), so 41 of the 72 archives were refused with `BAD_ENTRY_COUNT`.
+
+The word at `0x104` is the count in all 72 archives: the table it implies always ends exactly at the first payload.
+
+### Records
 
 Each 80-byte record:
 
@@ -184,9 +198,13 @@ The path is rebuilt from the prefix and remainder:
 - Otherwise, if the remainder is not empty, the remainder alone is the path.
 - Failing that, the path is the whole 64-byte field read as one string.
 
-In `SC24.EPD` every timestamp falls in 1999, the year Fly! shipped, which supports the timestamp reading. The padding after every string is the Windows debug-heap pattern `BA AD F0 0D`, so it carries no meaning.
+Scenery paths are long, such as `DATA\D168156\D061050\24637DA0.RAW`, and are split the same way (`DATA` + the rest).
 
-EPD validation covers the count (1 to 65536), the directory bounds and the payload bounds. Empty names are not rejected, matching JSPod. There is only one sample, so the bounds stay lenient.
+In the stock archives every timestamp falls in 1999, the year Fly! shipped, which supports the timestamp reading. The padding after every string is the Windows debug-heap pattern `BA AD F0 0D` or other uninitialised memory, so it carries no meaning.
+
+Payloads follow the table in directory order. The scenery archives (the numbered city files, `*MODELS` and `*NIGHT`) put one NUL after each payload and one at the end of the file; the chart and `*COASTS` archives do not. Zero-length entries (empty `.AL2` files) still carry an offset.
+
+EPD validation covers the count (1 to 65536), the directory bounds and the payload bounds. Empty names are not rejected, matching JSPod.
 
 ## Reading only the directory
 
@@ -202,6 +220,6 @@ At one point, JSTrackViewer and JSMTM2Converter retried a failed POD1 directory 
 
 ## Open questions
 
-- **EPD:** the meaning of the unidentified EPD header regions and of the last word of each record.
+- **EPD:** the meaning of the word at `0x10c` and of the last word of each record.
 - **Palette records:** whether any engine reads the POD1 palette record. It is safe to use as a hint, but nothing should depend on it.
 - **Entry limits:** whether the engines impose real limits on entry counts. 8192 and 65536 are sanity bounds.

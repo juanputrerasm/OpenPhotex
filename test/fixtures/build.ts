@@ -106,13 +106,15 @@ export function buildPod2(
 }
 
 /**
- * EPD: "dtxe", 4-byte title, junk to the count at 0x90, junk to the table at 0x110, then 80-byte
- * records (4-byte prefix, 60-byte remainder, length, offset, timestamp, unknown), then payloads.
- * String padding is filled with the BA AD F0 0D debug-heap pattern, as in the one known sample.
+ * EPD: "dtxe", a NUL-terminated title of up to 8 characters, junk to the count at 0x104, a zero
+ * word, an unknown word, then 80-byte records at 0x110 (4-byte prefix, 60-byte remainder, length,
+ * offset, timestamp, unknown), then payloads. Junk is the BA AD F0 0D debug-heap pattern. The
+ * word at 0x90, where the count was once wrongly read, holds `staleCount` (default 54, the value
+ * most stock sectional-chart archives carry there).
  */
 export function buildEpd(
   entries: (FixtureEntry & { prefix?: string; remainder?: string })[],
-  options: { title?: string } = {},
+  options: { title?: string; staleCount?: number } = {},
 ): Uint8Array {
   const payloads = entries.map((e) => toBytes(e.data));
   const tableEnd = 0x110 + entries.length * 80;
@@ -122,8 +124,10 @@ export function buildEpd(
   const junk = [0xba, 0xad, 0xf0, 0x0d];
   for (let i = 0; i < tableEnd; i++) out[i] = junk[i % 4];
   out.set(latin1("dtxe"), 0);
-  out.set(latin1((options.title ?? "TEST").padEnd(4, "\0").slice(0, 4)), 4);
-  view.setUint32(0x90, entries.length, true);
+  out.set(latin1((options.title ?? "TEST").slice(0, 8) + "\0"), 4);
+  view.setUint32(0x90, options.staleCount ?? 54, true);
+  view.setUint32(0x104, entries.length, true);
+  view.setUint32(0x108, 0, true);
 
   let cursor = tableEnd;
   entries.forEach((entry, i) => {

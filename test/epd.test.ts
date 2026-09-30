@@ -43,6 +43,23 @@ test("EPD: header, records and payloads", () => {
   assert.equal(new TextDecoder().decode(readPodEntry(bytes, pod.entries[1])), "raw!");
 });
 
+/*
+  The count is at 0x104. The word at 0x90 is uninitialised memory: 54 in most sectional-chart
+  archives whatever their real size, and garbage such as 153309048 in the scenery archives.
+*/
+test("EPD: the count is at 0x104, not the stale word at 0x90", () => {
+  const entries = Array.from({ length: 60 }, (_, i) => ({ name: `MAPS\\T${i}.RAW`, data: "x" }));
+  const pod = parsePod(buildEpd(entries, { staleCount: 54 }));
+  assert.equal(pod.entries.length, 60);
+  assert.equal(pod.entries[59].name, "MAPS\\T59.RAW");
+  assert.equal(parsePod(buildEpd([{ name: "A.TXT" }], { staleCount: 153309048 })).entries.length, 1);
+});
+
+test("EPD: the title is a NUL-terminated name of up to 8 characters", () => {
+  assert.equal(parsePod(buildEpd([{ name: "A.TXT" }], { title: "SANFRAN1" })).comment, "SANFRAN1");
+  assert.equal(parsePod(buildEpd([{ name: "A.TXT" }], { title: "LA1" })).comment, "LA1");
+});
+
 test("EPD: path reconstruction from prefix and remainder", () => {
   const pod = parsePod(buildEpd([
     // A lower-case prefix is not a directory name: the remainder stands alone.
@@ -72,7 +89,7 @@ test("EPD: heap junk after terminators is ignored", () => {
 
 test("EPD: bad counts, truncation and out-of-bounds payloads", () => {
   const zero = buildEpd([{ name: "A.TXT" }]);
-  new DataView(zero.buffer).setUint32(0x90, 0, true);
+  new DataView(zero.buffer).setUint32(0x104, 0, true);
   assertPodError(() => parsePod(zero), "BAD_ENTRY_COUNT");
   assertPodError(() => parsePod(latin1("dtxe" + "\0".repeat(100))), "TOO_SMALL");
   const two = buildEpd([{ name: "A.TXT" }, { name: "B.TXT" }]);
@@ -91,6 +108,6 @@ test("EPD: directory-only reads settle after two reads", () => {
     reads++;
   }
   assert.equal(prefix.length, 0x110 + 80);
-  assert.equal(reads, 3); // 0x60 bytes, the count at 0x94, then the table
+  assert.equal(reads, 3); // 0x60 bytes, the count at 0x108, then the table
   assert.deepEqual(parsePod(prefix, { byteLength: file.length }), parsePod(file));
 });

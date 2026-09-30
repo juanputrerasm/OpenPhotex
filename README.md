@@ -64,7 +64,7 @@ The core is environment-neutral. It takes a `Uint8Array` or `ArrayBuffer` and re
 | `decodeTiff(bytes, name)` | An Evo 2 `.TIF` as RGBA, with `kind` `palette` (diffuse art) or `rgb` (`_BUMP` normal maps). |
 | `PodFormatError` | Has `.code` (`TOO_SMALL`, `BAD_ENTRY_COUNT`, `DIRECTORY_OUT_OF_BOUNDS`, `BAD_ENTRY_NAME`, `ENTRY_OUT_OF_BOUNDS`) and `.entryIndex`. |
 | `PodWriteError` | Has `.code` (`BAD_ENTRY_COUNT`, `BAD_NAME`, `NAME_TOO_LONG`, `DUPLICATE_NAME`, `BAD_PALETTE`, `BAD_TEXT`, `TOO_LARGE`) and `.entryIndex`. |
-| `PodArchive` | `format`, `comment` (EPD: its four-character title), `entries`, `byteLength`, `directoryOffset`, `directoryEnd`, `checksum`, `auditCount`. The last two are POD2 only and `null` otherwise. |
+| `PodArchive` | `format`, `comment` (EPD: its title, the archive's own stem), `entries`, `byteLength`, `directoryOffset`, `directoryEnd`, `checksum`, `auditCount`. The last two are POD2 only and `null` otherwise. |
 | `PodEntry` | `index`, `name` (as stored), `normalizedName`, `title`, `length`, `offset`, `recordOffset`, `paletteName` (POD1 `.RAW` only), `timestamp` (POD2 and EPD), `crc` (POD2 only). |
 
 ### Reading only the directory

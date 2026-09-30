@@ -82,18 +82,46 @@ test("4x4 Evolution 2 PEAK.pod", { skip: peak.skip }, () => {
   assert.ok(pod.entries.every((e) => e.timestamp !== null && e.crc !== null));
 });
 
-const sc24 = stock("fly/SC24.EPD");
+const sc24 = stock("fly/Maps/SC24.EPD");
 test("Fly! SC24.EPD", { skip: sc24.skip }, () => {
   const bytes = new Uint8Array(readFileSync(sc24.path));
   const pod = parsePod(bytes);
   assert.equal(pod.format, "epd");
   assert.equal(pod.comment, "SC24");
-  assert.equal(pod.entries.length, 54);
+  // 272, not the 54 the stale word at 0x90 claims: 268 chart tiles plus a north and a south
+  // .ACT and .MAP.
+  assert.equal(pod.entries.length, 272);
+  assert.equal(pod.entries.filter((e) => e.title.endsWith(".RAW")).length, 268);
   const act = findPodEntry(pod, "MAPS/SC24N.ACT");
   assert.ok(act);
   assert.equal(act.length, 768);
   // Every timestamp falls in 1999, the year Fly! shipped.
   assert.ok(pod.entries.every((e) => new Date((e.timestamp ?? 0) * 1000).getUTCFullYear() === 1999));
+});
+
+/*
+  Every Fly! archive, charts and scenery: the title is the file's stem, and the directory ends
+  exactly where the first payload begins. Some scenery archives follow each payload with one NUL,
+  so payloads need not be contiguous.
+*/
+const flyFolder = stock("fly");
+test("every stock Fly! EPD parses", { skip: flyFolder.skip }, () => {
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const item of readdirSync(dir, { withFileTypes: true })) {
+      if (item.isDirectory()) walk(join(dir, item.name));
+      else if (/\.EPD$/i.test(item.name)) files.push(join(dir, item.name));
+    }
+  };
+  walk(flyFolder.path);
+  for (const file of files) {
+    const pod = parsePod(new Uint8Array(readFileSync(file)));
+    assert.equal(pod.format, "epd", file);
+    assert.equal(pod.comment, file.replace(/^.*[\\/]/, "").replace(/\.EPD$/i, "").toUpperCase(), file);
+    const firstPayload = Math.min(...pod.entries.filter((e) => e.length > 0).map((e) => e.offset));
+    assert.equal(pod.directoryEnd, firstPayload, file);
+  }
+  assert.ok(files.length > 0);
 });
 
 /*
