@@ -15,6 +15,7 @@ import { join } from "node:path";
 import {
   parseBin,
   parseFlyScf,
+  parseFlyBsp,
   parseFlySceneryObjects,
   parseFlyQuadrant,
   parseFlyTextureName,
@@ -187,6 +188,35 @@ test("every stock Fly! scenery set parses", { skip: flyScenery.skip }, () => {
     }
   }
   assert.ok(quadrants > 0 && named > 0 && objects > 0);
+});
+
+/*
+  Every stock .BSP reads whole, and the Golden Gate Bridge measures as the real one does: its
+  towers stand 746 ft above the water, and its suspended spans run about 6,450 ft.
+*/
+test("every stock Fly! .BSP reads, the Golden Gate Bridge to scale", { skip: flyScenery.skip }, () => {
+  let files = 0;
+  for (const set of readdirSync(flyScenery.path, { withFileTypes: true }).filter((d) => d.isDirectory())) {
+    for (const file of readdirSync(join(flyScenery.path, set.name)).filter((f) => /MODELS\.EPD$/i.test(f))) {
+      const bytes = new Uint8Array(readFileSync(join(flyScenery.path, set.name, file)));
+      const pod = parsePod(bytes);
+      for (const entry of pod.entries.filter((e) => e.title.endsWith(".BSP"))) {
+        const { model, nodeCount } = parseFlyBsp(readPodEntry(bytes, entry), entry.name);
+        assert.ok(model.faces.length > 0 && nodeCount > 0 && model.stopReason === null, entry.name);
+        files++;
+        if (entry.title !== "GOLD1.BSP") continue;
+        let low = Infinity, high = -Infinity, south = Infinity, north = -Infinity;
+        for (let i = 0; i < model.vertices.length; i += 3) {
+          low = Math.min(low, model.vertices[i + 1]); high = Math.max(high, model.vertices[i + 1]);
+          south = Math.min(south, model.vertices[i + 2]); north = Math.max(north, model.vertices[i + 2]);
+        }
+        // 256 raw units to the foot, height in the second word, the bridge's length in the third.
+        assert.ok(Math.abs((high - low) / 256 - 750) < 10, `height ${(high - low) / 256}`);
+        assert.ok((north - south) / 256 > 6400 && (north - south) / 256 < 7000, `length ${(north - south) / 256}`);
+      }
+    }
+  }
+  assert.equal(files, 22);
 });
 
 /*

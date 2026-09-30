@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   parseFlyTagged, flyTag, parseFlyAngle, flyRowLatitude, flyColumnLongitude, flyTileBounds, flyTileAt,
   parseFlyFolderName, flyFolderName, parseFlyTextureName, parseFlyScf, parseFlySceneryObjects, parseFlyAlt,
-  parseFlyTex, parseFlyTyp, parseFlyRef, parseFlyAl2, parseFlyQuadrant, FLY_ALT_SIDE,
+  parseFlyTex, parseFlyTyp, parseFlyRef, parseFlyAl2, parseFlyQuadrant, FLY_ALT_SIDE, parseFlyBsp, writeBin, MRGL,
 } from "../src/index.ts";
 import { latin1 } from "./fixtures/build.ts";
 
@@ -200,4 +200,48 @@ test("Fly quadrant: .ALT, .TEX, .TYP, .REF and .AL2", () => {
   });
   assert.equal(quadrant.cellHeights.every((h) => h === null), true);
   assert.equal(quadrant.textures[0], "a.raw");
+});
+
+/*
+  A .BSP in miniature: four vertices, and two BSP nodes each carrying the MRGL records of one
+  textured face, the second node in front of the first. The records are what writeBin puts
+  after a .BIN's vertex list, which is exactly what a .BSP node holds.
+*/
+function bspFixture(options: { dropEol?: boolean } = {}): Uint8Array {
+  const vertices = [0, 0, 0, 25600, 0, 0, 25600, 0, 25600, 0, 0, 25600];
+  const records = (texture: string, corners: number[]) => {
+    const bytes = writeBin({ vertices, groups: [{ texture, opcode: MRGL.ZGFACETTMAP, faces: [{ vertexIndices: corners, u: [0, 0, 0], v: [0, 0, 0xff0000] }] }] }).bytes;
+    return bytes.subarray(20 + vertices.length * 4, options.dropEol ? bytes.length - 4 : bytes.length);
+  };
+  const tag = (name: string) => latin1(`<${name}>\0`);
+  const sized = (data: Uint8Array) => {
+    const out = new Uint8Array(4 + data.length);
+    new DataView(out.buffer).setUint32(0, data.length, true);
+    out.set(data, 4);
+    return out;
+  };
+  const vbin = new Uint8Array(new Int32Array(vertices).buffer);
+  const plane = new Uint8Array(new Float32Array([0, 1, 0, 0]).buffer);
+  const parts = [
+    tag("bgno"), tag("vbin"), sized(vbin), tag("ibin"), sized(new Uint8Array(vbin.length)), tag("root"),
+    tag("bgno"), tag("abcd"), plane, tag("mrgl"), records("A.RAW", [0, 1, 2]),
+    tag("frnt"), tag("bgno"), tag("abcd"), plane, tag("mrgl"), records("B.RAW", [0, 2, 3]), tag("endo"),
+    tag("endo"), tag("endo"),
+  ];
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const part of parts) { out.set(part, at); at += part.length; }
+  return out;
+}
+
+test("Fly .BSP: every node's faces over the shared vertices", () => {
+  const { model, nodeCount } = parseFlyBsp(bspFixture());
+  assert.equal(nodeCount, 2);
+  assert.equal(model.kind, "mrgl");
+  assert.equal(model.vertices.length, 12);
+  assert.deepEqual(model.faces.map((f) => [f.textureName, f.vertexIndices]), [["A.RAW", [0, 1, 2]], ["B.RAW", [0, 2, 3]]]);
+  assert.equal(model.stopReason, null);
+  assert.throws(() => parseFlyBsp(bspFixture({ dropEol: true })), /does not end in MRGL_EOL/);
+  assert.throws(() => parseFlyBsp(latin1("<bgno>\0<zzzz>\0")), /unknown tag <zzzz>/);
+  assert.throws(() => parseFlyBsp(latin1("<bgno>\0<endo>\0")), /no <vbin>/);
 });

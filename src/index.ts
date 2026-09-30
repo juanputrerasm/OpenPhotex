@@ -135,6 +135,8 @@ export {
   FLY_ALT_SIDE, parseFlyAlt, parseFlyTex, parseFlyTyp, parseFlyRef, parseFlyAl2, parseFlyQuadrant,
 } from "./fly/quadrant.ts";
 export type { FlyQuadrant, FlyCellType } from "./fly/quadrant.ts";
+export { parseFlyBsp } from "./fly/bsp.ts";
+export type { FlyBsp } from "./fly/bsp.ts";
 export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 

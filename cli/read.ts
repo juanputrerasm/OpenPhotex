@@ -15,7 +15,7 @@ import {
   parseCprCmd, parseCprTrk, parseCprTtx, parseDef, parseEvoAiLine, parseEvoLvl, parseEvoSit, parseEvoTex, parseEvoVeg,
   parseEvoWat, parseHbBriefing, parseHbNavPoints, parseMtmLvl, parseMtmSit, parseNavPoints, parsePod, parsePowerups,
   parseSmf, parseTexList, readPodEntry, parseTruckManifest, parseTty, parseTunnelDefs, parseTvLvl, podPathTitle, rawTextureSide,
-  parseFlyScf, parseFlySceneryObjects, parseFlyAlt, parseFlyTex, parseFlyTyp, parseFlyRef, parseFlyAl2, findPodEntry,
+  parseFlyScf, parseFlySceneryObjects, parseFlyBsp, parseFlyAlt, parseFlyTex, parseFlyTyp, parseFlyRef, parseFlyAl2, findPodEntry,
   type PodArchive, type PodEntry,
 } from "openphotex";
 import { CliError, EXIT, printJson, usageError } from "./output.ts";
@@ -67,6 +67,7 @@ const READERS: Record<string, { reader: string; read: (bytes: Uint8Array, name: 
   "raw": { reader: "rawTextureSide", read: (b) => ({ byteLength: b.length, side: rawTextureSide(b.length) }) },
   "fly-scf": { reader: "parseFlyScf", read: (b, n) => parseFlyScf(b, n) },
   "fly-objects": { reader: "parseFlySceneryObjects", read: (b, n) => parseFlySceneryObjects(b, n) },
+  "fly-bsp": { reader: "parseFlyBsp", read: (b, n) => parseFlyBsp(b, n) },
   "fly-alt": { reader: "parseFlyAlt", read: (b, n) => parseFlyAlt(b, n) },
   "fly-tex": { reader: "parseFlyTex", read: (b, n) => parseFlyTex(b, n) },
   "fly-typ": { reader: "parseFlyTyp", read: (b, n) => parseFlyTyp(b, n) },
@@ -152,6 +153,7 @@ function detect(name: string, bytes: Uint8Array, archive: PodArchive | null, arc
     case "ACT": return "act";
     case "RAW": return "raw";
     case "SCF": return "fly-scf";
+    case "BSP": return "fly-bsp";
     case "ALT": return "fly-alt";
     case "TYP": return "fly-typ";
     case "REF": return "fly-ref";

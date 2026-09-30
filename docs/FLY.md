@@ -9,8 +9,9 @@ What the stock Fly! (1999) EPD archives contain, as far as it is understood. Ope
 | `parseFlySceneryObjects` | `SCENERY.Sxx` object placements |
 | `parseFlyQuadrant` (`parseFlyAlt`, `parseFlyTyp`, `parseFlyTex`, `parseFlyRef`, `parseFlyAl2`) | a quadrant's terrain files |
 | `flyRowLatitude`, `flyTileBounds`, `flyTileAt`, `parseFlyTextureName` | the globe tile grid and texture names |
+| `parseFlyBsp` | `.BSP` structures (bridges), as one `.BIN`-style model |
 
-The sectional charts, `.BSP` and `.GTP` have no reader.
+The sectional charts and `.GTP` have no reader.
 
 The evidence is the stock install: `Maps\SC01.EPD` to `SC37.EPD`, and the five scenery sets `Scenery\SANFRAN`, `LA`, `NEWYORK`, `CHICAGO` and `DALLAS`. Unless noted, examples come from San Francisco.
 
@@ -136,7 +137,7 @@ Outside the photographed area the heights are mostly 0 as well: the sets carry r
         <simu> comp
         <modl> comp / BLUTANK.BIN
     <endo>
-    <iang> 0.000000,0.067196,0.000000   (orientation, apparently radians)
+    <iang> 0.000000,0.067196,0.000000   (orientation, radians; the heading is the middle one)
 <endo>
 ```
 
@@ -147,7 +148,35 @@ Across the five stock sets there are 1,580 objects in 24 files. The `<wobj>` kin
 
 The files are `.BIN` (2,013), `.ARM` (54, beacons and the like, not decoded) and `.BSP` (22).
 
-`D168156\SCENERY.S11` places 118 objects. The `.BIN` models are MRGL models that OpenPhotex's `parseBin` reads, all 100 in `SFMODELS.EPD`. They take their texture from shared atlases such as `SANFRAN1.RAW`. Larger structures such as bridges are `.BSP` files, a tagged binary format starting `<bgno>\0<vbin>\0`, which is not decoded.
+`D168156\SCENERY.S11` places 118 objects.
+
+How an object stands, verified against the terrain and the imagery:
+
+- **Scale.** Model vertices are 256 raw units to the foot, the same in all three axes. The second vertex word is height. The Transamerica Pyramid's model is 853 ft tall, as the building is; the Golden Gate Bridge's towers stand 750 ft (746 real).
+- **Altitude.** The third `<geop>` value is the height of the model's origin in feet above sea level. The stock models are centred on their origin, so the base stands at altitude + (lowest vertex height) / 256. On 370 San Francisco objects the median base is 0.0 ft from the terrain under it, and on 290 in Los Angeles also 0.0 (10th to 90th percentile within 6 ft).
+- **Heading.** The middle `<iang>` angle is the heading in radians, clockwise from north, turning the model's third vertex axis (north when the heading is 0). At SFO this lands the terminal's piers on the photographed ones, and it points the Golden Gate Bridge 4.7 degrees off north-south, against 5.4 for the real bridge. The first angle is 0 on all 1,580 stock objects. The third is 0 on all but 147, where it is a tilt of under 1.5 degrees (0.025, or 6.277, which is 2 pi less 0.006); which axis it tilts about is not established. The `.BIN` models are MRGL models that OpenPhotex's `parseBin` reads, all 100 in `SFMODELS.EPD`. They take their texture from shared atlases such as `SANFRAN1.RAW`. Larger structures such as bridges are `.BSP` files, below.
+
+### .BSP structures
+
+The bridges, 22 of them across the five sets (the Golden Gate, Bay, San Mateo, Richmond-San Rafael, Brooklyn, George Washington and others), are `.BSP` files: an MRGL model cut up for a painter's-algorithm renderer. Tags are four characters in angle brackets followed by a NUL:
+
+```
+<bgno>
+<vbin>  uint32 byteLength, then int32 x, y, z vertex words, as in a .BIN vertex list
+<ibin>  uint32 byteLength, the same size again: per-vertex data, not identified
+<root>
+  <bgno>
+    <abcd>  4 float32: the node's splitting plane
+    <mrgl>  MRGL records, as a .BIN carries after its vertex list, ending in MRGL_EOL
+    <frnt> <bgno> ... <endo>    the node in front of the plane
+    <back> <bgno> ... <endo>    and the one behind it
+  <endo>
+<endo>
+```
+
+A node's records are an `MRGL_TEXTURE` and textured facets (all `ZGFACETTMAP` in the stock files) indexing the shared vertex list. With a depth buffer the tree order is not needed, so `parseFlyBsp` splices every node's records behind one vertex list and reads the result with `parseBin`. All 22 stock files read whole this way, 19 to 31 nodes and 36 to 1,191 faces each. The models measure as the real structures do: the San Mateo Bridge is 36,989 ft long (7 miles).
+
+An object lists a detailed and a simple model with `<mdst>` distance ranges, `GOLD1.BSP` (1,152 vertices) near and `GOLD2.BSP` (615) far.
 
 ### Coastlines
 
@@ -158,6 +187,6 @@ The files are `.BIN` (2,013), `.ARM` (54, beacons and the like, not decoded) and
 ## Open questions
 
 - Whether cells are equal subdivisions of their tile in latitude (assumed).
-- The units of `<geop>` altitudes and the `<iang>` axis order.
-- The `.BSP` format, the `T*.GTP` coastline shapes and the `<flag>` bits.
+- The `<ibin>` block of a `.BSP`, and the `<mdst>` distance units.
+- The `.ARM` models (beacons), the `T*.GTP` coastline shapes and the `<flag>` bits.
 - Where the generic `wt*.raw` textures come from, and what their digits mean.
