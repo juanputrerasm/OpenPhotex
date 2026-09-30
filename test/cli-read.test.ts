@@ -9,7 +9,7 @@ import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MRGL, writeBin } from "../src/index.ts";
-import { buildPod1 } from "./fixtures/build.ts";
+import { buildEpd, buildPod1 } from "./fixtures/build.ts";
 
 const CLI = new URL("../dist/cli/main.js", import.meta.url).pathname;
 const dir = realpathSync(mkdtempSync(join(tmpdir(), "openphotex-read-")));
@@ -74,4 +74,33 @@ test("read without --json prints a short summary", () => {
   assert.equal(r.status, 0);
   assert.match(r.stdout, /^LEVELS\\T\.LVL: tv-lvl \(parseTvLvl\)\n/);
   assert.match(r.stdout, /sunVector: +3 items/);
+});
+
+/*
+  Fly! quadrant files: .TEX reads as a Fly list inside an EPD, and .REF and .AL2 are laid out by
+  the sibling .TYP, so they read from their archive and refuse outside it.
+*/
+test("read: Fly! quadrant files in an EPD", () => {
+  const typ = new Array(1024).fill("type:0: 1,1");
+  typ[5] = "type:1: 2,2";
+  const epdPath = join(dir, "TILE.EPD");
+  writeFileSync(epdPath, buildEpd([
+    { name: "DATA\\D168156\\G00.TYP", data: typ.join("\r\n") + "\r\n" },
+    { name: "DATA\\D168156\\G00.REF", data: new Array(1024).fill("0").join("\r\n") + "\r\n" },
+    { name: "DATA\\D168156\\G00.AL2", data: "1 2 3\r\n4 5 6\r\n7 8 9\r\n" },
+    { name: "DATA\\D168156\\G00.TEX", data: "1\r\nwt000s1.raw\r\n" },
+    { name: "DATA\\D168156\\SCENERY.S00", data: "<bgno>\r\n<endo>\r\n" },
+  ], { title: "TILE" }));
+  const format = (entry: string) => JSON.parse(run("read", epdPath, entry, "--json").stdout).format;
+  assert.equal(format("G00.TEX"), "fly-tex");
+  assert.equal(format("G00.TYP"), "fly-typ");
+  assert.equal(format("G00.REF"), "fly-ref");
+  assert.equal(format("SCENERY.S00"), "fly-objects");
+  const al2 = JSON.parse(run("read", epdPath, "G00.AL2", "--json", "--full").stdout);
+  assert.deepEqual(al2.data[5], [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  const loose = join(dir, "G00.REF");
+  writeFileSync(loose, "0\r\n");
+  const refused = run("read", loose, "--json");
+  assert.equal(JSON.parse(refused.stderr).error.code, "UNSUPPORTED_FORMAT");
+  assert.match(JSON.parse(refused.stderr).error.message, /needs its quadrant's .TYP/);
 });

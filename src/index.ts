@@ -122,6 +122,19 @@ export {
 export type {
   SitValue, SitTriple, Mtm2Sit, Mtm2SitTruck, Mtm2SitBox, Mtm2SitCourseSegment, Mtm2Lvl, Mtm2Trk, Mtm2TrkLight,
 } from "./mtm/write.ts";
+export { parseFlyTagged, flyTag, flyTags, parseFlyAngle } from "./fly/tagged.ts";
+export type { FlyTag } from "./fly/tagged.ts";
+export {
+  FLY_TILE_DEGREES, FLY_TILE_COLUMNS, FLY_EQUATOR_ROW, FLY_TILE_CELLS, FLY_QUADRANT_CELLS, flyRowLatitude,
+  flyColumnLongitude, flyTileBounds, flyTileAt, parseFlyFolderName, flyFolderName, parseFlyTextureName,
+} from "./fly/globe.ts";
+export type { FlyBounds, FlyTextureName } from "./fly/globe.ts";
+export { parseFlyScf, parseFlySceneryObjects } from "./fly/scenery.ts";
+export type { FlySceneryManifest, FlySceneryObject, FlyObjectModel } from "./fly/scenery.ts";
+export {
+  FLY_ALT_SIDE, parseFlyAlt, parseFlyTex, parseFlyTyp, parseFlyRef, parseFlyAl2, parseFlyQuadrant,
+} from "./fly/quadrant.ts";
+export type { FlyQuadrant, FlyCellType } from "./fly/quadrant.ts";
 export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 

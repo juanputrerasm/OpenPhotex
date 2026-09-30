@@ -15,7 +15,8 @@ import {
   parseCprCmd, parseCprTrk, parseCprTtx, parseDef, parseEvoAiLine, parseEvoLvl, parseEvoSit, parseEvoTex, parseEvoVeg,
   parseEvoWat, parseHbBriefing, parseHbNavPoints, parseMtmLvl, parseMtmSit, parseNavPoints, parsePod, parsePowerups,
   parseSmf, parseTexList, readPodEntry, parseTruckManifest, parseTty, parseTunnelDefs, parseTvLvl, podPathTitle, rawTextureSide,
-  type PodArchive,
+  parseFlyScf, parseFlySceneryObjects, parseFlyAlt, parseFlyTex, parseFlyTyp, parseFlyRef, parseFlyAl2, findPodEntry,
+  type PodArchive, type PodEntry,
 } from "openphotex";
 import { CliError, EXIT, printJson, usageError } from "./output.ts";
 import { selectEntry } from "./pod.ts";
@@ -27,7 +28,14 @@ export interface ReadOptions {
 }
 
 /** The readers `read` can apply, by the id `--as` takes and the JSON reports. */
-const READERS: Record<string, { reader: string; read: (bytes: Uint8Array, name: string) => unknown }> = {
+/** Where the bytes came from, for readers that need a sibling file. */
+interface ReadContext {
+  archive: PodArchive | null;
+  archiveBytes: Uint8Array;
+  entry: PodEntry | null;
+}
+
+const READERS: Record<string, { reader: string; read: (bytes: Uint8Array, name: string, context: ReadContext) => unknown }> = {
   "bin": { reader: "parseBin", read: (b) => parseBin(b) },
   "mtm-sit": { reader: "parseMtmSit", read: (b, n) => parseMtmSit(b, n) },
   "evo-sit": { reader: "parseEvoSit", read: (b, n) => parseEvoSit(b, n) },
@@ -57,7 +65,23 @@ const READERS: Record<string, { reader: string; read: (bytes: Uint8Array, name: 
   "tiff": { reader: "decodeTiff", read: (b, n) => decodeTiff(b, n) },
   "act": { reader: "decodeActPalette", read: (b) => ({ depth: actPaletteDepth(b), palette: decodeActPalette(b) }) },
   "raw": { reader: "rawTextureSide", read: (b) => ({ byteLength: b.length, side: rawTextureSide(b.length) }) },
+  "fly-scf": { reader: "parseFlyScf", read: (b, n) => parseFlyScf(b, n) },
+  "fly-objects": { reader: "parseFlySceneryObjects", read: (b, n) => parseFlySceneryObjects(b, n) },
+  "fly-alt": { reader: "parseFlyAlt", read: (b, n) => parseFlyAlt(b, n) },
+  "fly-tex": { reader: "parseFlyTex", read: (b, n) => parseFlyTex(b, n) },
+  "fly-typ": { reader: "parseFlyTyp", read: (b, n) => parseFlyTyp(b, n) },
+  "fly-ref": { reader: "parseFlyRef", read: (b, n, c) => parseFlyRef(b, siblingTyp(c, n), n) },
+  "fly-al2": { reader: "parseFlyAl2", read: (b, n, c) => parseFlyAl2(b, siblingTyp(c, n), n) },
 };
+
+/** A .REF or .AL2 is laid out by its quadrant's .TYP, so it is only readable from its archive. */
+function siblingTyp(context: ReadContext, name: string) {
+  const typ = context.archive && context.entry
+    ? findPodEntry(context.archive, context.entry.normalizedName.replace(/\.[^.]*$/, ".TYP"))
+    : null;
+  if (!typ) throw new CliError("UNSUPPORTED_FORMAT", `${name} needs its quadrant's .TYP, so read it from its archive.`, EXIT.FORMAT, { name });
+  return parseFlyTyp(readPodEntry(context.archiveBytes, typ), typ.name);
+}
 
 export const READ_FORMATS = Object.keys(READERS);
 
@@ -76,7 +100,7 @@ export function read(source: string | undefined, selector: string | undefined, o
       ? `Unknown --as '${options.as}'. Supported: ${READ_FORMATS.join(", ")}.`
       : `No reader for '${name}'. Give --as <format>: ${READ_FORMATS.join(", ")}.`, options.as ? EXIT.USAGE : EXIT.FORMAT, { name });
   }
-  const data = reader.read(bytes, podPathTitle(name));
+  const data = reader.read(bytes, podPathTitle(name), { archive, archiveBytes: fileBytes, entry });
   if (data === null) throw new CliError("UNSUPPORTED_FORMAT", `${reader.reader} could not read '${name}' as ${format}.`, EXIT.FORMAT, { name, format });
 
   if (options.json) {
@@ -108,7 +132,7 @@ function detect(name: string, bytes: Uint8Array, archive: PodArchive | null, arc
       return "";
     }
     case "WAT": return "evo-wat";
-    case "TEX": return evoArchive ? "evo-tex" : "tex";
+    case "TEX": return evoArchive ? "evo-tex" : archive?.format === "epd" ? "fly-tex" : "tex";
     case "TTY": return "tty";
     case "VEG": return "evo-veg";
     case "SMF": return isSmfModel(bytes) ? "smf" : "";
@@ -127,6 +151,12 @@ function detect(name: string, bytes: Uint8Array, archive: PodArchive | null, arc
     case "TIF": case "TIFF": return "tiff";
     case "ACT": return "act";
     case "RAW": return "raw";
+    case "SCF": return "fly-scf";
+    case "ALT": return "fly-alt";
+    case "TYP": return "fly-typ";
+    case "REF": return "fly-ref";
+    case "AL2": return "fly-al2";
+    case "S00": case "S01": case "S10": case "S11": return "fly-objects";
     // Anything else has no reader of its own. Content alone is not enough: an Evo replay
     // (.RPL) embeds whole truck manifests after its own header and would pass for one.
     default: return "";

@@ -14,6 +14,13 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   parseBin,
+  parseFlyScf,
+  parseFlySceneryObjects,
+  parseFlyQuadrant,
+  parseFlyTextureName,
+  parseFlyFolderName,
+  flyTileAt,
+  FLY_ALT_SIDE,
   parseCprCmd,
   parseTruckManifest,
   decodeTiff,
@@ -122,6 +129,107 @@ test("every stock Fly! EPD parses", { skip: flyFolder.skip }, () => {
     assert.equal(pod.directoryEnd, firstPayload, file);
   }
   assert.ok(files.length > 0);
+});
+
+/*
+  Every Fly! scenery set: its manifest names archives that exist, its object files parse, and
+  every quadrant of every globe tile parses. Each textured cell's .REF texture names that very
+  cell, and each kind 2 cell's sub-textures name its detail folder, which is what fixes the
+  column-major cell order (docs/FLY.md).
+*/
+const flyScenery = stock("fly/Scenery");
+test("every stock Fly! scenery set parses", { skip: flyScenery.skip }, () => {
+  let quadrants = 0, named = 0, objects = 0;
+  for (const set of readdirSync(flyScenery.path, { withFileTypes: true }).filter((d) => d.isDirectory())) {
+    const dir = join(flyScenery.path, set.name);
+    const files = readdirSync(dir);
+    const scfName = files.find((f) => /\.SCF$/i.test(f));
+    assert.ok(scfName, set.name);
+    const scf = parseFlyScf(new Uint8Array(readFileSync(join(dir, scfName))), scfName);
+    assert.equal(scf.files.length, 7, set.name);
+    for (const file of scf.files) {
+      const actual = files.find((f) => f.toLowerCase() === file.toLowerCase());
+      assert.ok(actual, `${set.name}: ${file}`);
+      const bytes = new Uint8Array(readFileSync(join(dir, actual)));
+      const pod = parsePod(bytes);
+      for (const entry of pod.entries) {
+        if (/\.S\d\d$/.test(entry.title)) {
+          const result = parseFlySceneryObjects(readPodEntry(bytes, entry), entry.name);
+          assert.deepEqual(result.warnings, [], entry.name);
+          objects += result.objects.length;
+        }
+        if (!/^G[01][01]\.ALT$/.test(entry.title)) continue;
+        const stem = entry.normalizedName.slice(0, -4);
+        const get = (ext: string) => {
+          const e = findPodEntry(pod, stem + ext);
+          return e ? readPodEntry(bytes, e) : null;
+        };
+        const quadrant = parseFlyQuadrant({ alt: get(".ALT")!, typ: get(".TYP")!, tex: get(".TEX")!, ref: get(".REF")!, al2: get(".AL2") }, stem);
+        quadrants++;
+        const tile = parseFlyFolderName(stem.split("/")[1])!;
+        const qx = Number(entry.title[1]) * 32, qy = Number(entry.title[2]) * 32;
+        for (let cell = 0; cell < 1024; cell++) {
+          const x = qx + Math.floor(cell / 32), y = qy + (cell % 32);
+          const name = parseFlyTextureName(quadrant.textures[quadrant.cellTextures[cell]] ?? "");
+          if (name) {
+            assert.deepEqual(name, { folderFirst: tile.first, folderSecond: tile.second, x, y }, `${stem} cell ${cell}`);
+            named++;
+          }
+          const subs = quadrant.cellSubTextures[cell];
+          for (let i = 0; subs && i < 4; i++) {
+            if (subs[i] < 0) continue;
+            const sub = parseFlyTextureName(quadrant.textures[subs[i]]);
+            // x0y0, x0y1, x1y0, x1y1
+            assert.deepEqual(sub, { folderFirst: x, folderSecond: y, x: i >> 1, y: i & 1 }, `${stem} cell ${cell} sub ${i}`);
+          }
+        }
+      }
+    }
+  }
+  assert.ok(quadrants > 0 && named > 0 && objects > 0);
+});
+
+/*
+  Summits, from the San Francisco heights read column-major. The grid points are about 2 km
+  apart, so a sharp peak reads low; the check is that each lands on high ground, which the
+  row-major reading does not (it puts Mount Tamalpais in the sea).
+*/
+test("Fly! San Francisco heights put the summits in place", { skip: stock("fly/Scenery/SANFRAN").skip }, () => {
+  const dir = stock("fly/Scenery/SANFRAN").path;
+  const archives = ["SANFRAN1.EPD", "SANFRAN2.EPD", "SANFRAN3.EPD", "SANFRAN4.EPD"].map((f) => {
+    const bytes = new Uint8Array(readFileSync(join(dir, f)));
+    return { bytes, pod: parsePod(bytes) };
+  });
+  const heightNear = (lat: number, lon: number): number => {
+    const at = flyTileAt(lat, lon);
+    const folder = `D${at.column}${at.row}`;
+    const qx = at.x >= 32 ? 1 : 0, qy = at.y >= 32 ? 1 : 0;
+    for (const { bytes, pod } of archives) {
+      const entry = findPodEntry(pod, `DATA/${folder}/G${qx}${qy}.ALT`);
+      if (!entry) continue;
+      const alt = new DataView(readPodEntry(bytes, entry).slice().buffer);
+      const x = Math.round(at.x - qx * 32), y = Math.round(at.y - qy * 32);
+      let best = 0;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        const cx = Math.min(32, Math.max(0, x + dx)), cy = Math.min(32, Math.max(0, y + dy));
+        best = Math.max(best, alt.getFloat32((cx * FLY_ALT_SIDE + cy) * 4, true));
+      }
+      return best;
+    }
+    throw new Error(`no heights for ${lat}, ${lon}`);
+  };
+  // [latitude, longitude, real height in feet]
+  const summits: Record<string, [number, number, number]> = {
+    "Mount Diablo": [37.8816, -121.9142, 3849],
+    "Mount Tamalpais": [37.9235, -122.5965, 2571],
+    "Mount Saint Helena": [38.6694, -122.6333, 4342],
+    "Mount Hamilton": [37.3414, -121.6425, 4265],
+  };
+  for (const [name, [lat, lon, real]] of Object.entries(summits)) {
+    const h = heightNear(lat, lon);
+    assert.ok(h > real * 0.6 && h <= real * 1.02, `${name}: ${h} ft`);
+  }
+  assert.equal(heightNear(37.5, -123.0), 0); // the Pacific
 });
 
 /*

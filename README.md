@@ -9,6 +9,7 @@ The aim is for OpenPhotex to be the one place where understood format behaviour 
 - **POD archives:** reads POD1, POD2 and EPD, and writes POD1. POD2 CRCs can be verified and its audit trail decoded. See [docs/POD.md](docs/POD.md).
 - **8-bit textures:** `.RAW` textures, `.ACT` palettes and 4x4 Evolution `.OPA` opacity planes. See [docs/RAW_ACT.md](docs/RAW_ACT.md).
 - **4x4 Evolution data:** `.SIT`, `.LVL`, `.WAT`, `.TEX` and `.VEG` world files, `.SMF` models, `.TRK` vehicle manifests, `.TIF` textures, AI lines and terrain sampling. See [docs/EVO.md](docs/EVO.md).
+- **Fly! scenery:** `.SCF` manifests, `SCENERY.Sxx` object placements, the terrain quadrant files (`.ALT`, `.TYP`, `.TEX`, `.REF`, `.AL2`) and the globe tile grid. See [docs/FLY.md](docs/FLY.md).
 - **Models:** `.BIN` (MRGL) models of every MTM, CPR, TV, Fury3 and Hellbender title, including animated frame lists. See [docs/BIN.md](docs/BIN.md).
 - **Levels:** MTM1, MTM2 and CPR `.SIT`, `.LVL`, `.TEX` and `.TTY`; CPR's `.TRK` road layer and `.TTX`; Terminal Velocity, Fury3 and Hellbender `.LVL`, `.DEF`, `.NAV`, `.PUP`, `.TDF`, `.ANI` and briefings; heightfields, ground boxes, Hellbender's cavern and the sky gradient. See [docs/LEVELS.md](docs/LEVELS.md).
 - **Writers:** `.BIN` models, `.RAW`/`.ACT` texture pairs, and MTM2 `.SIT`, `.LVL`, `.TEX`, `.LTE`, ground-box grids, level palette, fog map and 2.1 `.TRK`, each checked by reading its output back. See [docs/BIN.md](docs/BIN.md), [docs/RAW_ACT.md](docs/RAW_ACT.md), [docs/LEVELS.md](docs/LEVELS.md) and [docs/TRUCKS.md](docs/TRUCKS.md).
@@ -119,7 +120,7 @@ openphotex read TRUCK2.POD BIGFOOT.BIN --json --full   # typed arrays in full
 openphotex read LOOSE.LVL --as tv-lvl                  # a loose file, reader named
 ```
 
-`read` picks the reader from the file's extension, then its content, then the archive it came from: `.SIT` is 4x4 Evolution or MTM by content, a CPR road `.TRK` by its `CRaceTrack.trackCount` label, a Hellbender `.NAV` by its `!priority,time` sections, and a `.LVL` by the archive (POD2 is Evo; a POD1 carrying a `.SIT` or `.SI2` is MTM, any other is the Terminal Velocity family). A loose `.LVL` has no archive to ask, so give `--as`. `openphotex --help` lists every format id. Files with no standalone reader (grids such as `.CLR` and `.RA0`, sound, video) fail with `UNSUPPORTED_FORMAT`.
+`read` picks the reader from the file's extension, then its content, then the archive it came from: `.SIT` is 4x4 Evolution or MTM by content, a CPR road `.TRK` by its `CRaceTrack.trackCount` label, a Hellbender `.NAV` by its `!priority,time` sections, and a `.LVL` by the archive (POD2 is Evo; a POD1 carrying a `.SIT` or `.SI2` is MTM, any other is the Terminal Velocity family). A `.TEX` inside an EPD is a Fly! texture list. A Fly! `.REF` or `.AL2` is laid out by its quadrant's `.TYP`, so it is read from its archive, never loose. A loose `.LVL` has no archive to ask, so give `--as`. `openphotex --help` lists every format id. Files with no standalone reader (grids such as `.CLR` and `.RA0`, sound, video) fail with `UNSUPPORTED_FORMAT`.
 
 `texture` draws with, in order:
 
