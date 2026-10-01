@@ -91,7 +91,7 @@ A globe tile is 64x64 cells, about 2 km each at these latitudes. It is stored as
 | `.REF` | text: indices into the `.TEX` list, below |
 | `.AL2` | text: extra heights for subdivided cells, below; empty for flat quadrants |
 
-Every file is column-major: cell `i` is at `x = floor(i / 32)`, `y = i % 32`, as `.ALT` is. The texture names prove it for `.REF` (next section): in all 80 stock quadrants, every one of the 37,842 named textures a cell uses names that very cell.
+Every file is column-major: cell `i` is at `x = floor(i / 32)`, `y = i % 32`, as `.ALT` is. The texture names prove it for `.REF` (next section): in all 80 stock quadrants, every one of the 37,842 named textures a cell uses names that very cell. Fly! Legacy independently corroborates the `.REF` order: its `DecodeREF` advances the south-to-north coordinate before the west-to-east one.
 
 The `.TYP` kinds seen are:
 
@@ -109,7 +109,7 @@ The `.TYP` kinds seen are:
 
 Terrain textures are 128x128 `.RAW` files, each with its own `.ACT`, and are satellite imagery. Their names are hexadecimal numbers that encode their place: `643A9672` is 1681561202 in decimal, which reads as globe tile `168156` and cell `1202`, where the cell number is `rowFromSouth * 64 + columnFromWest` (here row 18, column 50).
 
-Placing every texture of the four San Francisco tiles by its name alone gives a seamless picture of the Bay Area, correctly oriented, which confirms the reading. Note that the texture numbering is row-major while `.ALT` is column-major.
+Placing every texture of the four San Francisco tiles by its name alone gives a seamless picture of the Bay Area, correctly oriented, which confirms the reading. The stored first RAW row is the north edge: over 630 north-south San Francisco cell boundaries, that orientation has a mean absolute RGB seam difference of 7.12, versus 17.06 if every texture is vertically flipped. Fly! Legacy's `RGBAInvert` is therefore an OpenGL upload/UV convention rather than a stored-image orientation. Note that the texture numbering is row-major while `.ALT` is column-major.
 
 The `.ALT` layout was checked against known summits. Sampled at the nearest grid points, it gives Mount Diablo 2624 ft (3849 real), Mount Tamalpais 2396 (2571), Mount Saint Helena 3656 (4342) and Mount Hamilton 3740 (4265), and 0 on the open ocean. The row-major reading and the other quadrant order put Mount Tamalpais and Montara Mountain at 0. The peaks read low because the grid points are about 2 km apart; `.AL2` refines some cells.
 
@@ -153,7 +153,7 @@ The files are `.BIN` (2,013), `.ARM` (54, beacons and the like, not decoded) and
 How an object stands, verified against the terrain and the imagery:
 
 - **Scale.** Model vertices are 256 raw units to the foot, the same in all three axes. The second vertex word is height. The Transamerica Pyramid's model is 853 ft tall, as the building is; the Golden Gate Bridge's towers stand 750 ft (746 real).
-- **Altitude.** The third `<geop>` value is the height of the model's origin in feet above sea level. The stock models are centred on their origin, so the base stands at altitude + (lowest vertex height) / 256. On 370 San Francisco objects the median base is 0.0 ft from the terrain under it, and on 290 in Los Angeles also 0.0 (10th to 90th percentile within 6 ft).
+- **Altitude and snapping.** The third `<geop>` value is the height of the model's origin in feet above sea level. Bit 0 (`0x00000001`) of `<flag>` is `snap to ground`: the model is relocated vertically so its lowest point rests on the terrain. Fly! Legacy names this bit `TC_SNAP_GROUND` and implements that relocation. All 1,580 stock scenery objects have the bit set; their three complete flag words are `0x80000135` (1,256 objects), `0x80000535` (193) and `0x80000137` (131). This also explains the earlier independent measurement: using the stored altitude and model bounds already put the median base exactly on the stock terrain, with the 10th to 90th percentile within 6 ft. `parseFlySceneryObjects` preserves the signed `flag` and exposes the understood bit as `snapToGround`.
 - **Heading.** The middle `<iang>` angle is the heading in radians, clockwise from north, turning the model's third vertex axis (north when the heading is 0). At SFO this lands the terminal's piers on the photographed ones, and it points the Golden Gate Bridge 4.7 degrees off north-south, against 5.4 for the real bridge. The first angle is 0 on all 1,580 stock objects. The third is 0 on all but 147, where it is a tilt of under 1.5 degrees (0.025, or 6.277, which is 2 pi less 0.006); which axis it tilts about is not established. The `.BIN` models are MRGL models that OpenPhotex's `parseBin` reads, all 100 in `SFMODELS.EPD`. They take their texture from shared atlases such as `SANFRAN1.RAW`. Larger structures such as bridges are `.BSP` files, below.
 
 ### .BSP structures
@@ -178,6 +178,14 @@ A node's records are an `MRGL_TEXTURE` and textured facets (all `ZGFACETTMAP` in
 
 An object lists a detailed and a simple model with `<mdst>` distance ranges, `GOLD1.BSP` (1,152 vertices) near and `GOLD2.BSP` (615) far.
 
+### Night lights
+
+`*NIGHT.EPD` holds city lights for the cells that have them: `DATA\Dxxxyyy\<name>N.RAW`, the name of the cell's daytime texture with `N` added, 64x64 with its own `.ACT`. They are black with warm points of light, so they read as an emissive layer over the darkened imagery. There are few: 15 cells in San Francisco, 40 in Los Angeles, 22 in New York, 23 in Chicago and 7 in Dallas, around each downtown.
+
+### Models the sets do not carry
+
+The placement files name some models that are in no scenery archive, presumably because they ship with the game itself: `BEACH.ARM` for every beacon (the only `.ARM` any set names; no `.ARM` file is in any set) and `WIND00H.BIN` to `WIND04H.BIN` for the windsocks.
+
 ### Coastlines
 
 `*COASTS.EPD` holds `T\H<tile>.GTP` for the globe tiles that have a coastline (four in San Francisco, not every tile elsewhere), and many small `T\T<hex>.GTP` files that look like coastline shapes.
@@ -188,5 +196,5 @@ An object lists a detailed and a simple model with `<mdst>` distance ranges, `GO
 
 - Whether cells are equal subdivisions of their tile in latitude (assumed).
 - The `<ibin>` block of a `.BSP`, and the `<mdst>` distance units.
-- The `.ARM` models (beacons), the `T*.GTP` coastline shapes and the `<flag>` bits.
+- The `.ARM` models (beacons), the `T*.GTP` coastline shapes and the remaining `<flag>` bits.
 - Where the generic `wt*.raw` textures come from, and what their digits mean.

@@ -56,6 +56,9 @@ export interface FlyObjectModel {
   far: number | null;
 }
 
+/** `<flag>` bit 0: relocate the model vertically so its lowest point rests on the terrain. */
+export const FLY_OBJECT_SNAP_TO_GROUND = 0x00000001;
+
 /** One placed object from a SCENERY.Sxx file. */
 export interface FlySceneryObject {
   /** The <wobj> kind: `mobj` (model), `becn` (beacon) or `wdsk` (windsock) in the stock files. */
@@ -65,8 +68,10 @@ export interface FlySceneryObject {
   id: string;
   /** <name>; `NO-NAME` for most objects. */
   name: string;
-  /** <flag>, a signed 32-bit word whose bits are not understood. */
+  /** <flag>, preserved as the signed 32-bit word written in the file. */
   flag: number | null;
+  /** Whether `<flag>` bit 0 requests that the model's lowest point rest on the terrain. */
+  snapToGround: boolean;
   /** <detl>, the detail level. */
   detail: number | null;
   latitude: number;
@@ -130,12 +135,14 @@ export function parseFlySceneryObjects(input: Uint8Array | string, sourceName = 
         }
       }
     }
+    const flag = numberOrNull(flyTag(body, "flag")?.values[0]);
     objects.push({
       kind: wobj.values[0] ?? "",
       type: flyTag(body, "type")?.values[0] ?? "",
       id,
       name: flyTag(body, "name")?.values[0] ?? "",
-      flag: numberOrNull(flyTag(body, "flag")?.values[0]),
+      flag,
+      snapToGround: flag !== null && (flag & FLY_OBJECT_SNAP_TO_GROUND) !== 0,
       detail: numberOrNull(flyTag(body, "detl")?.values[0]),
       latitude,
       longitude,

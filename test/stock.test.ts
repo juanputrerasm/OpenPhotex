@@ -157,6 +157,7 @@ test("every stock Fly! scenery set parses", { skip: flyScenery.skip }, () => {
         if (/\.S\d\d$/.test(entry.title)) {
           const result = parseFlySceneryObjects(readPodEntry(bytes, entry), entry.name);
           assert.deepEqual(result.warnings, [], entry.name);
+          assert.ok(result.objects.every((object) => object.snapToGround), `${entry.name}: object without snap-to-ground bit`);
           objects += result.objects.length;
         }
         if (!/^G[01][01]\.ALT$/.test(entry.title)) continue;
@@ -187,7 +188,8 @@ test("every stock Fly! scenery set parses", { skip: flyScenery.skip }, () => {
       }
     }
   }
-  assert.ok(quadrants > 0 && named > 0 && objects > 0);
+  assert.ok(quadrants > 0 && named > 0);
+  assert.equal(objects, 1580);
 });
 
 /*

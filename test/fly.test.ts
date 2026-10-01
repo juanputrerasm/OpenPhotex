@@ -131,11 +131,13 @@ test("Fly SCENERY.Sxx objects: position, orientation, parts, distance models, be
   const [tank, bridge, beacon] = objects;
   assert.equal(tank.name, "Blue Gas Tank");
   assert.equal(tank.flag, -2147483339);
+  assert.equal(tank.snapToGround, true);
   assert.equal(tank.altitude, 139.93359375);
   assert.ok(tank.longitude < 0 && tank.latitude > 37.9);
   assert.deepEqual(tank.orientation, [0, 0.067196, 0]);
   assert.deepEqual(tank.models, [{ part: "comp", file: "BLUTANK.BIN", near: null, far: null }]);
   assert.deepEqual(bridge.models.map((m) => [m.file, m.near, m.far]), [["GOLD1.BSP", 0, 14000], ["GOLD2.BSP", 14000, 1000000]]);
+  assert.equal(bridge.snapToGround, false);
   assert.equal(beacon.kind, "becn");
   assert.equal(beacon.lens, 2);
   assert.equal(warnings.length, 1);

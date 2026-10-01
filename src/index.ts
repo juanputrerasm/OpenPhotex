@@ -129,7 +129,7 @@ export {
   flyColumnLongitude, flyTileBounds, flyTileAt, parseFlyFolderName, flyFolderName, parseFlyTextureName,
 } from "./fly/globe.ts";
 export type { FlyBounds, FlyTextureName } from "./fly/globe.ts";
-export { parseFlyScf, parseFlySceneryObjects } from "./fly/scenery.ts";
+export { FLY_OBJECT_SNAP_TO_GROUND, parseFlyScf, parseFlySceneryObjects } from "./fly/scenery.ts";
 export type { FlySceneryManifest, FlySceneryObject, FlyObjectModel } from "./fly/scenery.ts";
 export {
   FLY_ALT_SIDE, parseFlyAlt, parseFlyTex, parseFlyTyp, parseFlyRef, parseFlyAl2, parseFlyQuadrant,
