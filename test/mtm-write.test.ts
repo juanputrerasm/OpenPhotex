@@ -124,7 +124,9 @@ test("encodeRawTexture round-trips art with 256 colours or fewer, and keys alpha
   const rgba = new Uint8Array(side * side * 4);
   for (let i = 0; i < side * side; i++) rgba.set([(i * 7) & 255, (i * 13) & 255, (i * 29) & 255, 255], i * 4);
   const { raw, act } = encodeRawTexture(rgba, side, side);
-  const image = decodeRawTexture(raw, decodeActPalette(act));
+  const palette = decodeActPalette(act);
+  assert.ok(palette);
+  const image = decodeRawTexture(raw, palette);
   assert.deepEqual([...image.rgba].filter((_, i) => i % 4 !== 3), [...rgba].filter((_, i) => i % 4 !== 3));
 
   rgba[3] = 0;

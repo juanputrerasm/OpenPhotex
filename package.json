@@ -1,14 +1,14 @@
 {
   "name": "openphotex",
-  "version": "0.1.0",
-  "description": "Reference implementation of Terminal Reality game data formats (POD archives first), for browsers, Node.js and command-line/agent use.",
+  "version": "1.0.0",
+  "description": "Reference implementation of Terminal Reality game data formats (MTM, CPR, TV, Fury3, Hellbender, 4x4 Evolution, Fly!, Nocturne), for browsers, Node.js and command-line/agent use.",
   "license": "Apache-2.0",
   "type": "module",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/juanputrerasm/OpenPhotex.git"
   },
-  "keywords": ["terminal-reality", "pod", "monster-truck-madness", "mtm2", "cart-precision-racing", "terminal-velocity", "fury3", "hellbender", "4x4-evolution", "reverse-engineering"],
+  "keywords": ["terminal-reality", "pod", "monster-truck-madness", "mtm2", "cart-precision-racing", "terminal-velocity", "fury3", "hellbender", "4x4-evolution", "nocturne", "reverse-engineering"],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

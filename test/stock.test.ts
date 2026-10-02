@@ -58,6 +58,8 @@ import {
   parseTvLvl,
   podPathTitle,
   CPR_SURFACE_TYPES,
+  parseDfm, parseSkl, parseKfm, parseCth, parseNocturneGeo, parseNocturneFog, parseNocturneSet,
+  parseNocturneThm, parseNocturneZth,
 } from "../src/index.ts";
 
 const GAMES = process.env.OPENPHOTEX_GAMES ?? join(process.env.HOME ?? "", "games");
@@ -66,6 +68,34 @@ function stock(relative: string) {
   const path = join(GAMES, relative);
   return { path, skip: existsSync(path) ? false : `no ${path}` };
 }
+
+const nocturne = stock("nocturne");
+test("every understood stock Nocturne asset parses", { skip: nocturne.skip }, () => {
+  const readers: Record<string, (bytes: Uint8Array, name: string) => unknown> = {
+    DFM: parseDfm, SKL: parseSkl, KFM: parseKfm, CTH: parseCth,
+    GEO: parseNocturneGeo, FOG: parseNocturneFog, SET: parseNocturneSet, THM: parseNocturneThm, ZTH: parseNocturneZth,
+  };
+  const counts: Record<string, number> = {};
+  for (const file of readdirSync(nocturne.path).filter((name) => /\.pod$/i.test(name))) {
+    const bytes = new Uint8Array(readFileSync(join(nocturne.path, file)));
+    const pod = parsePod(bytes);
+    for (const entry of pod.entries) {
+      const extension = entry.title.replace(/^.*\./, "");
+      const reader = readers[extension];
+      if (!reader) continue;
+      reader(readPodEntry(bytes, entry), entry.name);
+      counts[extension] = (counts[extension] ?? 0) + 1;
+    }
+    const zthEntry = pod.entries.find((entry) => entry.title.endsWith(".ZTH"));
+    const setEntry = pod.entries.find((entry) => entry.title.endsWith(".SET"));
+    if (zthEntry && setEntry) {
+      const zth = parseNocturneZth(readPodEntry(bytes, zthEntry), zthEntry.name);
+      const set = parseNocturneSet(readPodEntry(bytes, setEntry), setEntry.name);
+      assert.equal(zth.depthMaps.length, set.cameras.length, file);
+    }
+  }
+  assert.deepEqual(counts, { KFM: 577, FOG: 1611, GEO: 20, SET: 20, THM: 20, ZTH: 20, SKL: 70, DFM: 113, CTH: 25 });
+});
 
 const truck2 = stock("mtm2/TRUCK2.POD");
 test("MTM2 TRUCK2.POD", { skip: truck2.skip }, () => {
