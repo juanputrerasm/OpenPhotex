@@ -41,9 +41,13 @@ plain arrays and objects, so a state can be posted between workers or saved as i
 | `truck/state.ts` | the dynamic state |
 | `truck/controls.ts` | keyboard pedals and steering, including automatic Reverse |
 | `truck/drivetrain.ts` | torque curve, rpm targets, drive force, the gearbox |
+| `world/ground.ts` | the ground a truck queries: height, normal, surface value (terrain only for now) |
+| `truck/dynamics.ts` | `stepTruck` (tire geometry, loads, longitudinal and lateral forces, drag, damping, sums, integration, contact probing) and `postStepTruck` (push-out, wheel probes, solid axles, bottoming) |
+| `truck/contacts.ts` | hull contacts: support split for 1 to 4 contacts, recovery, friction |
 
-Still to come, in OpenMTM2's plan order: tires and contacts, forces and integration, collisions,
-the autopilot and the race rules.
+A step is `applyKeyboard` (or the autopilot), `stepTruck`, then (after collisions)
+`postStepTruck`. Still to come, in OpenMTM2's plan order: water drag, ground boxes and ramps in
+the ground, collisions, the autopilot and the race rules.
 
 ## Notes on fidelity
 
@@ -53,7 +57,11 @@ Where the original does something surprising, the code does it too and the sourc
 - without automatic shifting, releasing the accelerator keeps the throttle;
 - the engine rpm is pulled once per tire per step, four times;
 - ground at exactly the water level reads deep water, even on a level with no water (level 0);
-- an axis-aligned line in the course intersection takes the game's shortcut.
+- an axis-aligned line in the course intersection takes the game's shortcut;
+- the two-contact support split is the reverse of the lever rule, and sliding friction uses
+  |vt + v|;
+- an airborne tire still runs the lateral law, and the lateral tire force acts at the axle's
+  height, about the CG at rest.
 
 The tests (`test/sim-mtm2-*.test.ts`) check the formulas against hand-computed values;
 `test/stock.test.ts` builds every stock course and checks that each arc meets its straights.

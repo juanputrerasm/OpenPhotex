@@ -9,6 +9,7 @@ export * from "./world/terrain.ts";
 export * from "./world/surface.ts";
 export * from "./world/water.ts";
 export * from "./world/course.ts";
+export * from "./world/ground.ts";
 export {
   CHECKPOINT_TYPE, DETECTOR_WIDTH_SCALE, DETECTOR_HEIGHT_SCALE, SPHERE_PRETEST_FACTOR, buildCheckpoints,
   withinCheckpointReach, speedThroughCheckpoint, checkpointCrossingTime, pointInCheckpointBox,
@@ -20,3 +21,7 @@ export * from "./truck/params.ts";
 export * from "./truck/state.ts";
 export * from "./truck/controls.ts";
 export * from "./truck/drivetrain.ts";
+export { stepTruck, postStepTruck, tireGeometry, probeGround, lateralCoefficient, truckWeight } from "./truck/dynamics.ts";
+export type { StepContext } from "./truck/dynamics.ts";
+export { solveHullContacts } from "./truck/contacts.ts";
+export type { ContactResult } from "./truck/contacts.ts";
