@@ -60,8 +60,7 @@ Where the original does something surprising, the code does it too and the sourc
 - an axis-aligned line in the course intersection takes the game's shortcut;
 - the two-contact support split is the reverse of the lever rule, and sliding friction uses
   |vt + v|;
-- an airborne tire still runs the lateral law, and the lateral tire force acts at the axle's
-  height, about the CG at rest.
+- the lateral tire force acts at the axle's height, about the CG at rest.
 
 The tests (`test/sim-mtm2-*.test.ts`) check the formulas against hand-computed values;
 `test/stock.test.ts` builds every stock course and checks that each arc meets its straights.

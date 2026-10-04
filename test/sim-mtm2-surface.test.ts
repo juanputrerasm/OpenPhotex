@@ -81,17 +81,17 @@ test("the game's fixed-point sine", () => {
   assert.equal(fixedSin(0x80), Math.trunc(Math.trunc(Math.sin(0.02454369260546875) * 65536) / 2));
 });
 
-test("water level: steps of 2 ft, bobbing 1 ft over 8 s, still in snow, none at 0", () => {
+test("water level: the LVL value is half feet; it bobs 0.25 ft over 8 s, still in snow, none at 0", () => {
   assert.equal(waterLevelFt(0, 3), null);
   assert.equal(waterLevelFt(null), null);
-  near(waterLevelFt(10, 0)!, 20);
-  near(waterLevelFt(10, 2)!, 21);
-  near(waterLevelFt(10, 4)!, 20);
-  near(waterLevelFt(10, 6)!, 19);
-  near(waterLevelFt(10, 8)!, 20);
-  near(waterLevelFt(10, 6, true)!, 20);
-  // Between peaks the wave is truncated to 1/64 ft.
-  const l = waterLevelFt(10, 1)!;
-  near(l * 64, Math.round(l * 64));
-  near(l, 20 + Math.SQRT1_2, 1 / 32);
+  near(waterLevelFt(135, 0)!, 67.5);
+  near(waterLevelFt(135, 2)!, 67.75);
+  near(waterLevelFt(135, 4)!, 67.5);
+  near(waterLevelFt(135, 6)!, 67.25);
+  near(waterLevelFt(135, 8)!, 67.5);
+  near(waterLevelFt(135, 6, true)!, 67.5);
+  // Between peaks the wave is truncated to 1/256 ft.
+  const l = waterLevelFt(135, 1)!;
+  near(l * 256, Math.round(l * 256));
+  near(l, 67.5 + 0.25 * Math.SQRT1_2, 1 / 128);
 });

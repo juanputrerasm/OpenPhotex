@@ -1,9 +1,10 @@
 /*
   The MTM2 water level (MTM2_PHYSICS.md §2.4).
 
-  - The level's `!waterHeight` is in 2 ft steps; 0 means the level has no water, and the level
-    then stays at 0 ft.
-  - During a race the surface bobs: level = base + sin(phase) × 1 ft, the phase turning once
+  - The level's `!waterHeight` is in half feet: the game keeps it as `value << 7` in its height
+    units of 1/256 ft (terrain heights are the RAW byte << 9). 0 means the level has no water,
+    and the level then stays at 0 ft.
+  - During a race the surface bobs: level = base + sin(phase) × 0.25 ft, the phase turning once
     every 8 s. In Snow it stays at the base (the water is frozen).
   - The game advances the phase by dt / 8 each frame in 16.16 fixed point; here it is a function
     of race time, which is the same up to per-frame truncation.
@@ -11,10 +12,8 @@
   The sine is the game's 256-step table: sin(i · 2π / 256) × 65536, truncated, interpolated
   linearly on the low byte of a 16-bit phase.
 */
-import { HEIGHT_STEP_FT } from "../constants.ts";
-
-/** Height units of the game's level geometry: 64 per foot (a 2 ft height step is 128). */
-const UNITS_PER_FT = 64;
+/** Height units of the game's level geometry: 256 per foot (a 2 ft height step is 512). */
+const UNITS_PER_FT = 256;
 const WAVE_PERIOD_S = 8;
 
 let sineTable: Int32Array | null = null;
@@ -37,11 +36,11 @@ export function fixedSin(phase: number): number {
 
 /**
  * The water level in feet at `raceTimeS` seconds into the race, or null when the level has no
- * water. `baseSteps` is the LVL `!waterHeight`.
+ * water. `lvlValue` is the LVL `!waterHeight` (half feet).
  */
-export function waterLevelFt(baseSteps: number | null, raceTimeS = 0, snow = false): number | null {
-  if (!baseSteps) return null;
-  const base = baseSteps * HEIGHT_STEP_FT * UNITS_PER_FT;
+export function waterLevelFt(lvlValue: number | null, raceTimeS = 0, snow = false): number | null {
+  if (!lvlValue) return null;
+  const base = lvlValue * 128;
   if (snow) return base / UNITS_PER_FT;
   const phase = Math.trunc((raceTimeS * 0x10000) / WAVE_PERIOD_S) & 0xffff;
   const wave = Math.trunc(Math.trunc(fixedSin(phase) / 256) / 4);

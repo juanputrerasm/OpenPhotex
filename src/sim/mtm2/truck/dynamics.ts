@@ -197,9 +197,9 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
   totalGrip = s.tires.reduce((a, t) => a + t.grip, 0);
   for (let i = 0; i < 4; i++) {
     const t = s.tires[i];
-    const front = i < 2;
-    // In the air the tire's force starts from zero; the lateral law still runs (§14.5).
-    const f = frames[i] ?? tireFrame(s, t, front ? c.steer : c.rearSteer);
+    // An airborne tire has no lateral force (the routine returns at once, §14.5).
+    const f = frames[i];
+    if (!t.onGround || !f) continue;
     let alpha: number;
     if (Math.abs(f.vFwd) <= 10) {
       if (f.vFwd >= 0) alpha = f.vLat === 0 ? 0 : Math.atan2(f.vLat, 10);
