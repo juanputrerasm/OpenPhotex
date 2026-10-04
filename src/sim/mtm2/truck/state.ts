@@ -39,6 +39,9 @@ export interface TireState {
   velocity: [number, number, number];
   /** Tire force in body axes this step. */
   force: [number, number, number];
+  /** Water depth at the last wheel probe (positive in water) and that probe's world point. */
+  waterDepth: number;
+  waterPoint: [number, number, number];
 }
 
 export interface AxleState {
@@ -74,6 +77,8 @@ export interface Mtm2TruckState {
   impulseMoment: number;
   /** The last contact force magnitude (crash-damage input). */
   impactForce: number;
+  /** Water was met fast enough to splash this step (§14.7.1). */
+  splash: boolean;
 }
 
 function tire(): TireState {
@@ -81,6 +86,7 @@ function tire(): TireState {
     compression: 0, extensionRate: 0, penetration: -9999, lever: 0, normal: [0, 1, 0], onGround: false,
     spin: 0, angle: 0, pitchG: 0, rollG: 0, load: 0, grip: 0,
     hub: [0, 0, 0], contact: [0, 0, 0], velocity: [0, 0, 0], force: [0, 0, 0],
+    waterDepth: 0, waterPoint: [0, 0, 0],
   };
 }
 
@@ -112,6 +118,7 @@ export function createTruckState(
     heliTimer: 0,
     impulseMoment: 0,
     impactForce: 0,
+    splash: false,
   };
   eulerToMatrix(0, 0, heading, state.matrix);
   return state;

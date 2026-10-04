@@ -6,7 +6,7 @@
   The order of operations and every constant follow the game; where the game does something
   surprising the comment says so, with the section that records it.
 */
-import { AIR_DENSITY, DIFFICULTY, ENGINE, G, INV_G, LATERAL_TABLE, MPH_10, TRUCK } from "../constants.ts";
+import { DIFFICULTY, ENGINE, G, INV_G, LATERAL_TABLE, MPH_10, TRUCK } from "../constants.ts";
 import { eulerToMatrix, matrixToEuler, wrapPi, wrapTwoPi } from "../math.ts";
 import type { Mtm2Ground } from "../world/ground.ts";
 import { cutFactor, surfaceMu, surfaceSinkFt, surfaceType } from "../world/surface.ts";
@@ -15,6 +15,7 @@ import { deliveredTorque, gearRatio, stepGearbox } from "./drivetrain.ts";
 import type { Mtm2TruckParams } from "./params.ts";
 import type { Mtm2TruckState, TireState } from "./state.ts";
 import { solveHullContacts, type ContactResult } from "./contacts.ts";
+import { fluidAreas } from "./water-drag.ts";
 
 export interface StepContext {
   ground: Mtm2Ground;
@@ -113,9 +114,11 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
   // Gravity and drag, body axes (§14.7).
   const force = [-W * m[3], -W * m[4], -W * m[5]];
   const drag = [0, 0, 0];
+  const fluid = fluidAreas(s, p, ctx.ground);
+  s.splash = fluid.splash;
   for (let k = 0; k < 3; k++) {
     const v = s.bvel[k];
-    drag[k] = -(AREA[k] * AIR_DENSITY) * (v * Math.abs(v) * CD[k] * 0.5);
+    drag[k] = -fluid.rhoA[k] * (v * Math.abs(v) * CD[k] * 0.5);
     force[k] += drag[k];
   }
 
@@ -429,6 +432,8 @@ export function postStepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ground: Mtm
     const [ax, ay, az] = p.hubs[i];
     const px = p.tireWidthFt * sign * 0.5 + ax;
     const pr = probeGround(s, ground, px, ay, az, p.tireRadiusFt);
+    t.waterDepth = pr.water;
+    t.waterPoint = pr.point;
     const d = pr.depth * pr.normal[1];
     const vec = [pr.normal[0] * d, pr.normal[1] * d, pr.normal[2] * d];
     const along = dot(bodyY, vec);
@@ -529,6 +534,7 @@ function solveAxle(s: Mtm2TruckState, p: Mtm2TruckParams, axleIdx: number, carry
     const lift = pen * (deep.normal[0] * m[1] + deep.normal[1] * m[4] + deep.normal[2] * m[7]);
     for (let k = 0; k < 3; k++) s.pos[k] += deep.normal[k] * lift;
     for (let j = 0; j < 16; j++) s.depths[j] -= lift;
+    R.waterDepth -= lift; Lt.waterDepth -= lift;
   }
   if (R.compression < 0) R.compression = 0;
   if (Lt.compression < 0) Lt.compression = 0;

@@ -44,9 +44,10 @@ plain arrays and objects, so a state can be posted between workers or saved as i
 | `world/ground.ts` | the ground a truck queries: height, normal, surface value (terrain only for now) |
 | `truck/dynamics.ts` | `stepTruck` (tire geometry, loads, longitudinal and lateral forces, drag, damping, sums, integration, contact probing) and `postStepTruck` (push-out, wheel probes, solid axles, bottoming) |
 | `truck/contacts.ts` | hull contacts: support split for 1 to 4 contacts, recovery, friction |
+| `truck/water-drag.ts` | `fluidAreas`: density times area per body axis from submerged wheels and hull faces, the rest at air density; the splash flag |
 
 A step is `applyKeyboard` (or the autopilot), `stepTruck`, then (after collisions)
-`postStepTruck`. Still to come, in OpenMTM2's plan order: water drag, ground boxes and ramps in
+`postStepTruck`. Still to come, in OpenMTM2's plan order: the player reset and helicopter, ground boxes and ramps in
 the ground, collisions, the autopilot and the race rules.
 
 ## Notes on fidelity
