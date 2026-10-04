@@ -97,3 +97,37 @@ test("hull contacts on a vertical plane get no support (2 and 3 contacts)", () =
     assert.deepEqual(out.force.map((f) => Math.abs(f)), [0, 0, 0], `${touching.length} contacts`);
   }
 });
+
+test("level boxes: types 6, 7 and 8 never collide; priority above the detail level does not", () => {
+  for (const type of [0, 1, 2, 3, 4, 5, 9, 10, 11]) assert.ok(S.levelBoxCollides({ type }), `type ${type}`);
+  for (const type of [6, 7, 8]) assert.ok(!S.levelBoxCollides({ type }), `type ${type}`);
+  assert.ok(S.levelBoxCollides({ type: 0, priority: 2 }, 2));
+  assert.ok(!S.levelBoxCollides({ type: 0, priority: 2 }, 1));
+});
+
+test("a level box is centred on its position and sized by its model's bounds", () => {
+  const src = { positionFt: [100, 20, 300] as T3, theta: 0, phi: 0, psi: Math.PI / 2, sizeFt: [64, 64, 64] as T3, mass: 0, type: 1 };
+  // Bounds off-centre on purpose: the game ignores the offset.
+  const box = S.createLevelBox(src, { min: [-2, 0, -10], max: [4, 8, 2] })!;
+  assert.deepEqual(box.pos, [100, 20, 300]);
+  assert.deepEqual(box.half, [3, 4, 6]);
+  near(box.radius, Math.hypot(3, 4, 6));
+  assert.equal(box.type, 1);
+  // psi turns the box's z onto world x.
+  near(box.matrix[2], 1, 1e-12);
+  // No model: the SIT's length (z), width (x), height (y).
+  assert.deepEqual(S.createLevelBox(src)!.half, [32, 32, 32]);
+  assert.equal(S.createLevelBox({ ...src, positionFt: undefined }), null);
+});
+
+test("camera-facing type 9 takes the larger footprint side for both, halved", () => {
+  const box = S.createLevelBox({ positionFt: [0, 0, 0], theta: 0, phi: 0, psi: 0, mass: 0, type: 9 }, { min: [-3, 0, -1], max: [3, 10, 1] })!;
+  assert.deepEqual(box.half, [1.5, 5, 1.5]);
+});
+
+test("a box is pushable only when it is lighter than the truck and has a mass", () => {
+  assert.ok(S.boxIsImmovableFor({ mass: 0 }, 300));
+  assert.ok(S.boxIsImmovableFor({ mass: 300 }, 300));
+  assert.ok(S.boxIsImmovableFor({ mass: 559 }, 300));
+  assert.ok(!S.boxIsImmovableFor({ mass: 77.7 }, 300));
+});
