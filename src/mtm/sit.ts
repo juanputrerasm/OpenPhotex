@@ -117,6 +117,11 @@ export interface MtmSit {
   redbookTrack: number | null;
   /** MTM2 only. */
   ambientSound: number | null;
+  /**
+   * MTM2 only: the track length, ft. A Circuit's default lap count is `trunc(15000 / length + 1)`,
+   * with 6000 when the line is missing (MONSTER.EXE CRace::init).
+   */
+  trackLength: number | null;
   weatherMask: number | null;
   /** Ramps, then boxes, then top-crush parts (body, cab) in file order. */
   boxes: SitBox[];
@@ -237,6 +242,7 @@ export function parseMtmSit(input: Uint8Array | string, sitTitle = ""): MtmSit {
     trackTypeCode: null,
     redbookTrack: null,
     ambientSound: null,
+    trackLength: null,
     weatherMask: null,
     boxes: [],
     primaryCourse: null,
@@ -259,6 +265,8 @@ export function parseMtmSit(input: Uint8Array | string, sitTitle = ""): MtmSit {
     const parts = ambient.split(",");
     if (parts.length >= 3) {
       sit.ambientSound = parseLeadingInt(parts[0]);
+      const length = parseFloat(parts[1]);
+      sit.trackLength = Number.isFinite(length) ? length : null;
       sit.weatherMask = parseLeadingInt(parts[2]);
     }
   }

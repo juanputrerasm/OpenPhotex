@@ -34,6 +34,7 @@ test("writeMtm2Sit reads back as an MTM2 SIT with its trucks, boxes and courses"
   assert.equal(sit.trackName, "Test Track");
   assert.equal(sit.localeName, "Here");
   assert.equal(sit.ambientSound, 3);
+  assert.equal(sit.trackLength, 1234.5);
   assert.equal(sit.weatherMask, 5);
   assert.equal(sit.trucks.length, 3);
   assert.equal(sit.trucks[0].playerSlot, true);
