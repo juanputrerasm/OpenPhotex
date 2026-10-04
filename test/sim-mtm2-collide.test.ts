@@ -80,3 +80,20 @@ test("no tunnelling: a truck at 150 ft/s stops at a ground-box wall", () => {
   assert.ok([...t.state.pos, ...t.state.bvel].every(Number.isFinite));
   assert.ok(t.state.bvel[2] < 20, `still ${t.state.bvel[2]} ft/s into the wall`);
 });
+
+test("hull contacts on a vertical plane get no support (2 and 3 contacts)", () => {
+  // §14.12: when the solver's plane normal has y exactly 0, every share is 0.
+  const terrain = S.createTerrain(new Uint8Array(65536).fill(50));
+  const ground = S.createTerrainGround(terrain, null, 0, null);
+  const params = S.createTruckParams({ scrapePoints: scrapePoints() }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+  for (const touching of [[0, 3], [0, 1, 3]]) {
+    const s = S.createTruckState([1000, 200, 1000], 0, S.GEAR.FIRST, params);
+    s.depths.fill(-10);
+    for (const j of touching) { s.depths[j] = 0; s.normals.set([0, 0, -1], j * 3); }
+    s.contactCount = touching.length;
+    const weight = S.truckWeight(params);
+    const out = S.solveHullContacts(s, params, ground, [0, -weight, 0], weight / 32.174, weight, 1 / 60);
+    assert.equal(out.count, touching.length);
+    assert.deepEqual(out.force.map((f) => Math.abs(f)), [0, 0, 0], `${touching.length} contacts`);
+  }
+});
