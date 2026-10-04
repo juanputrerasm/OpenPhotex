@@ -302,6 +302,8 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
   const az = rYaw * vx - qPitch * vy + force[2] / mass;
   s.rates[0] += pDot * dt; s.rates[1] += qDot * dt; s.rates[2] += rDot * dt;
   s.bvel[0] += ax * dt; s.bvel[1] += ay * dt; s.bvel[2] += az * dt;
+  // The forward acceleration the autopilot's time estimate counts on (+0x8c4, §14.24).
+  s.ap.accel = az;
 
   let ivel = toWorld(m, s.bvel[0], s.bvel[1], s.bvel[2]);
   const iv = Math.hypot(ivel[0], ivel[1], ivel[2]);

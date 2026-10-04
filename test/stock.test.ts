@@ -153,7 +153,7 @@ test("MTM2 terrain rows follow z: stock objects sit closer to the ground that wa
       const placed = sit.boxes.filter((b) => b.positionFt && b.type !== 99);
       if (placed.length < 100) continue;
       const lvl = parseMtmLvl(find(`LEVELS\\${e.title.replace(/\.SIT$/, ".LVL")}`)!);
-      const terrain = mtm2Sim.createTerrain(find(`DATA\\${lvl.rawName.split("\\").pop()}`)!);
+      const terrain = mtm2Sim.createTerrain(find(`DATA\\${lvl!.rawName.split("\\").pop()}`)!);
       const median = (swap: boolean) => {
         const errors = placed.map((b) => {
           const [x, y, z] = b.positionFt!;

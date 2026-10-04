@@ -106,6 +106,21 @@ export interface AutopilotState {
   segmentsPassed: number;
   /** The last target speed (+0x89c), ft/s. */
   target: number;
+  /** Progress in the segment (+0x8c8, §14.24) and the time to its end (+0x8dc), seconds. */
+  progress: number;
+  eta: number;
+  /** The cross-track error e (+0x8e8) and the unclamped correction c (+0x8d0) of §14.22. */
+  crossTrack: number;
+  correction: number;
+  /** The braking deceleration (+0x8bc, §14.22) and the last forward acceleration (+0x8c4). */
+  decel: number;
+  accel: number;
+  /** Traffic (§14.25): the side (+0x8d8, -1, 0, 1), the truck to pass (+0x8e0) and to follow (+0x8e4), -1 none. */
+  side: number;
+  passTarget: number;
+  follow: number;
+  /** The candidate count (+0x8ec). */
+  candidates: number;
 }
 
 /** The difficulty gain for a difficulty (0 Rookie, 1 Intermediate, 2 Professional). */
@@ -157,7 +172,10 @@ export function createTruckState(
     impulseMoment: 0,
     impactForce: 0,
     splash: false,
-    ap: { segment: 0, integral: 0, gain: autopilotGain(params?.difficulty ?? 1), segmentsPassed: 0, target: 0 },
+    ap: {
+      segment: 0, integral: 0, gain: autopilotGain(params?.difficulty ?? 1), segmentsPassed: 0, target: 0,
+      progress: 0, eta: 0, crossTrack: 0, correction: 0, decel: 0, accel: 0, side: 0, passTarget: -1, follow: -1, candidates: 0,
+    },
   };
   eulerToMatrix(0, 0, heading, state.matrix);
   state.prevMatrix.set(state.matrix);

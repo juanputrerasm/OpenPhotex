@@ -3,15 +3,15 @@
   checkpoints and laps, the finish, and the race order.
 
   The race tick runs once per step, after the trucks' post-steps: for each truck the checkpoint
-  test, the segment advance (§14.23) and its progress in the segment; then the order; then the
-  clock. Circuit and Rally share it; Summit Rumble scoring and drag racing are not in yet.
+  test, the time to the segment's end, the segment advance (§14.23) and the progress in the
+  segment; then the order; then the clock. Circuit and Rally share it; Summit Rumble scoring and drag racing are not in yet.
 */
 import { createBox, type SimBox } from "../collide/box.ts";
 import { HULL_ORDER, depthInside, faceNormal, nearestFace } from "../collide/faces.ts";
-import { advanceAutopilotSegment, headingOf, wrapGame, type AutopilotContext } from "../truck/autopilot.ts";
+import { advanceAutopilotSegment, headingOf, segmentEta, wrapGame, type AutopilotContext } from "../truck/autopilot.ts";
 import type { Mtm2TruckParams } from "../truck/params.ts";
 import { liftOff, truckRadius, type RecoveryContext } from "../truck/recovery.ts";
-import type { Mtm2TruckState } from "../truck/state.ts";
+import { autopilotGain, type Mtm2TruckState } from "../truck/state.ts";
 import type { Mtm2Ground } from "../world/ground.ts";
 import { isArc, type CourseSegment } from "../world/course.ts";
 import type { Mtm2Checkpoint } from "../world/checkpoints.ts";
@@ -198,11 +198,14 @@ function missedCheckpoint(race: Race, t: RaceTruck, cp: Race["checkpoints"][numb
   }
 }
 
-/** Progress in the current segment (+0x8c8, §14.24): 1 minus the share left. */
-export function segmentProgress(t: RaceTruck, course: readonly CourseSegment[]): number {
+/**
+ * Progress in the current segment (+0x8c8, §14.24): 1 minus the share left, measured from the
+ * hull's front point, or its rear point while passing.
+ */
+export function segmentProgress(t: RaceTruck, course: readonly CourseSegment[], difficulty: number): number {
   const seg = course[t.s.ap.segment];
   if (!seg) return 0;
-  const z1 = t.p.scrapePoints[0]?.[2] ?? 0;
+  const z1 = t.p.scrapePoints[t.s.ap.side !== 0 ? 10 : 0]?.[2] ?? 0;
   const pos = t.s.pos;
   let f: number;
   if (isArc(seg)) {
@@ -211,7 +214,7 @@ export function segmentProgress(t: RaceTruck, course: readonly CourseSegment[]):
   } else {
     const toEnd = Math.hypot(seg.end[0] - pos[0], seg.end[1] - pos[1], seg.end[2] - pos[2]);
     const length = Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1], seg.end[2] - seg.start[2]);
-    f = length === 0 ? 0 : (toEnd - z1 / t.s.ap.gain) / length;
+    f = length === 0 ? 0 : (toEnd - z1 / autopilotGain(difficulty)) / length;
   }
   return 1 - f;
 }
@@ -242,8 +245,10 @@ export function raceTick(race: Race, dt: number, ap: AutopilotContext, recover?:
   if (raceStarted(race)) {
     for (const t of race.trucks) {
       testCheckpoint(race, t, dt, recover ? { ground: recover.ground, rc: recover.rc(t) } : undefined);
-      advanceAutopilotSegment(t.s, { ...ap, place: t.place, rubberBand: !t.player && !race.trucks.some((o) => o.player && o.place === 1) && race.trucks.some((o) => o.player) });
-      t.progress = segmentProgress(t, race.course);
+      const seg = race.course[t.s.ap.segment];
+      if (seg) t.s.ap.eta += (segmentEta(t.s, t.p, seg, ap.height) - t.s.ap.eta) * dt * 0.75;
+      advanceAutopilotSegment(t.s, { ...ap, place: t.place, rubberBand: !t.player && !race.trucks.some((o) => o.player && o.place === 1) && race.trucks.some((o) => o.player) }, t.p);
+      t.progress = t.s.ap.progress = segmentProgress(t, race.course, race.difficulty);
     }
     raceOrder(race);
   }

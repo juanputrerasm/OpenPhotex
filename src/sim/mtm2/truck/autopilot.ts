@@ -4,7 +4,8 @@
   of its step, the segment becomes a line to follow, which gives the steering and a target speed,
   and the speed controller turns the target into throttle and brakes.
 
-  Traffic (`0x483600`, passing and following other trucks) and the reversed course are not in yet.
+  Traffic (`0x483600`, §14.25, passing and following other trucks) is in `traffic.ts`; the
+  reversed course is not in yet.
 */
 import { ENGINE, G, INV_G } from "../constants.ts";
 import { isArc, type CourseArc, type CourseSegment, type CourseStraight } from "../world/course.ts";
@@ -12,6 +13,7 @@ import { gearRatio } from "./drivetrain.ts";
 import { truckWeight } from "./dynamics.ts";
 import type { Mtm2TruckParams } from "./params.ts";
 import type { Mtm2TruckState } from "./state.ts";
+import { applyTraffic, type TrafficTruck } from "./traffic.ts";
 
 type V3 = [number, number, number];
 const TWO_PI = Math.PI * 2;
@@ -51,6 +53,8 @@ export interface AutopilotContext {
   /** Rubber-banding (§14.23): this truck's place, and whether it is a CPU truck while the player is not first. */
   place?: number;
   rubberBand?: boolean;
+  /** Every truck in the race, this one included, for traffic (§14.25); none, no traffic. */
+  traffic?: readonly TrafficTruck[];
 }
 
 /**
@@ -66,11 +70,45 @@ function segmentGain(difficulty: number): number {
   return difficulty === 0 ? 0.5 : difficulty === 2 ? 1.0 : 0.75;
 }
 
+/** The average of the four tires' forward speeds (`v_fwd`, tire +0x50), ft/s. */
+export function tireForwardSpeed(s: Mtm2TruckState, p: Mtm2TruckParams): number {
+  const [FR, FL, RR, RL] = s.tires;
+  return (FR.spin + FL.spin + RR.spin + RL.spin) * p.tireRadiusFt * 0.25;
+}
+
+/**
+ * The estimated time to the end of the truck's segment (`0x480ba0`, §14.24): on a straight,
+ * accelerating then braking into the next corner's speed; on an arc, the arc left at the
+ * current speed.
+ */
+export function segmentEta(s: Mtm2TruckState, p: Mtm2TruckParams, seg: CourseSegment, height: (x: number, z: number) => number): number {
+  const v = tireForwardSpeed(s, p);
+  const x = s.pos[0], z = s.pos[2];
+  if (isArc(seg)) {
+    const left = Math.abs(wrapGame(headingOf(x - seg.centre[0], z - seg.centre[2]) - seg.exitAngle));
+    return (seg.radius * left) / (v < 0.1 ? 0.1 : v);
+  }
+  const E = seg.end;
+  const dx = E[0] - x, dy = E[1] - height(x, z), dz = E[2] - z;
+  const D = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  const b = s.ap.accel < 0.1 ? 0.1 : s.ap.accel;
+  if (s.ap.decel < 0.1) s.ap.decel = 0.1;
+  const a = s.ap.decel, vc = seg.speed;
+  const run = (a * (D - seg.decPoint) * 2 + (vc * vc - v * v)) / ((a + b) * 2);
+  let vp = v, t1 = 0;
+  if (run > 0) {
+    vp = Math.sqrt(Math.max(0, b * run * 2 + v * v));
+    t1 = (vp - v) / b;
+  }
+  return t1 + (vp - vc) / a;
+}
+
 /**
  * The next segment (§14.23): when the truck is closer to the segment's end line than its
- * `cdec_point`, it moves on. Returns whether it did.
+ * `cdec_point`, it moves on. Returns whether it did. With the truck's parameters, the time to
+ * the new segment's end is set too (§14.24).
  */
-export function advanceAutopilotSegment(s: Mtm2TruckState, ctx: AutopilotContext): boolean {
+export function advanceAutopilotSegment(s: Mtm2TruckState, ctx: AutopilotContext, p?: Mtm2TruckParams): boolean {
   const { course } = ctx;
   if (course.length === 0) return false;
   const seg = course[s.ap.segment];
@@ -104,6 +142,7 @@ export function advanceAutopilotSegment(s: Mtm2TruckState, ctx: AutopilotContext
     }
     s.ap.gain = segmentGain(ctx.difficulty) - bonus;
   }
+  if (p) s.ap.eta = segmentEta(s, p, entered, ctx.height);
   return true;
 }
 
@@ -175,6 +214,8 @@ export function applyAutopilot(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: Autop
   const b = wrapGame(headingOf(dx, dz) - hs);
   const e = Math.sin(b) * D;
   let c = D > 50 ? Math.asin(Math.max(-1, Math.min(1, 0.02 * e))) : b;
+  s.ap.crossTrack = e;
+  s.ap.correction = c;
   const cl = arc ? 0.5 : 0.125;
   c = Math.max(-cl, Math.min(cl, c));
 
@@ -185,6 +226,7 @@ export function applyAutopilot(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: Autop
   const wyU = wl === 0 ? 1 : wy / wl;
   const mu = (s.tires[0].mu + s.tires[1].mu + s.tires[2].mu + s.tires[3].mu) * 0.25;
   const decel = G * wyU + mu * Math.sqrt(Math.max(0, 1 - wyU * wyU)) * kSlope * G;
+  s.ap.decel = decel;
   const G_ = s.ap.gain;
   let target: number;
   if (arc) {
@@ -206,6 +248,9 @@ export function applyAutopilot(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: Autop
     const v0 = seg.speed * Math.sqrt(Math.max(0, G_));
     target = Math.sqrt(Math.max(0, v0 * v0 + decel * D * 2)) * Math.sqrt(Math.max(0, mu / K));
   }
+
+  // Traffic (§14.25) may lower the target and replace the correction.
+  if (ctx.traffic) ({ c, target } = applyTraffic(s, p, ctx, ctx.traffic, hs, c, target));
 
   // Steering.
   const err = wrapGame(hs - s.euler[2] + c);
@@ -233,7 +278,7 @@ export function applyAutopilot(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: Autop
   const torque = ((ENGINE.a * rpm + ENGINE.b) * rpm + ENGINE.c) * ctl.throttle;
   const mass = truckWeight(p) * INV_G;
   const acc = (torque / p.tireRadiusFt) * gearRatio(ctl.gear) * p.transferRatio - drag;
-  const wheels = (FR.spin + FL.spin + RR.spin + RL.spin) * p.tireRadiusFt * 0.25;
+  const wheels = tireForwardSpeed(s, p);
   const predicted = (acc / mass) * fdt * 0.05 + wheels;
   if (!ctx.dragMode && target < 17) target = 17;
   if (seg.ctype === 1 && (seg as CourseStraight).speedLimit >= 10 && (seg as CourseStraight).speedLimit < target) {
