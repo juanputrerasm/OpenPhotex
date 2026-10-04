@@ -41,6 +41,11 @@ export interface SitBox {
   positionFt?: [number, number, number];
   /** Full length, width and height in feet as written, unrounded (a model's extents replace them in game). */
   sizeFt?: [number, number, number];
+  /**
+   * The box's `priority` line: the game draws it only when this is at most the MONSTER.INI
+   * detailLevel (MONSTER.EXE 0x54ec00). Absent means 0.
+   */
+  priority?: number;
   /** Top-crush parts: which record they came from, and which part they are. */
   crushGroup?: number;
   crushRole?: "body" | "cab";
@@ -321,6 +326,9 @@ function parseBoxBlock(lines: string[], blockStart: number, isRamp: boolean): Si
     }
   }
 
+  const priorityIdx = indexOfLinePrefix(lines, "priority", blockStart, endIndex);
+  if (priorityIdx >= 0 && priorityIdx + 1 < lines.length) box.priority = parseLeadingInt(lines[priorityIdx + 1]);
+
   const massIdx = indexOfLinePrefix(lines, "mass", blockStart, endIndex);
   if (massIdx >= 0 && massIdx + 1 < lines.length) box.mass = parseFloat(lines[massIdx + 1]) || 0;
 
@@ -543,6 +551,11 @@ function parseTruckBlock(lines: string[], startIdx: number): SitTruck {
 /** An MTM-family .LVL: the level's asset references and environment, by line. */
 export interface MtmLvl {
   lineCount: number;
+  /**
+   * Line 1. MONSTER.EXE (0x4d4d70) treats 4 as an old MTM level: the old MTM palette, and
+   * checkpoint models drawn. Every stock MTM2 level has 0.
+   */
+  levelType: number;
   /** Line 2: the heightfield .RAW. */
   rawName: string;
   /** Line 3: the colour (texture index) grid .CLR. */
@@ -577,6 +590,7 @@ export function parseMtmLvl(input: Uint8Array | string): MtmLvl | null {
   const skyRaw = at(10) === null ? null : normalizePodPath(at(10));
   const lvl: MtmLvl = {
     lineCount: lines.length,
+    levelType: parseLeadingInt(lines[0]),
     rawName: normalizePodPath(lines[2]),
     clrName: normalizePodPath(lines[3]),
     actName: normalizePodPath(lines[4]),

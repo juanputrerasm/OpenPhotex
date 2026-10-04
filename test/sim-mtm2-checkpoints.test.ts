@@ -66,11 +66,12 @@ test("SIT boxes carry raw feet and sizes for the simulation", () => {
     "!ambient sound,track length,weather mask", "3,1000.000000,65535",
     "*** Boxes ***", "1",
     "*********************************************", "ipos", "-10.5,20.25,300.75", "theta,phi,psi", "0.0,0.0,1.5",
-    "length,width,height", "12.5,64.4,32.6", "mass", "0.0", "!type,flags", "6,0",
+    "length,width,height", "12.5,64.4,32.6", "mass", "0.0", "!type,flags", "6,0", "priority", "2",
     "*** Course ***", "c1Count,course_direction", "0,0",
   ].join("\r\n"), "T.SIT");
   const box = sit.boxes.find((b) => b.type === 6)!;
   assert.deepEqual(box.positionFt, [8181.5, 20.25, 300.75]);
   assert.deepEqual(box.sizeFt, [12.5, 64.4, 32.6]);
   assert.equal(box.length, 13);
+  assert.equal(box.priority, 2);
 });
