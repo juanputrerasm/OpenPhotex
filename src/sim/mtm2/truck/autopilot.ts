@@ -36,6 +36,12 @@ export interface AutopilotContext {
   /** The height query with box and ramp tops (`0x550090`). */
   height(x: number, z: number): number;
   dt: number;
+  /**
+   * The frame time the game's frame-dependent autopilot terms assume (the steering command, the
+   * air integrator, the look-ahead and the speed controller all scale with the frame time); the
+   * port's fixed step is shorter. Defaults to AUTOPILOT_FRAME_DT.
+   */
+  frameDt?: number;
   /** 0 Rookie, 1 Intermediate, 2 Professional. */
   difficulty: number;
   /** The SIT's `Sonic` flag (§6.5). */
@@ -46,6 +52,12 @@ export interface AutopilotContext {
   place?: number;
   rubberBand?: boolean;
 }
+
+/**
+ * **Hypothesis** (MTM2_PHYSICS.md 14.22): the game was tuned at about 30 frames per second, and
+ * the autopilot's frame-dependent terms use that frame time rather than the port's step.
+ */
+export const AUTOPILOT_FRAME_DT = 1 / 30;
 
 const K_DEFAULT = 1.75, K_SONIC = 2.0;
 const SLOPE_K_DEFAULT = 0.45, SLOPE_K_SONIC = 1.0;
@@ -147,12 +159,13 @@ function toWorld(m: ArrayLike<number>, x: number, y: number, z: number): V3 {
  */
 export function applyAutopilot(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: AutopilotContext): void {
   const { course, dt } = ctx;
+  const fdt = ctx.frameDt ?? AUTOPILOT_FRAME_DT;
   if (course.length === 0) return;
   const seg = course[s.ap.segment];
   const arc = isArc(seg);
   const K = ctx.sonicTrack && ctx.difficulty === 2 ? K_SONIC : K_DEFAULT;
   const kSlope = ctx.sonicTrack && ctx.difficulty === 2 ? SLOPE_K_SONIC : SLOPE_K_DEFAULT;
-  const { S, E } = segmentLine(s, seg, dt);
+  const { S, E } = segmentLine(s, seg, fdt);
   const x = s.pos[0], y = s.pos[1], z = s.pos[2];
 
   // Bearing and cross-track error.
@@ -196,13 +209,13 @@ export function applyAutopilot(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: Autop
 
   // Steering.
   const err = wrapGame(hs - s.euler[2] + c);
-  let cmd = 22 * dt * err;
+  let cmd = 22 * fdt * err;
   if (Math.abs(e) > 32 && !arc) cmd *= Math.min(Math.abs(e) * 0.03125, 1.5);
   const iv = toWorld(s.matrix, s.bvel[0], s.bvel[1], s.bvel[2]);
   const speed = Math.hypot(iv[0], iv[1], iv[2]);
   if (speed > 14.67 && s.tires.every((t) => !t.onGround)) {
-    const w = Math.max(-0.5, Math.min(0.5, err)) / dt;
-    s.ap.integral += w * 1.0 * dt;
+    // Per frame the integrator gains clamp(err): `/ dt * gain * dt` in the code.
+    s.ap.integral += Math.max(-0.5, Math.min(0.5, err)) * 1.0 * (dt / fdt);
     cmd += s.ap.integral;
   }
   if (D < 30) cmd *= D * (1 / 30);
@@ -221,12 +234,12 @@ export function applyAutopilot(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: Autop
   const mass = truckWeight(p) * INV_G;
   const acc = (torque / p.tireRadiusFt) * gearRatio(ctl.gear) * p.transferRatio - drag;
   const wheels = (FR.spin + FL.spin + RR.spin + RL.spin) * p.tireRadiusFt * 0.25;
-  const predicted = (acc / mass) * dt * 0.05 + wheels;
+  const predicted = (acc / mass) * fdt * 0.05 + wheels;
   if (!ctx.dragMode && target < 17) target = 17;
   if (seg.ctype === 1 && (seg as CourseStraight).speedLimit >= 10 && (seg as CourseStraight).speedLimit < target) {
     target = (seg as CourseStraight).speedLimit;
   }
-  const u = 1.2 * dt * (target - predicted);
+  const u = 1.2 * fdt * (target - predicted);
   if (u >= 0) {
     ctl.throttle = Math.min(u, 1);
     ctl.brakeFront = ctl.brakeRear = 0;
