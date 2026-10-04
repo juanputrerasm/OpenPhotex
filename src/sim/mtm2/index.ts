@@ -33,7 +33,7 @@ export * from "./collide/box.ts";
 export { collideTruckBox, collideTruckImmovableBox, truckBoxSeparated } from "./collide/truck-box.ts";
 export { stepBox, postStepBox, boxInertia } from "./collide/box-step.ts";
 export { stepMovingObject, groundBoxHeightAt } from "./collide/moving-object.ts";
-export { createRamp, rampHeightAt } from "./collide/ramp.ts";
+export { collideTruckRamp, createRamp, insideRamp, rampHeightAt } from "./collide/ramp.ts";
 export { collideTrucks } from "./collide/truck-truck.ts";
 export { collideBoxes } from "./collide/box-box.ts";
 export * from "./race/race.ts";

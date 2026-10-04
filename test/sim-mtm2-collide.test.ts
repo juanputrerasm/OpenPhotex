@@ -369,3 +369,35 @@ test("wheels against wheels: side by side, the tyres overlap and push the trucks
   assert.equal(c.s.extForce[0], 0);
   assert.equal(d.s.pos[0] - c.s.pos[0], 13);
 });
+
+test("ramp walls: a truck driving into a ramp's side stops at it; one driving up the slope climbs (14.19)", () => {
+  const terrain = S.createTerrain(new Uint8Array(65536).fill(50)); // 100 ft
+  const ground = S.createTerrainGround(terrain, null, 0, null);
+  // 40 ft long (z), 20 ft wide (x), 10 ft tall at its front (+z) end.
+  const ramp = S.createRamp({ positionFt: [500, 100, 500], theta: 0, phi: 0, psi: 0, sizeFt: [40, 20, 10], mass: 0 })!;
+  ground.ramps.push(ramp);
+  const ctx = { ground, human: false, difficulty: S.DIFFICULTY.INTERMEDIATE, sonicTrack: false };
+  const dt = 1 / 60;
+  const run = (pos: [number, number, number], heading: number, steps: number) => {
+    const p = S.createTruckParams({ scrapePoints: TRK_HULL }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+    const s = S.createTruckState(pos, heading, S.GEAR.NEUTRAL, p);
+    for (let i = 0; i < 60; i++) { S.stepTruck(s, p, ctx, dt); S.postStepTruck(s, p, ground, dt); }
+    s.bvel[2] = 20;
+    let maxY = 0;
+    for (let i = 0; i < steps; i++) {
+      S.stepTruck(s, p, ctx, dt);
+      S.collideTruckRamp(ramp, s, p);
+      S.postStepTruck(s, p, ground, dt);
+      maxY = Math.max(maxY, s.pos[1]);
+    }
+    return { s, maxY };
+  };
+  // From the side (-x), heading +x: the wall at x = 490 holds the truck's hull points out.
+  const side = run([460, 106.2, 505], Math.PI / 2, 150);
+  const nose = side.s.pos[0] + 9.2;
+  assert.ok(nose < 491, `the truck's nose went through the side wall to x ${nose}`);
+  // From the back (-z), heading +z: up the slope, no wall.
+  const up = run([500, 106.2, 450], 0, 150);
+  assert.ok(up.maxY > 108, `climbed to ${up.maxY}`);
+  assert.ok(up.s.pos[2] > 480, `went up the ramp to z ${up.s.pos[2]}`);
+});
