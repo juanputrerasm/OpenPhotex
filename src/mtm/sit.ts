@@ -85,6 +85,8 @@ export interface SitTruck {
   name: string;
   /** The "Your Truck (Not used anymore)" slot: a saved player slot, not a grid vehicle. */
   playerSlot?: boolean;
+  /** The game loader's view of ipos: feet, negative x and z wrapped by +8192. */
+  positionFt?: [number, number, number];
 }
 
 export interface SitArena {
@@ -539,7 +541,10 @@ function parseTruckBlock(lines: string[], startIdx: number): SitTruck {
   const nameIdx = indexOfLinePrefix(lines, "truckFile", startIdx);
   if (nameIdx >= 0 && nameIdx + 1 < lines.length) truck.name = lines[nameIdx + 1].trim();
   const iposIdx = indexOfLinePrefix(lines, "ipos", startIdx);
-  if (iposIdx >= 0 && iposIdx + 1 < lines.length) truck.position = sitWorldTriplet(lines[iposIdx + 1]);
+  if (iposIdx >= 0 && iposIdx + 1 < lines.length) {
+    truck.position = sitWorldTriplet(lines[iposIdx + 1]);
+    truck.positionFt = sitFeetTriplet(lines[iposIdx + 1]);
+  }
   const anglesIdx = indexOfLinePrefix(lines, "theta,phi,psi", startIdx);
   if (anglesIdx >= 0 && anglesIdx + 1 < lines.length) {
     const a = parseFloatTriplet(lines[anglesIdx + 1]);

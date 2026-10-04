@@ -75,3 +75,15 @@ test("SIT boxes carry raw feet and sizes for the simulation", () => {
   assert.equal(box.length, 13);
   assert.equal(box.priority, 2);
 });
+
+test("SIT trucks carry raw feet", () => {
+  const sit = parseMtmSit([
+    "!ambient sound,track length,weather mask", "3,1000.000000,65535",
+    "*** Course ***", "c1Count,course_direction", "0,0",
+    "*** Vehicles ***", "1", "*********************************************",
+    "truckFile", "bigfoot.trk", "ipos", "-12.5,106,3383.3125", "theta,phi,psi", "0,0,1.5",
+  ].join("\r\n"), "T.SIT");
+  const grid = sit.trucks.filter((t) => !t.playerSlot);
+  assert.ok(grid.length >= 1);
+  assert.deepEqual(grid[0].positionFt, [8179.5, 106, 3383.3125]);
+});
