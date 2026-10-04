@@ -189,6 +189,8 @@ export function updateStuck(
 function atRestAction(
   s: Mtm2TruckState, p: Mtm2TruckParams, ground: Mtm2Ground, rc: RecoveryContext, contacts: number,
 ): RecoveryAction {
+  // The caller (0x46da30) acts only in the racing state (4), not through the countdown.
+  if (!rc.racing) return null;
   if (rc.player) return resetTruck(s, rc, contacts) ? "reset" : null;
   if (rc.difficulty < DIFFICULTY.PROFESSIONAL || rc.proLift) return liftOff(s, p, ground, rc, contacts) ? "lift" : null;
   cpuResetTruck(s, rc);

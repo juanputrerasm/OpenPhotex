@@ -125,6 +125,20 @@ test("a slow CPU truck counts down and the helicopter comes after 5 s", () => {
   assert.ok(liftedAt > 4.9 && liftedAt < 5.2, `lifted at ${liftedAt}`);
 });
 
+test("a CPU truck at rest is neither reset nor lifted before the race runs (the countdown), on any difficulty", () => {
+  for (const difficulty of [0, 1, 2]) {
+    const { ground, params } = setup();
+    const state = S.createTruckState([1000, 102.5, 1000], 0, S.GEAR.PARK, params);
+    const rc: S.RecoveryContext = {
+      racing: false, player: false, autopilot: true, difficulty, summit: false,
+      segment: straight([900, 100, 900], [900, 100, 1400]), previous: null,
+    };
+    run(state, params, ground, rc, 8);
+    assert.equal(state.heliTimer, 0, `difficulty ${difficulty}`);
+    assert.ok(Math.abs(state.pos[0] - 1000) < 1 && Math.abs(state.pos[2] - 1000) < 1, `difficulty ${difficulty}`);
+  }
+});
+
 test("truck radius reaches the front right tire's outer edge", () => {
   const { params } = setup();
   const hub = params.hubs[0];
