@@ -265,3 +265,18 @@ test("listed ramps raise the ground's height but not its normal, first one wins"
   ground.ramps.push(S.createRamp({ positionFt: [500, 50, 500], theta: 0, phi: 0, psi: 0, sizeFt: [40, 20, 10], mass: 0 })!);
   near(ground.height(500, 520), 110, 1e-9);
 });
+
+test("pushable force law: the box gets m_box * closing / dt, the truck the same opposite (14.17)", () => {
+  const params = S.createTruckParams({ scrapePoints: scrapePoints() }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+  const s = S.createTruckState([1000, 105, 1000], 0, S.GEAR.FIRST, params);
+  for (let i = 0; i < 4; i++) S.tireGeometry(s, params, i);
+  const dt = 1 / 60, v = 30;
+  s.bvel[2] = v;
+  s.prevPos.set([1000, 105, 1000 - v * dt]);
+  // A wide 50 slug box whose back face the four front hull points (z 9.2) have just crossed.
+  const box = S.createBox([1000, 105, 1000 + 9.2 - 0.25 + 5], [40, 10, 10], 50);
+  S.collideTruckBox(s, params, box, dt);
+  const F = Math.hypot(box.force[0], box.force[1], box.force[2]);
+  near(F, 50 * v / dt, 1e-6 * F);
+  near(Math.hypot(s.extForce[0], s.extForce[1], s.extForce[2]), F, 1e-6 * F);
+});
