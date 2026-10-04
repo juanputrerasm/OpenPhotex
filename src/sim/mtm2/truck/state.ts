@@ -72,8 +72,14 @@ export interface Mtm2TruckState {
   controls: ControlState;
   tires: TireState[];
   axles: AxleState[];
-  /** The 16 contact points in body feet (12 hull, 4 tire contacts). */
+  /** The 16 contact points in body feet (12 hull, 4 tire contacts) (+0x5a4). */
   points: Float64Array;
+  /**
+   * The contact-point slots (+0x670) the push-out and the contact solver read: a copy of
+   * `points` made by the contact probe at the end of each step, which edge contacts then
+   * overwrite (§14.26.4, §14.26.6).
+   */
+  contactPoints: Float64Array;
   /** Per point: stored depth along its normal, the normal (world), the water depth. */
   depths: Float64Array;
   normals: Float64Array;
@@ -162,6 +168,7 @@ export function createTruckState(
     tires: [tire(), tire(), tire(), tire()],
     axles,
     points,
+    contactPoints: points.slice(),
     depths: new Float64Array(16).fill(-9999),
     normals: new Float64Array(16 * 3).map((_, i) => (i % 3 === 1 ? 1 : 0)),
     waterDepths: new Float64Array(16),

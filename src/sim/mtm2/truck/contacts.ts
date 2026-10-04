@@ -22,6 +22,8 @@ export interface ContactBody {
   /** p, q, r. */
   rates: ArrayLike<number>;
   points: ArrayLike<number>;
+  /** A truck's contact-point slots (+0x670), which the solver reads instead of `points` when given (§14.26.6). */
+  contactPoints?: ArrayLike<number>;
   depths: ArrayLike<number>;
   normals: ArrayLike<number>;
   contactCount: number;
@@ -90,7 +92,8 @@ export function solveHullContacts(
   const all: Contact[] = [];
   for (let j = 0; j < s.depths.length; j++) {
     if (!(s.depths[j] >= -0.25)) continue;
-    const body: V = [s.points[j * 3], s.points[j * 3 + 1], s.points[j * 3 + 2]];
+    const cp = s.contactPoints ?? s.points;
+    const body: V = [cp[j * 3], cp[j * 3 + 1], cp[j * 3 + 2]];
     const normal: V = [s.normals[j * 3], s.normals[j * 3 + 1], s.normals[j * 3 + 2]];
     const world = add(add(pos, toWorld(body)), scale(normal, s.depths[j]));
     all.push({ body, world, normal });
