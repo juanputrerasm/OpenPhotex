@@ -114,11 +114,13 @@ test("MTM2 stock courses are straights, three courses per track", { skip: mtm2Fo
     "SUMMIT2.SIT": "12/12/12", "SUMMIT3.SIT": "12/12/12", "TPARK.SIT": "10/10/10",
   };
   const seen: Record<string, string> = {};
+  const sonic: string[] = [];
   for (const name of readdirSync(mtm2Folder.path).filter((n) => /\.pod$/i.test(n))) {
     const bytes = new Uint8Array(readFileSync(join(mtm2Folder.path, name)));
     const pod = parsePod(bytes);
     for (const entry of pod.entries.filter((e) => e.title.endsWith(".SIT"))) {
       const sit = parseMtmSit(readPodEntry(bytes, entry), entry.title);
+      if (sit.sonicTrack) sonic.push(entry.title);
       const courses = [sit.primaryCourse!, ...sit.extendedCourses];
       seen[entry.title] = courses.map((c) => c.segments.length).join("/");
       for (const segment of courses.flatMap((c) => c.segments)) {
@@ -131,6 +133,8 @@ test("MTM2 stock courses are straights, three courses per track", { skip: mtm2Fo
     }
   }
   assert.deepEqual(seen, expected);
+  // The Fly-By line reads "Sonic" on exactly the two hard tracks (MONSTER_EXE_ANALYSIS.md section 4).
+  assert.deepEqual(sonic.sort(), ["CRAZY98.SIT", "WAR.SIT"]);
 });
 
 test("MTM2 terrain rows follow z: stock objects sit closer to the ground that way", { skip: mtm2Folder.skip }, () => {

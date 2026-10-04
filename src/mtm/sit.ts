@@ -103,6 +103,10 @@ export interface MtmSit {
   lvlName: string;
   lineCount: number;
   trackName: string | null;
+  /** The `Track Fly-By .AVI file` line as written. */
+  flyBy: string | null;
+  /** The engine's hidden hard-track switch: the Fly-By line reads `Sonic` (MONSTER.EXE 0x551f90). */
+  sonicTrack: boolean;
   localeName: string | null;
   /** "Track Race Type" as stored; see sitTrackTypeName. */
   trackTypeCode: number | null;
@@ -224,6 +228,8 @@ export function parseMtmSit(input: Uint8Array | string, sitTitle = ""): MtmSit {
     lvlName: normalizePodPath(lines[0]),
     lineCount: lines.length,
     trackName: valueAfter("!Race Track Name")?.trim() ?? null,
+    flyBy: valueAfter("Track Fly-By .AVI file")?.trim() ?? null,
+    sonicTrack: valueAfter("Track Fly-By .AVI file")?.trim() === "Sonic",
     localeName: valueAfter("Race Track Locale")?.trim() ?? null,
     trackTypeCode: null,
     redbookTrack: null,
