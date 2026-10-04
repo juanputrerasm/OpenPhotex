@@ -35,6 +35,7 @@ export { stepMovingObject, groundBoxHeightAt } from "./collide/moving-object.ts"
 export { createRamp, rampHeightAt } from "./collide/ramp.ts";
 export { collideTrucks } from "./collide/truck-truck.ts";
 export { collideBoxes } from "./collide/box-box.ts";
+export * from "./race/race.ts";
 export type { TruckBody } from "./collide/truck-truck.ts";
 export type { SimRamp } from "./collide/ramp.ts";
 export type { ContactResult, ContactBody } from "./truck/contacts.ts";
