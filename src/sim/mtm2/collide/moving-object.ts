@@ -1,7 +1,8 @@
 /*
-  Trains (MTM2_PHYSICS.md §14.18): type 10 boxes that slide along their SIT `bvel` every frame,
-  riding on the terrain or on the deck of a ground box they are above, wrapping round the world.
-  For a truck a train is an immovable box that stands still where it is each frame.
+  Moving objects (MTM2_PHYSICS.md §14.18): type 10 boxes that slide along their SIT `bvel` every
+  frame, riding on the terrain or on the deck of a ground box they are above, wrapping round the
+  world. TPARK's train is one; any type 10 box moves the same way. For a truck a moving object is
+  an immovable box that stands still where it is each frame.
 */
 import { groundHeightAt, type Mtm2Terrain } from "../world/terrain.ts";
 import type { SimBox } from "./box.ts";
@@ -36,8 +37,8 @@ export function groundBoxHeightAt(
   return groundHeightAt(terrain, x, z, snow);
 }
 
-/** One frame of a train car (§14.18): along `bvel` on x and z, at half its height above the ground. */
-export function moveTrain(
+/** One frame of a moving object (§14.18): along `bvel` on x and z, at half its height above the ground. */
+export function stepMovingObject(
   box: SimBox, bvel: ArrayLike<number>, terrain: Mtm2Terrain, ra0: Uint8Array | null, ra1: Uint8Array | null,
   dt: number, snow = false,
 ): void {
