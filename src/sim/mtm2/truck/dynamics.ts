@@ -16,6 +16,7 @@ import type { Mtm2TruckParams } from "./params.ts";
 import type { Mtm2TruckState, TireState } from "./state.ts";
 import { solveHullContacts, type ContactResult } from "./contacts.ts";
 import { fluidAreas } from "./water-drag.ts";
+import { helicopterStep, updateStuck, type RecoveryContext } from "./recovery.ts";
 
 export interface StepContext {
   ground: Mtm2Ground;
@@ -24,6 +25,8 @@ export interface StepContext {
   difficulty: number;
   sonicTrack: boolean;
   dragMode?: boolean;
+  /** The race's view of this truck, for the stuck checks (§10.3); none means no checks. */
+  recovery?: RecoveryContext;
 }
 
 const SKIN = 0.25;
@@ -100,6 +103,12 @@ function tireFrame(s: Mtm2TruckState, t: TireState, steer: number): TireFrame {
  * forces and the post-step come after.
  */
 export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContext, dt: number): ContactResult {
+  // In helicopter flight the helicopter carries the truck instead (§10.3).
+  if (s.heliTimer > 0) {
+    helicopterStep(s, ctx.ground, dt);
+    s.splash = false;
+    return { force: [0, 0, 0], moment: [0, 0, 0], count: 0 };
+  }
   const m = s.matrix;
   eulerToMatrix(s.euler[0], s.euler[1], s.euler[2], m);
   const c = s.controls;
@@ -293,9 +302,12 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
 
   let ivel = toWorld(m, s.bvel[0], s.bvel[1], s.bvel[2]);
   const iv = Math.hypot(ivel[0], ivel[1], ivel[2]);
-  if (iv < 0.1 || (iv < 0.5 && contacts.count >= 3)) {
+  const atRest = iv < 0.1 || (iv < 0.5 && contacts.count >= 3);
+  if (atRest) {
     s.bvel.fill(0); s.rates.fill(0); ivel = [0, 0, 0];
   }
+  // The stuck checks (§10.3); a reset or lift-off keeps this step's move, as in the game.
+  if (ctx.recovery) updateStuck(s, p, ctx.ground, ctx.recovery, iv, contacts.count, atRest, dt);
   for (let k = 0; k < 3; k++) s.pos[k] += ivel[k] * dt;
   integrateOrientation(s, dt);
 
@@ -391,6 +403,8 @@ function probeContacts(s: Mtm2TruckState, p: Mtm2TruckParams, ground: Mtm2Ground
 
 /** The post-step (§14.11): axle reset, push-out, wheels and solid axles, bottoming. */
 export function postStepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ground: Mtm2Ground, dt: number): void {
+  // Skipped in helicopter flight (§10.3).
+  if (s.heliTimer > 0) return;
   const m = s.matrix;
   eulerToMatrix(s.euler[0], s.euler[1], s.euler[2], m);
   s.axles[0].articulation = 0; s.axles[0].travel = p.hubs[0][1];

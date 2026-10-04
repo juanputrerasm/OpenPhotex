@@ -26,4 +26,5 @@ export type { StepContext } from "./truck/dynamics.ts";
 export { solveHullContacts } from "./truck/contacts.ts";
 export { fluidAreas, hullFaceWaterArea, wheelWaterAreas, SPLASH_SPEED } from "./truck/water-drag.ts";
 export type { FluidAreas } from "./truck/water-drag.ts";
+export * from "./truck/recovery.ts";
 export type { ContactResult } from "./truck/contacts.ts";

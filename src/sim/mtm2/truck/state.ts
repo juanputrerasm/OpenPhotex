@@ -73,6 +73,9 @@ export interface Mtm2TruckState {
   contactCount: number;
   /** Seconds left of a helicopter lift (positive), or the stuck count-down (negative). */
   heliTimer: number;
+  /** The helicopter's carry rates (per second) and hover height above the ground (§10.3). */
+  carry: { pitch: number; roll: number; heading: number; x: number; z: number };
+  hover: number;
   /** Impulse moment accumulated by collisions this step. */
   impulseMoment: number;
   /** The last contact force magnitude (crash-damage input). */
@@ -116,6 +119,8 @@ export function createTruckState(
     waterDepths: new Float64Array(16),
     contactCount: 0,
     heliTimer: 0,
+    carry: { pitch: 0, roll: 0, heading: 0, x: 0, z: 0 },
+    hover: 0,
     impulseMoment: 0,
     impactForce: 0,
     splash: false,
