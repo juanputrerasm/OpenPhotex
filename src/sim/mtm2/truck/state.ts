@@ -61,6 +61,11 @@ export interface Mtm2TruckState {
   rates: Float64Array;
   /** Body-to-world rotation, row-major. */
   matrix: Float64Array;
+  /** The rotation at the start of this step (collision rays, §14.17). */
+  prevMatrix: Float64Array;
+  /** Forces and moments from the pair tests (body axes), applied and cleared next step (§14.17). */
+  extForce: Float64Array;
+  extMoment: Float64Array;
   rpm: number;
   controls: ControlState;
   tires: TireState[];
@@ -112,6 +117,9 @@ export function createTruckState(
     euler: Float64Array.from([0, 0, heading]),
     rates: new Float64Array(3),
     matrix: new Float64Array(9),
+    prevMatrix: new Float64Array(9),
+    extForce: new Float64Array(3),
+    extMoment: new Float64Array(3),
     rpm: ENGINE.idleRpm,
     controls: createControlState(gear),
     tires: [tire(), tire(), tire(), tire()],
@@ -129,5 +137,6 @@ export function createTruckState(
     splash: false,
   };
   eulerToMatrix(0, 0, heading, state.matrix);
+  state.prevMatrix.set(state.matrix);
   return state;
 }

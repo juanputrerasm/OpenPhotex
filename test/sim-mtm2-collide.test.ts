@@ -92,7 +92,7 @@ test("hull contacts on a vertical plane get no support (2 and 3 contacts)", () =
     for (const j of touching) { s.depths[j] = 0; s.normals.set([0, 0, -1], j * 3); }
     s.contactCount = touching.length;
     const weight = S.truckWeight(params);
-    const out = S.solveHullContacts(s, params, ground, [0, -weight, 0], weight / 32.174, weight, 1 / 60);
+    const out = S.solveHullContacts(s, params.inertia, ground, [0, -weight, 0], weight / 32.174, weight, 1 / 60);
     assert.equal(out.count, touching.length);
     assert.deepEqual(out.force.map((f) => Math.abs(f)), [0, 0, 0], `${touching.length} contacts`);
   }
@@ -130,4 +130,92 @@ test("a box is pushable only when it is lighter than the truck and has a mass", 
   assert.ok(S.boxIsImmovableFor({ mass: 300 }, 300));
   assert.ok(S.boxIsImmovableFor({ mass: 559 }, 300));
   assert.ok(!S.boxIsImmovableFor({ mass: 77.7 }, 300));
+});
+
+/** Flat ground at 100 ft, one truck and some boxes, stepped in the game's order (§14.16, §14.17). */
+function scene(pos: T3, boxes: ReturnType<typeof S.createBox>[], heading = 0) {
+  const terrain = S.createTerrain(new Uint8Array(65536).fill(50));
+  const ground = S.createTerrainGround(terrain, null, 0, null);
+  const params = S.createTruckParams({ scrapePoints: scrapePoints() }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+  const state = S.createTruckState(pos, heading, S.GEAR.FIRST, params);
+  const ctx = { ground, human: true, difficulty: S.DIFFICULTY.INTERMEDIATE, sonicTrack: false };
+  const dt = 1 / 60;
+  /** World pair force on the truck and on the boxes at the end of the last pair tests. */
+  const pairForces = () => {
+    const ft = Array.from(state.extForce), m = state.matrix;
+    const tw = [0, 1, 2].map((r) => m[r * 3] * ft[0] + m[r * 3 + 1] * ft[1] + m[r * 3 + 2] * ft[2]);
+    const bw = [0, 0, 0];
+    for (const b of boxes) for (let r = 0; r < 3; r++) bw[r] += b.matrix[r * 3] * b.force[0] + b.matrix[r * 3 + 1] * b.force[1] + b.matrix[r * 3 + 2] * b.force[2];
+    return { truck: tw, boxes: bw };
+  };
+  const step = (onPairs?: () => void) => {
+    S.stepTruck(state, params, ctx, dt);
+    for (const b of boxes) S.stepBox(b, ground, dt);
+    for (const b of boxes) S.collideTruckBox(state, params, b, dt);
+    onPairs?.();
+    S.postStepTruck(state, params, ground, dt);
+    for (const b of boxes) S.postStepBox(b, ground);
+  };
+  return { state, params, ground, step, pairForces, dt };
+}
+
+test("box inertias are m (a^2 + b^2) / 12 of the full sizes, in the truck's I1, I2, I3 slots", () => {
+  const b = S.createBox([0, 0, 0], [2, 4, 6], 12); // w, h, l
+  assert.deepEqual(S.boxInertia(b), [12 * (16 + 4) / 12, 12 * (16 + 36) / 12, 12 * (4 + 36) / 12]);
+  assert.deepEqual(Array.from(b.points.slice(0, 6)), [-1, -2, 3, 1, -2, 3]);
+  assert.ok(b.dynamic && !S.createBox([0, 0, 0], [1, 1, 1], 0.5).dynamic, "dynamic from a mass of 1");
+});
+
+test("a box at rest with nothing on it is not stepped; a dropped one settles on the ground", () => {
+  const terrain = S.createTerrain(new Uint8Array(65536).fill(50));
+  const ground = S.createTerrainGround(terrain, null, 0, null);
+  const resting = S.createBox([500, 140, 500], [4, 4, 4], 10);
+  for (let i = 0; i < 60; i++) { S.stepBox(resting, ground, 1 / 60); S.postStepBox(resting, ground); }
+  assert.deepEqual(resting.pos, [500, 140, 500], "floating box left alone");
+  const dropped = S.createBox([500, 104, 500], [4, 4, 4], 10);
+  dropped.vel[1] = -0.5;
+  for (let i = 0; i < 600; i++) { S.stepBox(dropped, ground, 1 / 60); S.postStepBox(dropped, ground); }
+  const bottom = dropped.pos[1] - 2;
+  assert.ok(bottom > 99.5 && bottom < 100.1, `bottom at ${bottom}`);
+  assert.deepEqual(dropped.vel, [0, 0, 0], "at rest");
+});
+
+test("pushing a box: the pair forces are equal and opposite, and the box moves on", () => {
+  const box = S.createBox([1000, 102, 1030], [6, 4, 6], 50);
+  const t = scene([1000, 106.2, 1000], [box]);
+  for (let i = 0; i < 60; i++) t.step();
+  t.state.bvel[2] = 40;
+  let pairs = 0;
+  for (let i = 0; i < 120; i++) {
+    t.step(() => {
+      const { truck, boxes } = t.pairForces();
+      if (Math.hypot(...boxes) === 0) return;
+      pairs++;
+      for (let k = 0; k < 3; k++) near(truck[k], -boxes[k], 1e-6 * Math.max(1, Math.abs(boxes[k])));
+    });
+  }
+  assert.ok(pairs > 0, "the truck met the box");
+  assert.ok(box.pos[2] > 1040, `box pushed to z ${box.pos[2]}`);
+  assert.ok([...box.pos, ...t.state.pos].every(Number.isFinite));
+});
+
+test("a box heavier than the truck is ground for it even though it has a mass", () => {
+  const params = S.createTruckParams({ scrapePoints: scrapePoints() }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+  const heavy = S.createBox([1000, 105, 1000], [40, 10, 40], S.truckWeight(params) / 32.174 * 2);
+  const t = scene([1000, 116, 1000], [heavy]);
+  for (let i = 0; i < 300; i++) t.step();
+  assert.ok(t.state.tires.every((x) => x.onGround), "on the heavy box");
+  assert.ok(t.state.pos[1] > 112, `truck at ${t.state.pos[1]}`);
+});
+
+test("a cone met only by a wheel is shoved by the box corners against the wheel (0x49f920)", () => {
+  const params = S.createTruckParams({ scrapePoints: scrapePoints() }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+  const fr = params.hubs[0];
+  // A 1.5 ft cone ahead of the front right wheel, outside the hull points (x 3.67).
+  const cone = S.createBox([1000 + fr[0] + 0.5, 100.75, 1025], [1.5, 1.5, 1.5], 6);
+  const t = scene([1000, 106.2, 1000], [cone]);
+  for (let i = 0; i < 60; i++) t.step();
+  t.state.bvel[2] = 30;
+  for (let i = 0; i < 90; i++) t.step();
+  assert.ok(Math.hypot(cone.pos[0] - (1000 + fr[0] + 0.5), cone.pos[2] - 1025) > 2, `cone at ${cone.pos}`);
 });

@@ -10,8 +10,23 @@
 import { weatherGrip } from "../constants.ts";
 import type { Mtm2Ground } from "../world/ground.ts";
 import { surfaceMu, surfaceType } from "../world/surface.ts";
-import type { Mtm2TruckParams } from "./params.ts";
-import type { Mtm2TruckState } from "./state.ts";
+
+/**
+ * What the solver reads and writes: a truck (16 points) or a box (8 corners, §14.16). Points are
+ * body feet; depths and normals (world) are the stored contacts; `contactCount` 0 means none.
+ */
+export interface ContactBody {
+  pos: ArrayLike<number>;
+  matrix: ArrayLike<number>;
+  bvel: ArrayLike<number>;
+  /** p, q, r. */
+  rates: ArrayLike<number>;
+  points: ArrayLike<number>;
+  depths: ArrayLike<number>;
+  normals: ArrayLike<number>;
+  contactCount: number;
+  impactForce: number;
+}
 
 export interface ContactResult {
   /** Contact force and moment (about the body origin), body axes. */
@@ -61,8 +76,9 @@ function edgeCrossing(from: V, q: V, edgeFoot: V, u: V): { qx: number; x: V; fro
   return { qx, x: add(edgeFoot, scale(u, along)), fromQ: len(sub(q, from)) };
 }
 
+/** `inertia` is I1, I2, I3 (about z, x, y). */
 export function solveHullContacts(
-  s: Mtm2TruckState, p: Mtm2TruckParams, ground: Mtm2Ground, external: V, mass: number, weight: number, dt: number,
+  s: ContactBody, inertia: ArrayLike<number>, ground: Mtm2Ground, external: V, mass: number, weight: number, dt: number,
 ): ContactResult {
   const out: ContactResult = { force: [0, 0, 0], moment: [0, 0, 0], count: 0 };
   if (s.contactCount === 0) return out;
@@ -72,7 +88,7 @@ export function solveHullContacts(
   const pos: V = [s.pos[0], s.pos[1], s.pos[2]];
 
   const all: Contact[] = [];
-  for (let j = 0; j < 16; j++) {
+  for (let j = 0; j < s.depths.length; j++) {
     if (!(s.depths[j] >= -0.25)) continue;
     const body: V = [s.points[j * 3], s.points[j * 3 + 1], s.points[j * 3 + 2]];
     const normal: V = [s.normals[j * 3], s.normals[j * 3 + 1], s.normals[j * 3 + 2]];
@@ -132,11 +148,11 @@ export function solveHullContacts(
   const N = shares.map((sh) => N0 * sh);
 
   // Recovery (§14.12).
-  const [pRoll, qPitch, rYaw] = s.rates;
+  const pRoll = s.rates[0], qPitch = s.rates[1], rYaw = s.rates[2];
   const omega: V = [qPitch, rYaw, pRoll];
   const speed = Math.hypot(s.bvel[0], s.bvel[1], s.bvel[2]);
   const vScale = Math.min(speed / 3, 1) * 0.75;
-  const [I1, I2, I3] = p.inertia;
+  const I1 = inertia[0], I2 = inertia[1], I3 = inertia[2];
   const sumN = () => N.reduce((a, n) => a + Math.abs(n), 0);
   const recovery = (c: Contact, share: number, total: number) => {
     const vp = scale(add([s.bvel[0], s.bvel[1], s.bvel[2]], cross(omega, c.body)), vScale);

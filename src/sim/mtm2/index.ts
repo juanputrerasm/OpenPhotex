@@ -28,5 +28,6 @@ export { fluidAreas, hullFaceWaterArea, wheelWaterAreas, SPLASH_SPEED } from "./
 export type { FluidAreas } from "./truck/water-drag.ts";
 export * from "./truck/recovery.ts";
 export * from "./collide/box.ts";
-export { collideTruckImmovableBox, truckBoxSeparated } from "./collide/truck-box.ts";
-export type { ContactResult } from "./truck/contacts.ts";
+export { collideTruckBox, collideTruckImmovableBox, truckBoxSeparated } from "./collide/truck-box.ts";
+export { stepBox, postStepBox, boxInertia } from "./collide/box-step.ts";
+export type { ContactResult, ContactBody } from "./truck/contacts.ts";

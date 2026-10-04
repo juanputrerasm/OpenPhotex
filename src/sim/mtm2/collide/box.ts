@@ -11,6 +11,7 @@ export interface SimBox {
   pos: [number, number, number];
   /** Body-to-world rotation, row-major. */
   matrix: Float64Array;
+  /** World velocity (the game's ivel). */
   vel: [number, number, number];
   /** Half extents along the box's x, y, z. */
   half: [number, number, number];
@@ -20,7 +21,28 @@ export interface SimBox {
   radius: number;
   /** The SIT box type, for a level box (-1 for a ground box). */
   type: number;
+  /** Stepped as a rigid body once something moves it: mass at least 1 (§14.15, §14.16). */
+  dynamic: boolean;
+  /** Body velocity, rates (p, q, r) and angles (theta, phi, psi). */
+  bvel: Float64Array;
+  rates: Float64Array;
+  euler: Float64Array;
+  /** The pair tests' force and moment on the box, box axes; used and cleared by its step. */
+  force: Float64Array;
+  moment: Float64Array;
+  /** The 8 corners (body feet, the game's order) and their stored contacts (§14.16). */
+  points: Float64Array;
+  depths: Float64Array;
+  normals: Float64Array;
+  /** Corners the last post-step pushed out (the contact solver runs only when it is not 0). */
+  contactCount: number;
+  impactForce: number;
 }
+
+/** The corner order of the game's box setup (§14.15). */
+const CORNERS: readonly (readonly [number, number, number])[] = [
+  [-1, -1, 1], [1, -1, 1], [-1, 1, 1], [1, 1, 1], [-1, 1, -1], [1, 1, -1], [-1, -1, -1], [1, -1, -1],
+];
 
 /** A box from its centre, full sizes (x, y, z) and angles (theta, phi, psi). */
 export function createBox(
@@ -29,9 +51,15 @@ export function createBox(
   const half: [number, number, number] = [size[0] * 0.5, size[1] * 0.5, size[2] * 0.5];
   const matrix = new Float64Array(9);
   eulerToMatrix(angles[0], angles[1], angles[2], matrix);
+  const points = new Float64Array(24);
+  CORNERS.forEach((c, i) => points.set([c[0] * half[0], c[1] * half[1], c[2] * half[2]], i * 3));
   return {
     pos: [pos[0], pos[1], pos[2]], matrix, vel: [0, 0, 0], half, mass,
-    radius: Math.hypot(half[0], half[1], half[2]), type: -1,
+    radius: Math.hypot(half[0], half[1], half[2]), type: -1, dynamic: mass >= 1,
+    bvel: new Float64Array(3), rates: new Float64Array(3), euler: Float64Array.from([angles[0], angles[1], angles[2]]),
+    force: new Float64Array(3), moment: new Float64Array(3),
+    points, depths: new Float64Array(8).fill(-9999), normals: new Float64Array(24).map((_, i) => (i % 3 === 1 ? 1 : 0)),
+    contactCount: 0, impactForce: 0,
   };
 }
 

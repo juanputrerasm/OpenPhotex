@@ -111,6 +111,7 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
   }
   const m = s.matrix;
   eulerToMatrix(s.euler[0], s.euler[1], s.euler[2], m);
+  s.prevMatrix.set(m);
   const c = s.controls;
   for (let i = 0; i < 4; i++) tireGeometry(s, p, i);
   stepGearbox(c, { rpm: s.rpm, autoShift: p.autoShift, forwardSpeed: s.bvel[2], dragStaging: false });
@@ -263,10 +264,10 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
   ];
 
   // Hull contacts (§14.12), from gravity and drag so far.
-  const contacts = solveHullContacts(s, p, ctx.ground, force as V3 as [number, number, number], mass, W, dt);
+  const contacts = solveHullContacts(s, p.inertia, ctx.ground, force as V3 as [number, number, number], mass, W, dt);
 
-  // Sums (§14.8).
-  for (let k = 0; k < 3; k++) force[k] += contacts.force[k] + tireSum[k];
+  // Sums (§14.8), with the pair forces of the last pair tests (§14.17).
+  for (let k = 0; k < 3; k++) force[k] += contacts.force[k] + tireSum[k] + s.extForce[k];
   const fMag = Math.hypot(force[0], force[1], force[2]);
   if (fMag > 500000) { const sc = 500000 / fMag; for (let k = 0; k < 3; k++) force[k] *= sc; }
   const cg = p.cgOffset;
@@ -274,7 +275,8 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
   moment[0] += cg[2] * drag[1] - cg[1] * drag[2];
   moment[1] += cg[0] * drag[2] - cg[2] * drag[0];
   moment[2] += cg[1] * drag[0] - cg[0] * drag[1];
-  for (let k = 0; k < 3; k++) moment[k] += contacts.moment[k];
+  for (let k = 0; k < 3; k++) moment[k] += contacts.moment[k] + s.extMoment[k];
+  s.extForce.fill(0); s.extMoment.fill(0);
   for (let i = 0; i < 4; i++) {
     const t = s.tires[i];
     const [fx, fy, fz] = t.force;
@@ -318,8 +320,8 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
   return contacts;
 }
 
-/** Euler angle rates and the gimbal guard (§9.4). */
-function integrateOrientation(s: Mtm2TruckState, dt: number): void {
+/** Euler angle rates and the gimbal guard (§9.4); a box uses it too (§14.16). */
+export function integrateOrientation(s: Pick<Mtm2TruckState, "rates" | "euler" | "matrix">, dt: number): void {
   const [p, q, r] = s.rates;
   let [theta, phi, psi] = s.euler;
   let guard: Float64Array | null = null;
