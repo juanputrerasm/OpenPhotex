@@ -103,7 +103,10 @@ export interface MtmSit {
   lvlName: string;
   lineCount: number;
   trackName: string | null;
-  /** The `Track Fly-By .AVI file` line as written. */
+  /**
+   * The `Track Fly-By .AVI file` line as written. A leftover: MTM1's fly-by track preview was never
+   * implemented, and no code plays it; MTM2 reuses the line for `sonicTrack`.
+   */
   flyBy: string | null;
   /** The engine's hidden hard-track switch: the Fly-By line reads `Sonic` (MONSTER.EXE 0x551f90). */
   sonicTrack: boolean;
