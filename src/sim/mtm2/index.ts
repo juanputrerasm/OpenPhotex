@@ -41,6 +41,7 @@ export type { EdgeContext, EdgeForces, EdgeObstacle, EdgeState } from "./collide
 export { collideTrucks } from "./collide/truck-truck.ts";
 export { collideBoxes } from "./collide/box-box.ts";
 export * from "./race/race.ts";
+export * from "./race/summit.ts";
 export type { TruckBody } from "./collide/truck-truck.ts";
 export type { SimRamp } from "./collide/ramp.ts";
 export type { ContactResult, ContactBody } from "./truck/contacts.ts";

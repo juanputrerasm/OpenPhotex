@@ -15,6 +15,7 @@ import { autopilotGain, type Mtm2TruckState } from "../truck/state.ts";
 import type { Mtm2Ground } from "../world/ground.ts";
 import { isArc, type CourseSegment } from "../world/course.ts";
 import type { Mtm2Checkpoint } from "../world/checkpoints.ts";
+import { createSummit, summitTick, type Summit } from "./summit.ts";
 
 type V3 = [number, number, number];
 const toWorld = (m: ArrayLike<number>, x: number, y: number, z: number): V3 =>
@@ -62,9 +63,12 @@ export interface Race {
   /** The race clock (0x6f61d8) and the moment of the start (raceStartTime). */
   clock: number;
   startTime: number;
-  /** The first truck has completed the laps. */
+  /** The first truck has completed the laps (a Summit Rumble: the round has run out). */
   over: boolean;
   difficulty: number;
+  /** Summit Rumble: the scoring state, and the round's length in seconds (§6.3); else null. */
+  summit: Summit | null;
+  roundSeconds: number;
 }
 
 /** The checkpoints as boxes: gate and detector (§6.2), with the checkpoint's heading. */
@@ -79,6 +83,7 @@ export function raceCheckpoints(cps: readonly Mtm2Checkpoint[]): Race["checkpoin
 export function createRace(
   trucks: readonly { s: Mtm2TruckState; p: Mtm2TruckParams; player?: boolean }[],
   checkpoints: Race["checkpoints"], course: readonly CourseSegment[], laps: number, difficulty: number,
+  mode: "circuit" | "summit" = "circuit",
 ): Race {
   return {
     trucks: trucks.map((t, i) => ({
@@ -86,6 +91,9 @@ export function createRace(
       fastestLap: 0, splits: [], finishLap: laps, finished: false, state: 0, progress: 0, place: i + 1,
     })),
     checkpoints, course, laps, clock: 0, startTime: COUNTDOWN_S, over: false, difficulty,
+    // A Rumble's zone and summit are the first two checkpoints' gates; its laps are minutes.
+    summit: mode === "summit" && checkpoints.length >= 2 ? createSummit(trucks.length, checkpoints[0]!.gate, checkpoints[1]!.gate) : null,
+    roundSeconds: mode === "summit" ? laps * 60 : 0,
   };
 }
 
@@ -244,13 +252,32 @@ export function raceOrder(race: Race): void {
 export function raceTick(race: Race, dt: number, ap: AutopilotContext, recover?: { ground: Mtm2Ground; rc: (t: RaceTruck) => RecoveryContext }): void {
   if (raceStarted(race)) {
     for (const t of race.trucks) {
-      testCheckpoint(race, t, dt, recover ? { ground: recover.ground, rc: recover.rc(t) } : undefined);
+      if (!race.summit) testCheckpoint(race, t, dt, recover ? { ground: recover.ground, rc: recover.rc(t) } : undefined);
       const seg = race.course[t.s.ap.segment];
       if (seg) t.s.ap.eta += (segmentEta(t.s, t.p, seg, ap.height) - t.s.ap.eta) * dt * 0.75;
       advanceAutopilotSegment(t.s, { ...ap, place: t.place, rubberBand: !t.player && !race.trucks.some((o) => o.player && o.place === 1) && race.trucks.some((o) => o.player) }, t.p);
       t.progress = t.s.ap.progress = segmentProgress(t, race.course, race.difficulty);
     }
-    raceOrder(race);
+    if (race.summit) summitRound(race, dt);
+    else raceOrder(race);
   }
   race.clock += dt;
+}
+
+/** A Summit Rumble tick (§6.3): the scores, the places by score, and the end of the round. */
+function summitRound(race: Race, dt: number): void {
+  const summit = race.summit!;
+  summitTick(summit, race.trucks.map((t) => t.s.pos), dt);
+  race.trucks.forEach((a, i) => {
+    let place = 1;
+    race.trucks.forEach((b, j) => {
+      const sa = summit.trucks[i]!.score, sb = summit.trucks[j]!.score;
+      if (sb > sa || (sb === sa && j < i)) place++;
+    });
+    a.place = place;
+  });
+  if (race.clock + dt - race.startTime >= race.roundSeconds) {
+    race.over = true;
+    for (const t of race.trucks) t.finished = true;
+  }
 }
