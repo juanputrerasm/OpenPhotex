@@ -33,6 +33,8 @@ export interface TireState {
   /** Spring load and grip limit this step. */
   load: number;
   grip: number;
+  /** The grip factor `K mu weather cut` (tire +0x8c); kept from the last contact in the air. */
+  mu: number;
   /** Hub and contact point, body feet; contact velocity, body ft/s. */
   hub: [number, number, number];
   contact: [number, number, number];
@@ -89,12 +91,32 @@ export interface Mtm2TruckState {
   impactForce: number;
   /** Water was met fast enough to splash this step (§14.7.1). */
   splash: boolean;
+  /** The autopilot's course state (§14.22, §14.23). */
+  ap: AutopilotState;
+}
+
+export interface AutopilotState {
+  /** The course segment being followed, 0-based (the game's ap.cnumber - 1). */
+  segment: number;
+  /** The course integrator (+0x8ac), built up in the air, cleared on each new segment. */
+  integral: number;
+  /** The difficulty gain G (+0x8b8): 0.5, 0.75, 1.0, less any rubber-band bonus. */
+  gain: number;
+  /** Segments passed (+0x8f0). */
+  segmentsPassed: number;
+  /** The last target speed (+0x89c), ft/s. */
+  target: number;
+}
+
+/** The difficulty gain for a difficulty (0 Rookie, 1 Intermediate, 2 Professional). */
+export function autopilotGain(difficulty: number): number {
+  return difficulty === 0 ? 0.5 : difficulty === 2 ? 1.0 : 0.75;
 }
 
 function tire(): TireState {
   return {
     compression: 0, extensionRate: 0, penetration: -9999, lever: 0, normal: [0, 1, 0], onGround: false,
-    spin: 0, angle: 0, pitchG: 0, rollG: 0, load: 0, grip: 0,
+    spin: 0, angle: 0, pitchG: 0, rollG: 0, load: 0, grip: 0, mu: 0,
     hub: [0, 0, 0], contact: [0, 0, 0], velocity: [0, 0, 0], force: [0, 0, 0],
     waterDepth: 0, waterPoint: [0, 0, 0],
   };
@@ -135,6 +157,7 @@ export function createTruckState(
     impulseMoment: 0,
     impactForce: 0,
     splash: false,
+    ap: { segment: 0, integral: 0, gain: autopilotGain(params?.difficulty ?? 1), segmentsPassed: 0, target: 0 },
   };
   eulerToMatrix(0, 0, heading, state.matrix);
   state.prevMatrix.set(state.matrix);
