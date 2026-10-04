@@ -339,3 +339,33 @@ test("box against box: a dropped box rests on an immovable one, and boxes stack 
   S.collideBoxes(a, b, dt);
   assert.deepEqual(Array.from(a.depths), new Array(8).fill(-9999));
 });
+
+test("wheels against wheels: side by side, the tyres overlap and push the trucks apart where the hulls do not touch (14.20)", () => {
+  const terrain = S.createTerrain(new Uint8Array(65536).fill(50));
+  const ground = S.createTerrainGround(terrain, null, 0, null);
+  const make = (x: number) => {
+    const p = S.createTruckParams({ scrapePoints: TRK_HULL }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+    return { s: S.createTruckState([x, 106.2, 1000], 0, S.GEAR.NEUTRAL, p), p };
+  };
+  const ctx = { ground, human: false, difficulty: S.DIFFICULTY.INTERMEDIATE, sonicTrack: false };
+  const dt = 1 / 60;
+  // Settle each truck alone, far apart, so the hubs and axles have their resting values.
+  const a = make(1000), b = make(1100);
+  for (let i = 0; i < 90; i++) for (const t of [a, b]) { S.stepTruck(t.s, t.p, ctx, dt); S.postStepTruck(t.s, t.p, ground, dt); }
+  // b beside a, 9 ft to its right: its left tyres overlap a's right tyres by about 3 ft, the
+  // hull boxes (+-3.67 ft) stay 1.7 ft apart. b moves towards a.
+  b.s.pos[0] = a.s.pos[0] + 9;
+  b.s.bvel[0] = -5;
+  const gap0 = b.s.pos[0] - a.s.pos[0];
+  S.collideTrucks(a, b, dt);
+  assert.ok(b.s.pos[0] - a.s.pos[0] > gap0, `pushed apart: ${b.s.pos[0] - a.s.pos[0]} ft (was ${gap0})`);
+  assert.ok(a.s.extForce[0] < 0 && b.s.extForce[0] > 0, `forces ${a.s.extForce[0]}, ${b.s.extForce[0]}`);
+  // Without the overlap, nothing.
+  const c = make(1200), d = make(1300);
+  for (let i = 0; i < 90; i++) for (const t of [c, d]) { S.stepTruck(t.s, t.p, ctx, dt); S.postStepTruck(t.s, t.p, ground, dt); }
+  d.s.pos[0] = c.s.pos[0] + 13;
+  d.s.bvel[0] = -5;
+  S.collideTrucks(c, d, dt);
+  assert.equal(c.s.extForce[0], 0);
+  assert.equal(d.s.pos[0] - c.s.pos[0], 13);
+});
