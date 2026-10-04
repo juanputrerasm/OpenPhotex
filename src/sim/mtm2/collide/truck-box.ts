@@ -14,6 +14,7 @@ import type { SimBox } from "./box.ts";
 import { truckRadius } from "../truck/recovery.ts";
 import { truckWeight } from "../truck/dynamics.ts";
 import { INV_G } from "../constants.ts";
+import { HULL_ORDER, WHEEL_ORDER, depthInside, faceNormal, nearestFace } from "./faces.ts";
 
 type V3 = [number, number, number];
 
@@ -21,65 +22,6 @@ const toWorld = (m: ArrayLike<number>, x: number, y: number, z: number): V3 =>
   [m[0] * x + m[1] * y + m[2] * z, m[3] * x + m[4] * y + m[5] * z, m[6] * x + m[7] * y + m[8] * z];
 const toBody = (m: ArrayLike<number>, x: number, y: number, z: number): V3 =>
   [m[0] * x + m[3] * y + m[6] * z, m[1] * x + m[4] * y + m[7] * z, m[2] * x + m[5] * y + m[8] * z];
-
-/** The six faces: left (-x), right (+x), bottom, top, front (+z), back (-z). */
-const FACES: readonly { axis: number; sign: number }[] = [
-  { axis: 0, sign: -1 }, { axis: 0, sign: 1 },
-  { axis: 1, sign: -1 }, { axis: 1, sign: 1 },
-  { axis: 2, sign: 1 }, { axis: 2, sign: -1 },
-];
-/** The order the game tries them in: hull points start with y, wheels with x. */
-const HULL_ORDER = [2, 3, 4, 5, 0, 1] as const;
-const WHEEL_ORDER = [0, 1, 2, 3, 4, 5] as const;
-
-interface FaceHit {
-  /** Index into FACES, or -1. */
-  face: number;
-}
-
-/**
- * The nearest face a ray crosses inside the face (at most two crossings are counted, as in the
- * game), trying the faces in `order`; later faces win ties. `directional`: only faces ahead of
- * the origin (t > 0) whose outward normal faces the ray count.
- */
-function nearestFace(
-  half: V3, origin: V3, dir: V3, directional: boolean, order: readonly number[],
-): FaceHit {
-  let best = 999999, face = -1, crossings = 0;
-  for (const f of order) {
-    const { axis, sign } = FACES[f];
-    if (dir[axis] === 0) continue;
-    if (crossings >= 2) continue;
-    const t = (sign * half[axis] - origin[axis]) / dir[axis];
-    const u = (axis + 1) % 3, v = (axis + 2) % 3;
-    const pu = origin[u] + dir[u] * t, pv = origin[v] + dir[v] * t;
-    if (!(pu < half[u] && pu > -half[u] && pv < half[v] && pv > -half[v])) continue;
-    crossings++;
-    const at = Math.abs(t);
-    if (directional) {
-      const facing = dir[axis] * sign < 0;
-      if (!(at <= best && t > 0 && facing)) continue;
-    } else if (!(at <= best)) {
-      continue;
-    }
-    best = at;
-    face = f;
-  }
-  return { face };
-}
-
-/** A point's depth inside a face (positive inside), box frame. */
-function depthInside(half: V3, p: V3, face: number): number {
-  const { axis, sign } = FACES[face];
-  return sign > 0 ? half[axis] - p[axis] : p[axis] + half[axis];
-}
-
-/** The face's outward normal in the box frame. */
-function faceNormal(face: number): V3 {
-  const n: V3 = [0, 0, 0];
-  n[FACES[face].axis] = FACES[face].sign;
-  return n;
-}
 
 /** The sphere and separating-axis early out (§14.14 step 1). */
 export function truckBoxSeparated(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, dt: number): boolean {

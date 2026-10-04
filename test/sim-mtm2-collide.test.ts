@@ -316,3 +316,26 @@ test("a head-on hit between equal trucks ends with equal speeds (14.20)", () => 
   assert.ok(Math.abs(v(a) - v(b)) < 1, `speeds ${v(a)} and ${v(b)}`);
   assert.ok([...a.s.pos, ...b.s.pos].every(Number.isFinite));
 });
+
+test("box against box: a dropped box rests on an immovable one, and boxes stack (14.21)", () => {
+  const terrain = S.createTerrain(new Uint8Array(65536).fill(50)); // 100 ft
+  const ground = S.createTerrainGround(terrain, null, 0, null);
+  const base = S.createBox([500, 105, 500], [20, 10, 20], 0); // top at 110
+  const lower = S.createBox([500, 113, 500], [6, 4, 6], 10);
+  const upper = S.createBox([500.5, 118, 500], [4, 4, 4], 5);
+  lower.vel[1] = upper.vel[1] = -0.5;
+  const boxes = [base, lower, upper];
+  const dt = 1 / 60;
+  for (let i = 0; i < 600; i++) {
+    for (const b of boxes) S.stepBox(b, ground, dt);
+    for (let a = 0; a < boxes.length; a++) for (let b = a + 1; b < boxes.length; b++) S.collideBoxes(boxes[a], boxes[b], dt);
+    for (const b of boxes) S.postStepBox(b, ground);
+  }
+  assert.ok(Math.abs(lower.pos[1] - 2 - 110) < 0.5, `lower box bottom at ${lower.pos[1] - 2}`);
+  assert.ok(Math.abs(upper.pos[1] - 2 - (lower.pos[1] + 2)) < 0.5, `upper box bottom at ${upper.pos[1] - 2}, lower top ${lower.pos[1] + 2}`);
+  assert.deepEqual(base.pos, [500, 105, 500], "the base never moves");
+  // Two immovable boxes do nothing to each other.
+  const a = S.createBox([0, 0, 0], [4, 4, 4], 0), b = S.createBox([1, 0, 0], [4, 4, 4], 0);
+  S.collideBoxes(a, b, dt);
+  assert.deepEqual(Array.from(a.depths), new Array(8).fill(-9999));
+});
