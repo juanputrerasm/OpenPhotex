@@ -14,6 +14,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { buildCourse, isArc, type CourseStraight } from "../src/sim/mtm2/world/course.ts";
 import {
+  mtm2Sim, parseMtmLvl,
   parseKlp, parseMtmAmbientSounds, parseMtmSun, parseLoc, parseCockpitLayout,
   parseBin,
   parseFlyScf,
@@ -130,6 +131,37 @@ test("MTM2 stock courses are straights, three courses per track", { skip: mtm2Fo
     }
   }
   assert.deepEqual(seen, expected);
+});
+
+test("MTM2 terrain rows follow z: stock objects sit closer to the ground that way", { skip: mtm2Folder.skip }, () => {
+  const pods = readdirSync(mtm2Folder.path).filter((n) => /\.pod$/i.test(n)).map((n) => {
+    const bytes = new Uint8Array(readFileSync(join(mtm2Folder.path, n)));
+    return { bytes, pod: parsePod(bytes) };
+  });
+  const find = (name: string) => {
+    for (const { bytes, pod } of pods) { const e = findPodEntry(pod, name); if (e) return readPodEntry(bytes, e); }
+    return null;
+  };
+  let tracks = 0;
+  for (const { bytes, pod } of pods) {
+    for (const e of pod.entries.filter((x) => x.title.endsWith(".SIT"))) {
+      const sit = parseMtmSit(readPodEntry(bytes, e), e.title);
+      const placed = sit.boxes.filter((b) => b.positionFt && b.type !== 99);
+      if (placed.length < 100) continue;
+      const lvl = parseMtmLvl(find(`LEVELS\\${e.title.replace(/\.SIT$/, ".LVL")}`)!);
+      const terrain = mtm2Sim.createTerrain(find(`DATA\\${lvl.rawName.split("\\").pop()}`)!);
+      const median = (swap: boolean) => {
+        const errors = placed.map((b) => {
+          const [x, y, z] = b.positionFt!;
+          return Math.abs(y - (swap ? mtm2Sim.terrainHeightAt(terrain, z, x) : mtm2Sim.terrainHeightAt(terrain, x, z)));
+        }).sort((a, b) => a - b);
+        return errors[errors.length >> 1];
+      };
+      assert.ok(median(false) < median(true), `${e.title}: ${median(false)} vs ${median(true)} swapped`);
+      tracks++;
+    }
+  }
+  assert.equal(tracks, 11);
 });
 
 test("MTM2 stock sound, sun, message and cockpit files read", { skip: mtm2Folder.skip }, () => {
