@@ -52,6 +52,8 @@ export interface AxleState {
 
 export interface Mtm2TruckState {
   pos: Float64Array;
+  /** The position before this step's move (collision rays start there, §14.14). */
+  prevPos: Float64Array;
   bvel: Float64Array;
   /** theta, phi, psi. */
   euler: Float64Array;
@@ -105,6 +107,7 @@ export function createTruckState(
   const axles: AxleState[] = [0, 2].map((t) => ({ articulation: 0, travel: params ? params.hubs[t][1] : -4 }));
   const state: Mtm2TruckState = {
     pos: Float64Array.from([pos[0], pos[1], pos[2]]),
+    prevPos: Float64Array.from([pos[0], pos[1], pos[2]]),
     bvel: new Float64Array(3),
     euler: Float64Array.from([0, 0, heading]),
     rates: new Float64Array(3),

@@ -27,4 +27,6 @@ export { solveHullContacts } from "./truck/contacts.ts";
 export { fluidAreas, hullFaceWaterArea, wheelWaterAreas, SPLASH_SPEED } from "./truck/water-drag.ts";
 export type { FluidAreas } from "./truck/water-drag.ts";
 export * from "./truck/recovery.ts";
+export * from "./collide/box.ts";
+export { collideTruckImmovableBox, truckBoxSeparated } from "./collide/truck-box.ts";
 export type { ContactResult } from "./truck/contacts.ts";
