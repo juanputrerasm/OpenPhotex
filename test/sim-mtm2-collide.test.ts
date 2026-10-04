@@ -238,3 +238,30 @@ test("a train slides along its bvel on the ground, rides a ground-box deck it is
   S.moveTrain(edge, [10, 0, -200], terrain, null, null, 1);
   assert.deepEqual(edge.pos, [8, 102.5, 8092]);
 });
+
+test("a ramp is a wedge on its position, rising to its height at its front (+z) (14.19)", () => {
+  const r = S.createRamp({ positionFt: [500, 100, 500], theta: 0, phi: 0, psi: 0, sizeFt: [40, 20, 10], mass: 0 })!;
+  near(r.radius, Math.hypot(10, 10, 20));
+  near(S.rampHeightAt(r, 500, 520)!, 110); // front edge
+  near(S.rampHeightAt(r, 500, 480)!, 100); // back edge
+  near(S.rampHeightAt(r, 505, 500)!, 105);
+  assert.equal(S.rampHeightAt(r, 511, 500), null, "outside the width");
+  // Turned by psi = 90 degrees, the front points along +x.
+  const t = S.createRamp({ positionFt: [500, 100, 500], theta: 0, phi: 0, psi: Math.PI / 2, sizeFt: [40, 20, 10], mass: 0 })!;
+  near(S.rampHeightAt(t, 520, 500)!, 110, 1e-9);
+  near(S.rampHeightAt(t, 480, 500)!, 100, 1e-9);
+});
+
+test("listed ramps raise the ground's height but not its normal, first one wins", () => {
+  const terrain = S.createTerrain(new Uint8Array(65536).fill(50));
+  const ground = S.createTerrainGround(terrain, null, 0, null);
+  const r = S.createRamp({ positionFt: [500, 100, 500], theta: 0, phi: 0, psi: 0, sizeFt: [40, 20, 10], mass: 0 })!;
+  near(ground.height(500, 520), 100, 1e-9);
+  ground.ramps.push(r);
+  near(ground.height(500, 520), 110);
+  const n: T3 = [0, 0, 0];
+  ground.normal(500, 510, n);
+  assert.deepEqual(n.map((v) => v + 0), [0, 1, 0]);
+  ground.ramps.push(S.createRamp({ positionFt: [500, 50, 500], theta: 0, phi: 0, psi: 0, sizeFt: [40, 20, 10], mass: 0 })!);
+  near(ground.height(500, 520), 110, 1e-9);
+});
