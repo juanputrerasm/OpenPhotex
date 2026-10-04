@@ -219,3 +219,22 @@ test("a cone met only by a wheel is shoved by the box corners against the wheel 
   for (let i = 0; i < 90; i++) t.step();
   assert.ok(Math.hypot(cone.pos[0] - (1000 + fr[0] + 0.5), cone.pos[2] - 1025) > 2, `cone at ${cone.pos}`);
 });
+
+test("a train slides along its bvel on the ground, rides a ground-box deck it is above, and wraps (14.18)", () => {
+  const terrain = S.createTerrain(new Uint8Array(65536).fill(50)); // 100 ft
+  // A deck from 104 to 110 ft over cell (40, 40).
+  const ra0 = new Uint8Array(65536), ra1 = new Uint8Array(65536);
+  ra0[40 * 256 + 40] = 52; ra1[40 * 256 + 40] = 55;
+  near(S.groundBoxHeightAt(terrain, ra0, ra1, 40 * 32 + 5, 40 * 32 + 5, 120), 110);
+  near(S.groundBoxHeightAt(terrain, ra0, ra1, 40 * 32 + 5, 40 * 32 + 5, 103), 100, 1e-9);
+  near(S.groundBoxHeightAt(terrain, ra0, ra1, 41 * 32 + 5, 40 * 32 + 5, 120), 100, 1e-9);
+
+  const car = S.createBox([39 * 32 + 16, 112.5, 40 * 32 + 16], [17, 5, 85], 0);
+  S.moveTrain(car, [32, 0, 0], terrain, ra0, ra1, 1);
+  assert.deepEqual(car.pos, [40 * 32 + 16, 112.5, 40 * 32 + 16], "on the deck: 110 + 2.5");
+  S.moveTrain(car, [32, 0, 0], terrain, ra0, ra1, 1);
+  near(car.pos[1], 102.5);
+  const edge = S.createBox([8190, 102.5, 100], [17, 5, 85], 0);
+  S.moveTrain(edge, [10, 0, -200], terrain, null, null, 1);
+  assert.deepEqual(edge.pos, [8, 102.5, 8092]);
+});
