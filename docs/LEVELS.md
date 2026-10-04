@@ -21,6 +21,10 @@ Companion grids that no level names are found beside the heightfield by stem: `.
 
 **`parseMtmSit(bytes, title)`** reads a `.SIT`: label/value text with a header, then `*** Ramps ***`, `*** Boxes ***`, `*** Top Crush ***`, `*** Course ***` (with MTM2's extended courses), `*** Stadium ***`, `*** Backdrop ***` and the vehicles. It returns positions in editor space, as the engine stores them: 2 units per foot horizontally and the 2 ft legacy height step vertically (`sitWorldTriplet`).
 
+**Courses.** Each segment keeps the editor-space `start`/`end` (as above) and also the game loader's view (MONSTER.EXE 0x4e0970): `startFt`/`endFt` in feet with a negative x or z wrapped by +8192 ft, `ctype`, `cspeedType`, `cdecPoint`, `cspeed`, `lastEntry` and `trackWidthFt` (32 ft when the optional `&cSpeedLimit,cTrackWidth` line is absent). Each course also records its `direction`. A segment's lines are looked up within its own block, so a missing optional line never borrows the next segment's values. The stored segments are only the course's **straights** (`ctype 1, cspeed_type 0` in all 15 stock SITs, three courses each); the game numbers them 1, 3, 5... and builds an arc between each pair at load time. OpenMTM2's `docs/MTM2_PHYSICS.md` section 12 describes that construction. `mtm2Sim.buildCourse` implements it (see `SIM_MTM2.md`).
+
+**Boxes.** Besides the editor-space `position` and rounded sizes, each box (and each top-crush part) carries `positionFt`, the loader's feet with a negative x or z wrapped by +8192, and `sizeFt`, the `length,width,height` line unrounded. These are full extents; a box with a model takes its size from the model in game.
+
 Neither the `.SIT` nor its `.LVL` names its game. **`detectSitOrigin(lines, title)`** decides between MTM1, MTM2 and CPR from what the file contains, and `sitTrackTypeName` names the track type code for that game.
 
 **`parseMtmLvl(bytes)`** reads the positional `.LVL`. **`parseTexList`** reads a `.TEX` texture list and **`parseTty`** its `.TTY` type table.

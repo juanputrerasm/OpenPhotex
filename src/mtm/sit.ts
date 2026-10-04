@@ -37,16 +37,39 @@ export interface SitBox {
   checkpointSequence: number;
   /** Velocity in ft/s as written, when the record carries one. */
   bvel?: [number, number, number];
+  /** The game loader's view (MONSTER.EXE 0x5495e0): feet, negative x and z wrapped by +8192. */
+  positionFt?: [number, number, number];
+  /** Full length, width and height in feet as written, unrounded (a model's extents replace them in game). */
+  sizeFt?: [number, number, number];
   /** Top-crush parts: which record they came from, and which part they are. */
   crushGroup?: number;
   crushRole?: "body" | "cab";
 }
 
 export interface SitCourseSegment {
+  /** Editor space, as sitWorldTriplet gives (2 units per foot horizontally, 2 ft height steps). */
   start: [number, number, number];
   end: [number, number, number];
   speedLimit: number;
+  /** As stored; the parser's historical default when the `&` line is absent is 64. */
   trackWidth: number;
+  /** The game loader's view (MONSTER.EXE 0x4e0970): feet, negative x and z wrapped by +8192. */
+  startFt: [number, number, number];
+  endFt: [number, number, number];
+  /** 1 in every stock SIT: the file holds straights only; the game builds the arcs between them. */
+  ctype: number;
+  cspeedType: number;
+  cdecPoint: number;
+  cspeed: number;
+  lastEntry: number;
+  /** cTrackWidth in feet; the game defaults it to 32 when the `&` line is absent. */
+  trackWidthFt: number;
+}
+
+export interface SitCourse {
+  segments: SitCourseSegment[];
+  /** course_direction from the `c1Count,course_direction` line. */
+  direction: number;
 }
 
 export interface SitTruck {
@@ -83,8 +106,8 @@ export interface MtmSit {
   weatherMask: number | null;
   /** Ramps, then boxes, then top-crush parts (body, cab) in file order. */
   boxes: SitBox[];
-  primaryCourse: { segments: SitCourseSegment[] } | null;
-  extendedCourses: { segments: SitCourseSegment[] }[];
+  primaryCourse: SitCourse | null;
+  extendedCourses: SitCourse[];
   arena: SitArena | null;
   /** Null when the file has no *** Backdrop *** section. */
   backdropModelNames: string[] | null;
@@ -149,6 +172,22 @@ export function sitTrackTypeName(code: number, origin: SitOrigin): string {
   Community Patch 3 fork added a 1/256-step fraction per axis. Keeping the value as a float is
   strictly more precise than either.
 */
+/*
+  The same triplet as the game's course loader keeps it (MONSTER.EXE 0x4e0970): feet, with a
+  negative x or z wrapped by +8192 ft (the 256 x 32 ft world) and y untouched.
+*/
+export function sitFeetTriplet(value: string): [number, number, number] {
+  const parts = value.split(",");
+  if (parts.length < 3) return [0, 0, 0];
+  const num = (v: string) => { const n = parseFloat(v.trim()); return Number.isFinite(n) ? n : 0; };
+  let x = num(parts[0]);
+  const y = num(parts[1]);
+  let z = num(parts[2]);
+  if (x < 0) x += 8192;
+  if (z < 0) z += 8192;
+  return [x, y, z];
+}
+
 export function sitWorldTriplet(value: string): [number, number, number] {
   const parts = value.split(",");
   if (parts.length < 3) return [0, 0, 0];
@@ -253,7 +292,10 @@ function parseBoxBlock(lines: string[], blockStart: number, isRamp: boolean): Si
   const endIndex = blockEnd >= 0 ? blockEnd : lines.length;
 
   const iposIdx = indexOfLinePrefix(lines, "ipos", blockStart, endIndex);
-  if (iposIdx >= 0 && iposIdx + 1 < lines.length) box.position = sitWorldTriplet(lines[iposIdx + 1]);
+  if (iposIdx >= 0 && iposIdx + 1 < lines.length) {
+    box.position = sitWorldTriplet(lines[iposIdx + 1]);
+    box.positionFt = sitFeetTriplet(lines[iposIdx + 1]);
+  }
 
   const anglesIdx = indexOfLinePrefix(lines, "theta,phi,psi", blockStart, endIndex);
   if (anglesIdx >= 0 && anglesIdx + 1 < lines.length) {
@@ -267,6 +309,7 @@ function parseBoxBlock(lines: string[], blockStart: number, isRamp: boolean): Si
   if (dimIdx >= 0 && dimIdx + 1 < lines.length) {
     const sz = parseFloatTriplet(lines[dimIdx + 1]);
     box.length = Math.round(sz[0]); box.width = Math.round(sz[1]); box.height = Math.round(sz[2]);
+    box.sizeFt = [sz[0], sz[1], sz[2]];
   }
 
   if (!isRamp) {
@@ -326,8 +369,8 @@ function parseTopCrushSection(lines: string[], boxes: SitBox[]): void {
       checkpointSequence: -1, crushGroup: i,
     };
     if (ipos) {
-      boxes.push({ ...common, position: sitWorldTriplet(ipos), modelName: modelOf(valueAfter("modelName")), crushRole: "body" });
-      boxes.push({ ...common, position: sitWorldTriplet(ipos2!), modelName: modelOf(valueAfter("cabModelName")), crushRole: "cab" });
+      boxes.push({ ...common, position: sitWorldTriplet(ipos), positionFt: sitFeetTriplet(ipos), modelName: modelOf(valueAfter("modelName")), crushRole: "body" });
+      boxes.push({ ...common, position: sitWorldTriplet(ipos2!), positionFt: sitFeetTriplet(ipos2!), modelName: modelOf(valueAfter("cabModelName")), crushRole: "cab" });
     }
     cursor = blockEnd;
   }
@@ -336,7 +379,7 @@ function parseTopCrushSection(lines: string[], boxes: SitBox[]): void {
 function parseCourses(lines: string[], sit: MtmSit): void {
   const courseSection = indexOfLine(lines, "*** Course ***");
   if (courseSection < 0 || courseSection + 2 >= lines.length) return;
-  sit.primaryCourse = { segments: [] };
+  sit.primaryCourse = { segments: [], direction: parseLeadingInt(lines[courseSection + 2]?.split(",")[1]) };
   const count = parseLeadingInt(lines[courseSection + 2]);
   parseCourseBlocks(lines, courseSection + 3, count, sit.primaryCourse);
   const extSection = indexOfLine(lines, "@*********** Extended Course Definitions *************");
@@ -344,7 +387,10 @@ function parseCourses(lines: string[], sit: MtmSit): void {
     const extCount = Math.min(4, parseLeadingInt(lines[extSection + 1]));
     let c = extSection + 2;
     for (let i = 0; i < extCount && c < lines.length; i++) {
-      const course = { segments: [] as SitCourseSegment[] };
+      const course: SitCourse = {
+        segments: [],
+        direction: c + 1 < lines.length ? parseLeadingInt(lines[c + 1].split(",")[1]) : 0,
+      };
       const segCount = c + 1 < lines.length ? parseLeadingInt(lines[c + 1]) : 0;
       c = parseCourseBlocks(lines, c + 2, segCount, course);
       if (course.segments.length) sit.extendedCourses.push(course);
@@ -352,21 +398,57 @@ function parseCourses(lines: string[], sit: MtmSit): void {
   }
 }
 
-function parseCourseBlocks(lines: string[], startCursor: number, count: number, course: { segments: SitCourseSegment[] }): number {
+/*
+  Each segment's lines are looked up within its own block (up to the next "****" line). The
+  `&cSpeedLimit,cTrackWidth` line is optional: the game reads it only when the next character is
+  `&` and otherwise uses 0 and 32 ft (MONSTER.EXE 0x4e0970), so a search that ran on into the next
+  segment would borrow its values.
+*/
+function parseCourseBlocks(lines: string[], startCursor: number, count: number, course: SitCourse): number {
   let cursor = startCursor;
   for (let i = 0; i < count; i++) {
     cursor = nextBlockStart(lines, cursor);
     if (cursor < 0) return lines.length;
-    const segment: SitCourseSegment = { start: [0, 0, 0], end: [0, 0, 0], speedLimit: 0, trackWidth: 64 };
-    const cstartIdx = indexOfLinePrefix(lines, "cstart", cursor);
-    if (cstartIdx >= 0 && cstartIdx + 1 < lines.length) segment.start = sitWorldTriplet(lines[cstartIdx + 1]);
-    const cendIdx = indexOfLinePrefix(lines, "cend", cursor);
-    if (cendIdx >= 0 && cendIdx + 1 < lines.length) segment.end = sitWorldTriplet(lines[cendIdx + 1]);
-    const swIdx = indexOfLinePrefix(lines, "&cSpeedLimit,cTrackWidth", cursor);
-    if (swIdx >= 0 && swIdx + 1 < lines.length) {
-      const parts = lines[swIdx + 1].split(",");
+    const next = nextBlockStart(lines, cursor + 1);
+    const blockEnd = next < 0 ? lines.length : next;
+    const segment: SitCourseSegment = {
+      start: [0, 0, 0], end: [0, 0, 0], speedLimit: 0, trackWidth: 64,
+      startFt: [0, 0, 0], endFt: [0, 0, 0], ctype: 0, cspeedType: 0, cdecPoint: 0, cspeed: 0, lastEntry: 0,
+      trackWidthFt: 32,
+    };
+    const valueLine = (label: string) => {
+      const at = indexOfLinePrefix(lines, label, cursor, blockEnd);
+      return at >= 0 && at + 1 < blockEnd ? lines[at + 1] : null;
+    };
+    const types = valueLine("ctype,cspeed_type");
+    if (types !== null) {
+      const parts = types.split(",");
+      segment.ctype = parseLeadingInt(parts[0]);
+      segment.cspeedType = parseLeadingInt(parts[1]);
+    }
+    const cstart = valueLine("cstart");
+    if (cstart !== null) {
+      segment.start = sitWorldTriplet(cstart);
+      segment.startFt = sitFeetTriplet(cstart);
+    }
+    const cend = valueLine("cend");
+    if (cend !== null) {
+      segment.end = sitWorldTriplet(cend);
+      segment.endFt = sitFeetTriplet(cend);
+    }
+    const speeds = valueLine("cdec_point,cspeed,lastentry");
+    if (speeds !== null) {
+      const parts = speeds.split(",");
+      segment.cdecPoint = parseLeadingFloat(parts[0]);
+      segment.cspeed = parseLeadingFloat(parts[1]);
+      segment.lastEntry = parseLeadingInt(parts[2]);
+    }
+    const limits = valueLine("&cSpeedLimit,cTrackWidth");
+    if (limits !== null) {
+      const parts = limits.split(",");
       segment.speedLimit = parseLeadingFloat(parts[0] ?? "0");
       segment.trackWidth = parseLeadingFloat(parts[1] ?? "64");
+      segment.trackWidthFt = parseLeadingFloat(parts[1] ?? "32");
     }
     course.segments.push(segment);
     cursor++;

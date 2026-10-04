@@ -12,6 +12,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { buildCourse, isArc, type CourseStraight } from "../src/sim/mtm2/world/course.ts";
 import {
   parseBin,
   parseFlyScf,
@@ -95,6 +96,72 @@ test("every understood stock Nocturne asset parses", { skip: nocturne.skip }, ()
     }
   }
   assert.deepEqual(counts, { KFM: 577, FOG: 1611, GEO: 20, SET: 20, THM: 20, ZTH: 20, SKL: 70, DFM: 113, CTH: 25 });
+});
+
+/*
+  MTM2 course blocks hold straights only: the game builds the arcs between them when it loads
+  the track (MONSTER.EXE 0x4e13b0), so every stored segment is ctype 1, cspeed_type 0. Each
+  stock track has a primary and two extended courses.
+*/
+const mtm2Folder = stock("mtm2");
+test("MTM2 stock courses are straights, three courses per track", { skip: mtm2Folder.skip }, () => {
+  const expected: Record<string, string> = {
+    "ALASKA.SIT": "22/22/24", "AZTEC.SIT": "12/12/12", "BAJA.SIT": "30/30/30", "CRAZY98.SIT": "8/8/6",
+    "GRAVEY.SIT": "10/10/10", "JUNK.SIT": "14/14/14", "MAIN.SIT": "20/20/21", "AUSSIE.SIT": "30/30/30",
+    "ROCKQRY.SIT": "12/12/12", "SNAKE.SIT": "14/14/14", "WAR.SIT": "5/5/10", "SUMMIT1.SIT": "12/12/12",
+    "SUMMIT2.SIT": "12/12/12", "SUMMIT3.SIT": "12/12/12", "TPARK.SIT": "10/10/10",
+  };
+  const seen: Record<string, string> = {};
+  for (const name of readdirSync(mtm2Folder.path).filter((n) => /\.pod$/i.test(n))) {
+    const bytes = new Uint8Array(readFileSync(join(mtm2Folder.path, name)));
+    const pod = parsePod(bytes);
+    for (const entry of pod.entries.filter((e) => e.title.endsWith(".SIT"))) {
+      const sit = parseMtmSit(readPodEntry(bytes, entry), entry.title);
+      const courses = [sit.primaryCourse!, ...sit.extendedCourses];
+      seen[entry.title] = courses.map((c) => c.segments.length).join("/");
+      for (const segment of courses.flatMap((c) => c.segments)) {
+        assert.equal(segment.ctype, 1, entry.title);
+        assert.equal(segment.cspeedType, 0, entry.title);
+        for (const v of [segment.startFt[0], segment.startFt[2], segment.endFt[0], segment.endFt[2]]) {
+          assert.ok(v >= 0 && v < 8192, `${entry.title}: ${v}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(seen, expected);
+});
+
+test("MTM2 stock courses build into closed straight-arc loops", { skip: mtm2Folder.skip }, () => {
+  const radii: number[] = [];
+  for (const name of readdirSync(mtm2Folder.path).filter((n) => /\.pod$/i.test(n))) {
+    const bytes = new Uint8Array(readFileSync(join(mtm2Folder.path, name)));
+    const pod = parsePod(bytes);
+    for (const entry of pod.entries.filter((e) => e.title.endsWith(".SIT"))) {
+      const sit = parseMtmSit(readPodEntry(bytes, entry), entry.title);
+      [sit.primaryCourse!, ...sit.extendedCourses].forEach((c, ci) => {
+        const course = buildCourse(c.segments, () => 0);
+        course.forEach((seg, i) => {
+          if (!isArc(seg)) return;
+          const label = `${entry.title} course ${ci} segment ${i + 1}`;
+          for (const v of [seg.radius, seg.centre[0], seg.centre[2], seg.entryAngle, seg.exitAngle, seg.speed]) {
+            assert.ok(Number.isFinite(v), label);
+          }
+          // The fillet touches the longer leg at its straight's end: one end of every arc meets
+          // the straight before or after it.
+          const prev = course[i - 1] as CourseStraight, next = course[(i + 1) % course.length] as CourseStraight;
+          const at = (a: number) => [seg.centre[0] + Math.sin(a) * seg.radius, seg.centre[2] + Math.cos(a) * seg.radius];
+          const [ex, ez] = at(seg.entryAngle), [xx, xz] = at(seg.exitAngle);
+          const miss = Math.min(Math.hypot(ex - prev.end[0], ez - prev.end[2]), Math.hypot(xx - next.start[0], xz - next.start[2]));
+          assert.ok(miss < 1e-3, `${label}: ${miss}`);
+          if (ci === 0) radii.push(seg.radius);
+        });
+      });
+    }
+  }
+  // The stock primary courses were laid out with about 128 ft corners.
+  radii.sort((a, b) => a - b);
+  const median = radii[radii.length >> 1];
+  assert.ok(median > 127 && median < 131, `median radius ${median}`);
 });
 
 const truck2 = stock("mtm2/TRUCK2.POD");

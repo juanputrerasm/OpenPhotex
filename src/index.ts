@@ -80,9 +80,9 @@ export {
 } from "./terrain/height.ts";
 export type { HeightGrid } from "./terrain/height.ts";
 export {
-  parseMtmSit, parseMtmLvl, parseTexList, parseTty, detectSitOrigin, sitTrackTypeName, sitWorldTriplet,
+  parseMtmSit, parseMtmLvl, parseTexList, parseTty, detectSitOrigin, sitTrackTypeName, sitWorldTriplet, sitFeetTriplet,
 } from "./mtm/sit.ts";
-export type { MtmSit, MtmLvl, TtyEntry, SitBox, SitCourseSegment, SitTruck, SitArena, SitOrigin } from "./mtm/sit.ts";
+export type { MtmSit, MtmLvl, TtyEntry, SitBox, SitCourse, SitCourseSegment, SitTruck, SitArena, SitOrigin } from "./mtm/sit.ts";
 export { parseTvLvl, detectTvLvlOrigin, isNullAssetName, tvLvlFallbackName } from "./tv/lvl.ts";
 export type { TvLvl, TvLvlOrigin } from "./tv/lvl.ts";
 export { parseDef, defPlacementToEditor, TR_ANGLE_TO_RAD } from "./tv/def.ts";
@@ -155,6 +155,7 @@ export { parseNocturneThm, NOCTURNE_THM_WIDTH, NOCTURNE_THM_HEIGHT, NOCTURNE_THM
 export type { NocturneThm, NocturneThumbnail } from "./nocturne/thm.ts";
 export { parseNocturneZth, NOCTURNE_ZTH_WIDTH, NOCTURNE_ZTH_HEIGHT, NOCTURNE_ZTH_MAP_BYTES } from "./nocturne/zth.ts";
 export type { NocturneZth } from "./nocturne/zth.ts";
+export * as mtm2Sim from "./sim/mtm2/index.ts";
 export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 
