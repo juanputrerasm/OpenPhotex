@@ -11,7 +11,7 @@ import {
   airTargetRpm, chaseRpm, deliveredTorque, driveForce, engineTorque, gearRatio, groundTargetRpm,
   stepGearbox, wheelSpinFromRpm,
 } from "../src/sim/mtm2/truck/drivetrain.ts";
-import { applyKeyboard, createControlState, KEY_DT_SCALE, rearSteer } from "../src/sim/mtm2/truck/controls.ts";
+import { applyJoystick, applyKeyboard, createControlState, KEY_DT_SCALE, rearSteer } from "../src/sim/mtm2/truck/controls.ts";
 import { createTruckState } from "../src/sim/mtm2/truck/state.ts";
 import { DIFFICULTY, GEAR } from "../src/sim/mtm2/constants.ts";
 
@@ -194,4 +194,43 @@ test("a new truck state", () => {
   assert.equal(s.controls.gear, GEAR.FIRST);
   assert.equal(s.rpm, 800);
   assert.deepEqual(structuredClone(s).pos, s.pos);
+});
+
+test("joystick: dead zone, 1.11 gain, power curve and Rookie scale on steering", () => {
+  const ctx = { dt: 1 / 60, autoShift: true, forwardSpeed: 0, dragMode: false, segments: 0 };
+  const c = createControlState();
+  applyJoystick(c, { x: 0.5, y: 0 }, ctx);
+  // e = 3 at low speed with the default response.
+  assert.ok(Math.abs(c.steer - 0.45 * Math.pow(0.555, 3)) < 1e-12);
+  assert.ok(Math.abs(c.rearSteer - c.steer * -0.33) < 1e-12);
+  applyJoystick(c, { x: -0.95, y: 0 }, ctx);
+  assert.equal(c.steer, -0.45);
+  applyJoystick(c, { x: 0.05, y: 0, deadZone: 0.1 }, ctx);
+  assert.equal(c.steer, 0);
+  applyJoystick(c, { x: 0.55, y: 0, deadZone: 0.1 }, ctx);
+  assert.ok(Math.abs(c.steer - 0.45 * Math.pow(0.5 * 1.11, 3)) < 1e-12);
+  applyJoystick(c, { x: 0.5, y: 0 }, { ...ctx, difficulty: 0 });
+  assert.ok(Math.abs(c.steer - 0.45 * Math.pow(0.375 * 1.11, 3)) < 1e-12);
+  applyJoystick(c, { x: 0.5, y: 0 }, { ...ctx, forwardSpeed: 60 });
+  assert.ok(Math.abs(c.steer - 0.45 * Math.pow(0.555, 3.3)) < 1e-12);
+});
+
+test("joystick pedals: throttle forward, brake back, Reverse when stopped, first again", () => {
+  const ctx = { dt: 1 / 60, autoShift: true, forwardSpeed: 10, dragMode: false, segments: 0 };
+  const c = createControlState(GEAR.FIRST);
+  applyJoystick(c, { x: 0, y: -0.7 }, ctx);
+  assert.equal(c.throttle, 0.7); assert.equal(c.brakeFront, 0);
+  applyJoystick(c, { x: 0, y: 0.6 }, ctx);
+  assert.equal(c.throttle, 0); assert.equal(c.brakeFront, 0.6); assert.equal(c.brakeRear, 0.6);
+  assert.equal(c.gear, GEAR.FIRST);
+  applyJoystick(c, { x: 0, y: 0.6 }, { ...ctx, forwardSpeed: 0 });
+  assert.equal(c.gear, GEAR.REVERSE); assert.equal(c.throttle, 0.6); assert.equal(c.brakeFront, 0);
+  applyJoystick(c, { x: 0, y: 0.2 }, { ...ctx, forwardSpeed: -5 });
+  assert.equal(c.throttle, 0); assert.equal(c.brakeFront, 0.2);
+  applyJoystick(c, { x: 0, y: -0.3 }, { ...ctx, forwardSpeed: -5 });
+  assert.equal(c.gear, GEAR.FIRST); assert.equal(c.throttle, 0.3);
+  // In a drag race the gear stays until three segments are passed.
+  const d = createControlState(GEAR.FIRST);
+  applyJoystick(d, { x: 0, y: 0.8 }, { ...ctx, forwardSpeed: 0, dragMode: true });
+  assert.equal(d.gear, GEAR.FIRST); assert.equal(d.brakeFront, 0.8);
 });
