@@ -401,3 +401,74 @@ test("ramp walls: a truck driving into a ramp's side stops at it; one driving up
   assert.ok(up.maxY > 108, `climbed to ${up.maxY}`);
   assert.ok(up.s.pos[2] > 480, `went up the ramp to z ${up.s.pos[2]}`);
 });
+
+// The edge system (14.26).
+
+function edgeTruck() {
+  const p = S.createTruckParams({ scrapePoints: TRK_HULL }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+  const s = S.createTruckState([1000, 106, 1000], 0, S.GEAR.NEUTRAL, p);
+  // Hubs at the static anchors, as after a step on flat ground; probed depths reset.
+  s.tires.forEach((t, i) => { t.hub[0] = p.hubs[i][0]; t.hub[1] = p.hubs[i][1]; t.hub[2] = p.hubs[i][2]; t.penetration = -9999; });
+  s.depths.fill(-9999);
+  return { s, p };
+}
+const still = { pos: [0, 0, 0], matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1], vel: [0, 0, 0], rates: [0, 0, 0] };
+const edgeCtx = { groundNormal: () => [0, 1, 0] as [number, number, number], dt: 1 / 60 };
+
+test("edge against the hull box: a crossing becomes a hull contact at the nearest corner; zero face normals push straight up (14.26.2, 14.26.4)", () => {
+  const { s, p } = edgeTruck();
+  // A horizontal edge across the truck, 1 ft above its body origin near the front: it enters
+  // the left face and leaves the right one.
+  const y = 106 + 1.5, z = 1000 + 6;
+  const es = S.createEdgeState();
+  S.edgeAgainstTruck([980, y, z], [1020, y, z], { ...still, pos: [1000, 100, 1000] }, s, p, es, edgeCtx);
+  const hits = [...s.depths].map((d, j) => [d, j] as const).filter(([d]) => d > -9999);
+  assert.ok(hits.length >= 1, "a hull contact");
+  for (const [, j] of hits) {
+    assert.deepEqual([s.normals[j * 3], s.normals[j * 3 + 1], s.normals[j * 3 + 2]], [0, 1, 0]);
+    // The contact point C = H + depth e lies at the front (z > 0): slots 1 to 4.
+    assert.ok(j <= 3, `a front corner, slot ${j + 1}`);
+    assert.ok(s.contactPoints[j * 3 + 2] > 0);
+  }
+  // Away from the truck (outside its radius), nothing.
+  const t2 = edgeTruck();
+  S.edgeAgainstTruck([980, y, 1100], [1020, y, 1100], still, t2.s, t2.p, es, edgeCtx);
+  assert.ok([...t2.s.depths].every((d) => d === -9999));
+});
+
+test("edge as ground for a wheel: only with an effective mass of 1 or more; writes the wheel's penetration (14.26.9 A)", () => {
+  const { s, p } = edgeTruck();
+  const A = p.hubs[0];
+  // An edge along z under the front right wheel's anchor, 1 ft above the bottom of the tyre.
+  const yEdge = 106 + A[1] - p.tireRadiusFt + 1;
+  const W0 = [1000 + A[0], yEdge, 1000 + A[2] - 5], W1 = [1000 + A[0], yEdge, 1000 + A[2] + 5];
+  const es = S.createEdgeState();
+  S.edgeAgainstTruck(W0, W1, still, s, p, es, edgeCtx);
+  assert.equal(s.tires[0].penetration, -9999, "no test A without an effective mass");
+  const t2 = edgeTruck();
+  es.mEff = 300;
+  S.edgeAgainstTruck(W0, W1, still, t2.s, t2.p, es, edgeCtx);
+  near(t2.s.tires[0].penetration, 1, 1e-9);
+  assert.equal(t2.s.tires[0].onGround, true);
+  near(t2.s.tires[0].lever, Math.hypot(p.tireRadiusFt, A[0]), 1e-9);
+});
+
+test("edge against a tyre's side: the truck is pushed back along its motion across the edge, unless the other body is the mover (14.26.9 B)", () => {
+  const run = (mover: number) => {
+    const { s, p } = edgeTruck();
+    const c = s.tires[0].hub;
+    // A vertical edge 0.5 ft inside the front right tyre's outer face, the truck moving +x into it.
+    const x = 1000 + c[0] + p.tireWidthFt / 2 - 0.5;
+    s.bvel[0] = 10;
+    const es = S.createEdgeState();
+    es.mover = mover;
+    es.mEff = 0;
+    const f = S.edgeAgainstTruck([x, 106 + c[1] - 10, 1000 + c[2]], [x, 106 + c[1] + 10, 1000 + c[2]], still, s, p, es, edgeCtx);
+    return { s, f };
+  };
+  const a = run(2);
+  assert.ok(a.s.pos[0] < 1000, `pushed back: x ${a.s.pos[0]}`);
+  assert.ok(a.f, "a force record");
+  const b = run(1);
+  assert.equal(b.s.pos[0], 1000, "the mover is the other body: the truck stays");
+});

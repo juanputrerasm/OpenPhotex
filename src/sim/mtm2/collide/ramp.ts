@@ -8,6 +8,7 @@ import { eulerToMatrix } from "../math.ts";
 import type { Mtm2TruckParams } from "../truck/params.ts";
 import type { Mtm2TruckState } from "../truck/state.ts";
 import type { LevelBoxSource, ModelBounds } from "./box.ts";
+import { edgeAgainstTruck, type EdgeContext, type EdgeState } from "./edges.ts";
 
 export interface SimRamp {
   pos: [number, number, number];
@@ -106,8 +107,26 @@ function pushOut(r: SimRamp, s: Mtm2TruckState, Pb: ArrayLike<number>, P: V3): b
   return true;
 }
 
-/** The ramp's sides and front end as walls for a truck's wheels, then its hull points (`0x4b2580`, §14.19). */
-export function collideTruckRamp(r: SimRamp, s: Mtm2TruckState, p: Mtm2TruckParams): void {
+/** The slope's outward normal, world (`+0xf8`, §14.19): `unit(0, 2b, -H)` turned with the ramp. */
+export function rampSlopeNormal(r: SimRamp): V3 {
+  const l = Math.hypot(r.length, r.height);
+  return l === 0 ? [0, 1, 0] : toWorld(r.matrix, 0, r.length / l, -r.height / l);
+}
+
+/** The five edges the edge system tests, world (`0x4b17c0`, §14.19): c0 c2, c1 c3, c2 c4, c3 c5, c2 c3. */
+export function rampEdges(r: SimRamp): [V3, V3][] {
+  const a = r.width * 0.5, b = r.length * 0.5, H = r.height;
+  const local: V3[] = [[-a, 0, b], [a, 0, b], [-a, H, b], [a, H, b], [-a, 0, -b], [a, 0, -b]];
+  const c = local.map((v) => { const w = toWorld(r.matrix, v[0], v[1], v[2]); return [r.pos[0] + w[0], r.pos[1] + w[1], r.pos[2] + w[2]] as V3; });
+  return [[c[0], c[2]], [c[1], c[3]], [c[2], c[4]], [c[3], c[5]], [c[2], c[3]]];
+}
+
+/**
+ * The ramp's sides and front end as walls for a truck's wheels, then its hull points
+ * (`0x4b2580`, §14.19); then, given the edge state, its edges (`0x4b17c0`, §14.26). The edge
+ * contacts' forces are discarded, as the game's ramp pair does.
+ */
+export function collideTruckRamp(r: SimRamp, s: Mtm2TruckState, p: Mtm2TruckParams, edges?: { state: EdgeState; ctx: EdgeContext }): void {
   const rho = Math.hypot(p.tireWidthFt * 0.5, p.tireRadiusFt);
   const toRamp = (b: ArrayLike<number>): V3 => {
     const w = toWorld(s.matrix, b[0], b[1], b[2]);
@@ -133,4 +152,7 @@ export function collideTruckRamp(r: SimRamp, s: Mtm2TruckState, p: Mtm2TruckPara
     const Pb: V3 = [s.points[j * 3], s.points[j * 3 + 1], s.points[j * 3 + 2]];
     pushOut(r, s, Pb, toRamp(Pb));
   }
+  if (!edges) return;
+  const obstacle = { pos: r.pos, matrix: r.matrix, vel: [0, 0, 0], rates: [0, 0, 0] };
+  for (const [W0, W1] of rampEdges(r)) edgeAgainstTruck(W0, W1, obstacle, s, p, edges.state, edges.ctx);
 }
