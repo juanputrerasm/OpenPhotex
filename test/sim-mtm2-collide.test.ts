@@ -280,3 +280,39 @@ test("pushable force law: the box gets m_box * closing / dt, the truck the same 
   near(F, 50 * v / dt, 1e-6 * F);
   near(Math.hypot(s.extForce[0], s.extForce[1], s.extForce[2]), F, 1e-6 * F);
 });
+
+/** BIGFOOT's hull points in the TRK's order (front bottom, front top, roof, rear top, rear bottom). */
+const TRK_HULL: T3[] = [
+  [-3.67, 0, 9.2], [3.67, 0, 9.2], [-3.67, 2.56, 9.2], [3.67, 2.56, 9.2],
+  [-2.61, 5.23, 1.89], [2.61, 5.23, 1.89], [-2.14, 5.23, -0.8], [2.1, 5.23, -0.8],
+  [-3.67, 2.82, -9.2], [3.67, 2.82, -9.2], [-3.67, 0, -9.2], [3.67, 0, -9.2],
+];
+
+test("a head-on hit between equal trucks ends with equal speeds (14.20)", () => {
+  const terrain = S.createTerrain(new Uint8Array(65536).fill(50));
+  const ground = S.createTerrainGround(terrain, null, 0, null);
+  const make = (z: number, heading: number) => {
+    const p = S.createTruckParams({ scrapePoints: TRK_HULL }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+    return { s: S.createTruckState([1000, 106.2, z], heading, S.GEAR.NEUTRAL, p), p };
+  };
+  const a = make(1000, 0), b = make(1060, Math.PI);
+  const ctx = { ground, human: false, difficulty: S.DIFFICULTY.INTERMEDIATE, sonicTrack: false };
+  const dt = 1 / 60;
+  const step = () => {
+    for (const t of [a, b]) S.stepTruck(t.s, t.p, ctx, dt);
+    S.collideTrucks(a, b, dt);
+    for (const t of [a, b]) S.postStepTruck(t.s, t.p, ground, dt);
+  };
+  for (let i = 0; i < 60; i++) step();
+  a.s.bvel[2] = 30; b.s.bvel[2] = 30;
+  let met = false;
+  for (let i = 0; i < 120; i++) {
+    step();
+    if (b.s.pos[2] - a.s.pos[2] < 19) met = true;
+  }
+  assert.ok(met, "they met");
+  const v = (t: typeof a) => Math.hypot(...Array.from(t.s.bvel));
+  assert.ok(b.s.pos[2] - a.s.pos[2] > 17, `no overlap: ${b.s.pos[2] - a.s.pos[2]} ft apart`);
+  assert.ok(Math.abs(v(a) - v(b)) < 1, `speeds ${v(a)} and ${v(b)}`);
+  assert.ok([...a.s.pos, ...b.s.pos].every(Number.isFinite));
+});

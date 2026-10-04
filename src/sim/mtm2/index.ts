@@ -32,5 +32,7 @@ export { collideTruckBox, collideTruckImmovableBox, truckBoxSeparated } from "./
 export { stepBox, postStepBox, boxInertia } from "./collide/box-step.ts";
 export { moveTrain, groundBoxHeightAt } from "./collide/train.ts";
 export { createRamp, rampHeightAt } from "./collide/ramp.ts";
+export { collideTrucks } from "./collide/truck-truck.ts";
+export type { TruckBody } from "./collide/truck-truck.ts";
 export type { SimRamp } from "./collide/ramp.ts";
 export type { ContactResult, ContactBody } from "./truck/contacts.ts";
