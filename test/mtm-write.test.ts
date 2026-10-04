@@ -154,3 +154,35 @@ test("median cut, the MTM2 level palette and its fog map", () => {
   assert.ok(red >= MTM2_PALETTE_FIRST_AUTHORED && red <= MTM2_PALETTE_WHITE_INDEX);
   assert.deepEqual([...palette.subarray(red * 3, red * 3 + 3)], [255, 0, 0]);
 });
+
+test("top-crush cars: read by position, model form and size form (MONSTER.EXE 0x551660)", () => {
+  const base = new TextDecoder().decode(writeMtm2Sit({
+    lvlName: "TEST.LVL", trackName: "T", localeName: "L", pictureBmp: "A.BMP", iconBmp: "B.BMP", descriptionTxt: "T.TXT",
+    ambientSound: 0, weatherMask: 1, trackLength: 6000, yourTruck: truck(0), vehicles: [truck(1)], boxes: [],
+    course: [{ start: [0, 0, 0], end: [100, 0, 0] }], extendedCourses: [],
+  }));
+  const record = (form: string[]) => [
+    "*******************", "ipos", "200.00,20.00,300.00", "ipos2", "201.00,21.00,302.00", "theta,phi,psi", "0,0,1.5",
+    ...form, "mass", "12.5", "bvel", "1,2,3", "p,q,r", "0.1,0.2,0.3",
+  ];
+  const section = ["*** Top Crush ***", "2",
+    ...record(["modelName", "CAR.BIN", "cabModelName", "CARCAB.BIN"]),
+    ...record(["length,width,height", "16,8,5", "length2,width2,height2", "10,7,9"])];
+  const text = base.replace("*** Top Crush ***\r\n0", section.join("\r\n"));
+  const sit = parseMtmSit(new TextEncoder().encode(text), "TEST.SIT");
+  assert.equal(sit.topCrush.length, 2);
+  const [a, b] = sit.topCrush;
+  assert.equal(a.modelName, "CAR.BIN");
+  assert.equal(a.cabModelName, "CARCAB.BIN");
+  assert.equal(a.sizeFt, null);
+  assert.deepEqual(a.positionFt, [200, 20, 300]);
+  assert.deepEqual(a.position2Ft, [201, 21, 302]);
+  assert.equal(a.psi, 1.5);
+  assert.equal(a.mass, 12.5);
+  assert.deepEqual(a.bvel, [1, 2, 3]);
+  assert.deepEqual(a.rates, [0.1, 0.2, 0.3]);
+  assert.equal(b.modelName, "");
+  assert.deepEqual(b.sizeFt, [16, 8, 5]);
+  assert.deepEqual(b.size2Ft, [10, 7, 9]);
+  assert.equal(sit.boxes.filter((x) => x.crushRole).length, 4);
+});

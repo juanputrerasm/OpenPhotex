@@ -35,6 +35,8 @@ export { stepBox, postStepBox, boxInertia } from "./collide/box-step.ts";
 export { stepMovingObject, groundBoxHeightAt } from "./collide/moving-object.ts";
 export { collideTruckRamp, createRamp, insideRamp, rampEdges, rampHeightAt, rampSlopeNormal } from "./collide/ramp.ts";
 export { createEdgeState, edgeAgainstTruck, lineDistance } from "./collide/edges.ts";
+export { collideTruckTopCrush, createTopCrush, crushCorners } from "./collide/top-crush.ts";
+export type { CrushPart, SimTopCrush, TopCrushContext, TopCrushSource } from "./collide/top-crush.ts";
 export type { EdgeContext, EdgeForces, EdgeObstacle, EdgeState } from "./collide/edges.ts";
 export { collideTrucks } from "./collide/truck-truck.ts";
 export { collideBoxes } from "./collide/box-box.ts";

@@ -29,6 +29,8 @@ The MTM2 line after `!ambient sound,track length,weather mask` comes back as `am
 
 **Boxes.** Besides the editor-space `position` and rounded sizes, each box (and each top-crush part) carries `positionFt`, the loader's feet with a negative x or z wrapped by +8192, and `sizeFt`, the `length,width,height` line unrounded. These are full extents; a box with a model takes its size from the model in game. `priority` is the box's priority line: MONSTER.EXE draws a box only when it is at most the MONSTER.INI `detailLevel` (stock: 0, 1 or 2). A `.LVL`'s first line is `levelType`; 4 marks an old MTM level.
 
+**Top-crush cars.** Besides their two parts in `boxes` (body and cab, `crushRole`), `topCrush` lists each car as MONSTER.EXE reads it (`0x551660`): the record is positional (label and value lines after the delimiter): `ipos`, `ipos2` (feet), the angles, then either `modelName` and `cabModelName` (when that label reads exactly `modelName`) or the body and cab `length, width, height` (`sizeFt`, `size2Ft`), then `mass`, `bvel` and `p,q,r`. No stock SIT has one. OpenMTM2's `docs/MTM2_PHYSICS.md` 14.27 describes how the game uses them.
+
 Neither the `.SIT` nor its `.LVL` names its game. **`detectSitOrigin(lines, title)`** decides between MTM1, MTM2 and CPR from what the file contains, and `sitTrackTypeName` names the track type code for that game.
 
 **`parseMtmLvl(bytes)`** reads the positional `.LVL`. **`parseTexList`** reads a `.TEX` texture list and **`parseTty`** its `.TTY` type table.

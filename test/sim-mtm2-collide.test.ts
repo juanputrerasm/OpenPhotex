@@ -472,3 +472,91 @@ test("edge against a tyre's side: the truck is pushed back along its motion acro
   const b = run(1);
   assert.equal(b.s.pos[0], 1000, "the mover is the other body: the truck stays");
 });
+
+// Top-crush cars (14.27).
+
+function crushCar() {
+  // Body 16 x 8 x 5 ft (length, width, height) on flat ground at 100 ft, cab 10 x 7 x 9.
+  return S.createTopCrush({
+    positionFt: [500, 102.5, 500], position2Ft: [500, 0, 500], theta: 0, phi: 0, psi: 0,
+    sizeFt: [16, 8, 5], size2Ft: [10, 7, 9], mass: 0, bvel: [0, 0, 0], rates: [0, 0, 0],
+  });
+}
+/** A small truck whose 12 hull points sit 1 ft around its origin, so they all land on the cab roof. */
+function crushTruck(y: number, fall = 200) {
+  const pts: T3[] = [];
+  for (let k = 0; k < 12; k++) pts.push([k % 2 ? 1 : -1, 0, k < 6 ? 1 : -1]);
+  const p = S.createTruckParams({ scrapePoints: pts }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+  const s = S.createTruckState([500, y, 500], 0, S.GEAR.NEUTRAL, p);
+  // Nothing under the wheels: tests one hull point contact on the roof.
+  s.tires.forEach((t) => { t.penetration = -9999; t.hub[1] = 50; });
+  s.depths.fill(-9999);
+  s.bvel[1] = -fall; // last step's reference above the roof
+  return { s, p };
+}
+const crushCtx = () => ({ groundNormal: () => [0, 1, 0] as [number, number, number], dt: 1 / 60, edges: S.createEdgeState() });
+
+test("top-crush setup: the cab stands on the body's bottom; the radius mixes the parts (14.27.2)", () => {
+  const car = crushCar();
+  near(car.pos2[1], 102.5 - 2.5 + 4.5, 1e-12);
+  near(car.radius, Math.sqrt(9 * 9 + 16 * 16 + 8 * 8), 1e-12);
+  assert.equal(car.crush, 0);
+});
+
+test("crushing: 15% of the depth beyond 0.625 ft comes off the cab roof per contact, and off the truck's depths (14.27.5)", () => {
+  const car = crushCar();
+  // Hull points 2 ft into the cab roof. The hull test centres the cab's box on the body (a quirk
+  // the game has), so its roof is at 102.5 + 4.5 = 107, not 109 where the cab is drawn.
+  const { s, p } = crushTruck(105);
+  S.collideTruckTopCrush(car, s, p, crushCtx());
+  // Each of the 12 points crushes in turn: the depth is the roof (cab axes) less the point's 2.5.
+  let top = 4.5;
+  for (let k = 0; k < 12; k++) {
+    const D = top - 2.5;
+    if (D > 0.625) top -= 0.15 * (D - 0.625);
+  }
+  near(car.cab.top, top, 1e-9);
+  near(car.crush, 1 - (top + 4.5) / 9, 1e-9);
+  assert.equal(car.body.top, 2.5, "the body never crushes");
+});
+
+test("crushing stops at the body's top plus 0.25 ft, so f is at most 1 - (H + 0.25) / H2 (14.27.5)", () => {
+  // A cab only 0.4 ft taller than the body: its roof, in the hull test's frame, stays above the
+  // body's, so hull points can take it down to the floor.
+  const car = S.createTopCrush({
+    positionFt: [500, 102.5, 500], position2Ft: [500, 0, 500], theta: 0, phi: 0, psi: 0,
+    sizeFt: [16, 8, 5], size2Ft: [10, 7, 5.4], mass: 0, bvel: [0, 0, 0], rates: [0, 0, 0],
+  });
+  for (let k = 0; k < 50; k++) {
+    const { s, p } = crushTruck(102.5, 400);
+    S.collideTruckTopCrush(car, s, p, crushCtx());
+  }
+  near(car.crush, 1 - (5 + 0.25) / 5.4, 1e-9);
+  near(car.cab.top, 2.5 - 0.2 + 0.25, 1e-9);
+});
+
+test("a truck dropped onto a top-crush car rests on it and flattens the cab (14.27)", () => {
+  const terrain = S.createTerrain(new Uint8Array(65536).fill(50)); // 100 ft
+  const ground = S.createTerrainGround(terrain, null, 0, null);
+  // A long car so the whole truck lands on it: body 30 x 14 x 3, cab 26 x 12 x 6.
+  const car = S.createTopCrush({
+    positionFt: [500, 101.5, 500], position2Ft: [500, 0, 500], theta: 0, phi: 0, psi: 0,
+    sizeFt: [30, 14, 3], size2Ft: [26, 12, 6], mass: 0, bvel: [0, 0, 0], rates: [0, 0, 0],
+  });
+  const p = S.createTruckParams({ scrapePoints: TRK_HULL }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+  const s = S.createTruckState([500, 118, 500], 0, S.GEAR.NEUTRAL, p);
+  const ctx = { ground, human: false, difficulty: S.DIFFICULTY.INTERMEDIATE, sonicTrack: false };
+  const cctx = { groundNormal: () => [0, 1, 0] as [number, number, number], dt: 1 / 60, edges: S.createEdgeState() };
+  for (let i = 0; i < 240; i++) {
+    S.stepTruck(s, p, ctx, 1 / 60);
+    S.collideTruckTopCrush(car, s, p, cctx);
+    S.postStepTruck(s, p, ground, 1 / 60);
+  }
+  assert.ok([...s.pos].every(Number.isFinite));
+  assert.ok(car.crush > 0, "the cab is crushed");
+  assert.ok(car.crush <= 1 - (3 + 0.25) / 6 + 1e-9);
+  // Resting on the car: above where it would sit on the bare ground.
+  const onGround = S.createTruckState([600, 108, 600], 0, S.GEAR.NEUTRAL, p);
+  for (let i = 0; i < 240; i++) { S.stepTruck(onGround, p, ctx, 1 / 60); S.postStepTruck(onGround, p, ground, 1 / 60); }
+  assert.ok(s.pos[1] > onGround.pos[1] + 1, `on the car at ${s.pos[1]}, on the ground at ${onGround.pos[1]}`);
+});

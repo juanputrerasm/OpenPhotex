@@ -97,6 +97,28 @@ export interface SitArena {
   sy: number;
 }
 
+/**
+ * A top-crush car as MONSTER.EXE reads it (`0x551660`): two parts sharing one rotation, the body
+ * at `positionFt` and the cab at `position2Ft`, either named models or full sizes for both.
+ */
+export interface SitTopCrush {
+  positionFt: [number, number, number];
+  position2Ft: [number, number, number];
+  theta: number;
+  phi: number;
+  psi: number;
+  /** The model form: body and cab model names (normalized), else empty. */
+  modelName: string;
+  cabModelName: string;
+  /** The size form: full `length, width, height` of the body and the cab (feet), else null. */
+  sizeFt: [number, number, number] | null;
+  size2Ft: [number, number, number] | null;
+  mass: number;
+  bvel: [number, number, number];
+  /** p, q, r. */
+  rates: [number, number, number];
+}
+
 export interface MtmSit {
   origin: SitOrigin;
   /** Line 0: the level file, normalized. */
@@ -127,6 +149,8 @@ export interface MtmSit {
   boxes: SitBox[];
   primaryCourse: SitCourse | null;
   extendedCourses: SitCourse[];
+  /** `*** Top Crush ***`: the cars as the engine reads them (the parts are also in `boxes`). */
+  topCrush: SitTopCrush[];
   arena: SitArena | null;
   /** Null when the file has no *** Backdrop *** section. */
   backdropModelNames: string[] | null;
@@ -246,6 +270,7 @@ export function parseMtmSit(input: Uint8Array | string, sitTitle = ""): MtmSit {
     weatherMask: null,
     boxes: [],
     primaryCourse: null,
+    topCrush: [],
     extendedCourses: [],
     arena: parseArena(lines),
     backdropModelNames: parseBackdrop(lines),
@@ -273,7 +298,7 @@ export function parseMtmSit(input: Uint8Array | string, sitTitle = ""): MtmSit {
 
   parseBoxSection(lines, "*** Ramps ***", sit.boxes, true, sit.warnings);
   parseBoxSection(lines, "*** Boxes ***", sit.boxes, false, sit.warnings);
-  parseTopCrushSection(lines, sit.boxes);
+  parseTopCrushSection(lines, sit.boxes, sit.topCrush);
   parseCourses(lines, sit);
   return sit;
 }
@@ -366,7 +391,7 @@ function parseBoxBlock(lines: string[], blockStart: number, isRamp: boolean): Si
 */
 const BOXTYPE_CRUSH = 98;
 
-function parseTopCrushSection(lines: string[], boxes: SitBox[]): void {
+function parseTopCrushSection(lines: string[], boxes: SitBox[], cars: SitTopCrush[]): void {
   const section = indexOfLine(lines, "*** Top Crush ***");
   if (section < 0 || section + 1 >= lines.length) return;
   const count = parseLeadingInt(lines[section + 1]);
@@ -395,9 +420,29 @@ function parseTopCrushSection(lines: string[], boxes: SitBox[]): void {
       length: 64, width: 64, height: 64, mass: 0, type: BOXTYPE_CRUSH, flags: 0,
       checkpointSequence: -1, crushGroup: i,
     };
+    /*
+      The engine reads the record by position (0x551660): label and value lines after the
+      delimiter, ipos, ipos2, the angles, then either modelName and cabModelName (when the label
+      reads exactly "modelName") or the two size lines, then mass, bvel and p,q,r.
+    */
+    const value = (k: number) => (start + 2 + 2 * k < blockEnd ? lines[start + 2 + 2 * k].trim() : null);
+    const label = (k: number) => (start + 1 + 2 * k < blockEnd ? lines[start + 1 + 2 * k].trim() : null);
+    const modelForm = label(3) === "modelName";
+    const sizes = (k: number) => (modelForm ? null : parseFloatTriplet(value(k) ?? "0,0,0"));
     if (ipos) {
-      boxes.push({ ...common, position: sitWorldTriplet(ipos), positionFt: sitFeetTriplet(ipos), modelName: modelOf(valueAfter("modelName")), crushRole: "body" });
-      boxes.push({ ...common, position: sitWorldTriplet(ipos2!), positionFt: sitFeetTriplet(ipos2!), modelName: modelOf(valueAfter("cabModelName")), crushRole: "cab" });
+      const car: SitTopCrush = {
+        positionFt: sitFeetTriplet(ipos), position2Ft: sitFeetTriplet(ipos2!),
+        theta: angles[0], phi: angles[1], psi: angles[2],
+        modelName: modelForm ? modelOf(value(3)) : "", cabModelName: modelForm ? modelOf(value(4)) : "",
+        sizeFt: sizes(3), size2Ft: sizes(4),
+        mass: parseLeadingFloat(value(5) ?? "0"),
+        bvel: parseFloatTriplet(value(6) ?? "0,0,0"),
+        rates: parseFloatTriplet(value(7) ?? "0,0,0"),
+      };
+      cars.push(car);
+      const sized = (sz: [number, number, number] | null) => (sz ? { length: sz[0], width: sz[1], height: sz[2], sizeFt: sz } : {});
+      boxes.push({ ...common, ...sized(car.sizeFt), mass: car.mass, position: sitWorldTriplet(ipos), positionFt: car.positionFt, modelName: modelOf(valueAfter("modelName")), crushRole: "body" });
+      boxes.push({ ...common, ...sized(car.size2Ft), mass: car.mass, position: sitWorldTriplet(ipos2!), positionFt: car.position2Ft, modelName: modelOf(valueAfter("cabModelName")), crushRole: "cab" });
     }
     cursor = blockEnd;
   }
