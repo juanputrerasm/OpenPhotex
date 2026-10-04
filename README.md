@@ -71,6 +71,18 @@ Details: [docs/TRUCKS.md](docs/TRUCKS.md).
 
 Heightfields (8-bit, and CPR's 10.6 fixed point) and ground boxes (`.RA0`, `.RA1`, `.CL0`) are decoded by the library (`decodeHeightSample`, `decodeGroundBoxes`); a lone grid means nothing without its level, so `read` does not take them. Details: [docs/LEVELS.md](docs/LEVELS.md).
 
+### MTM2 game data
+
+| Format | Games | Contents | Example |
+|---|---|---|---|
+| `.KLP` | MTM2 | Loop points for the `.WAV` of the same name | `openphotex read SOUND.POD ACCEL3B.KLP` |
+| `SOUNDnnn.TXT` | MTM2 | A level's ambient sounds, checkpoint and lap sounds | `openphotex read SOUND.POD SOUND002.TXT` |
+| `SUN.TXT` | MTM2 | Sun position and lens-flare layers | `openphotex read STARTUP.POD SUN.TXT` |
+| `.LOC` | MTM2 | TRI Message System replacements (joke and Pig Latin wordings) | `openphotex read UI.POD MTM2-PIG.LOC` |
+| `POWERBIG.200`/`.400`/`.480` | MTM2 | Cockpit layout per screen height | `openphotex read COCKPIT.POD POWERBIG.480` |
+
+Details: [docs/MTM2_FILES.md](docs/MTM2_FILES.md). The game's own simulation rules are in the library as `mtm2Sim` ([docs/SIM_MTM2.md](docs/SIM_MTM2.md)).
+
 ### Terminal Velocity, Fury3 and Hellbender levels
 
 | Format | Games | Contents | Example |
@@ -191,6 +203,8 @@ The core is environment-neutral. It takes a `Uint8Array` or `ArrayBuffer` and re
 | `parseNocturneSet`, `parseNocturneGeo`, `parseNocturneFog` | Nocturne pre-rendered scene manifests, collision grids and per-camera fog data. |
 | `parseNocturneThm`, `parseNocturneZth` | Nocturne location thumbnails and per-camera depth thumbnails. |
 | `parseMtmSit`, `parseMtmLvl`, `parseTexList`, `parseTty` | MTM1, MTM2 and CPR scene scripts and level files; `detectSitOrigin` tells the three apart. |
+| `parseKlp`, `parseMtmAmbientSounds`, `parseMtmSun`, `parseLoc`, `parseCockpitLayout` | MTM2 loop points, ambient sounds, sun and flare, message replacements and cockpit layouts. |
+| `mtm2Sim` | The MTM2 simulation: terrain, surfaces, water, courses, checkpoints, truck parameters, controls and drivetrain ([docs/SIM_MTM2.md](docs/SIM_MTM2.md)). |
 | `parseCprTrk`, `parseCprTtx` | CPR's road layer and its texture list, with the cross-section schema (`CPR_POINT_NAMES`, `CPR_WALL_LAYERS`, `cprVisibleSlots`, `cprTrackIsClosed`). |
 | `parseTvLvl`, `parseDef`, `parseNavPoints`, `parseHbNavPoints`, `parsePowerups`, `parseTunnelDefs`, `parseAnimations`, `parseHbBriefing` | Terminal Velocity, Fury3 and Hellbender level files; `placementToEditor` converts their coordinates. |
 | `decodeHeightSample`, `decodeGroundBoxes`, `decodeHbUnderground`, `skyGradient` | Heightfields, ground boxes, Hellbender's cavern and the sky gradient. |

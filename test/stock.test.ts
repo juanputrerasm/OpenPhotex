@@ -14,6 +14,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { buildCourse, isArc, type CourseStraight } from "../src/sim/mtm2/world/course.ts";
 import {
+  parseKlp, parseMtmAmbientSounds, parseMtmSun, parseLoc, parseCockpitLayout,
   parseBin,
   parseFlyScf,
   parseFlyBsp,
@@ -129,6 +130,48 @@ test("MTM2 stock courses are straights, three courses per track", { skip: mtm2Fo
     }
   }
   assert.deepEqual(seen, expected);
+});
+
+test("MTM2 stock sound, sun, message and cockpit files read", { skip: mtm2Folder.skip }, () => {
+  const seen: Record<string, string> = {};
+  for (const name of readdirSync(mtm2Folder.path).filter((n) => /\.pod$/i.test(n))) {
+    const bytes = new Uint8Array(readFileSync(join(mtm2Folder.path, name)));
+    for (const e of parsePod(bytes).entries) {
+      const b = () => readPodEntry(bytes, e);
+      if (e.title.endsWith(".KLP")) {
+        const k = parseKlp(b());
+        assert.ok(k, e.title);
+        seen[e.title] = `${k.type}/${k.loops.length}`;
+      } else if (/^SOUND\d+\.TXT$/.test(e.title)) {
+        const sounds = parseMtmAmbientSounds(b());
+        assert.match(sounds.finishLapWav, /\.wav$/i, e.title);
+        for (const o of sounds.oneShots) assert.ok(o.timerMin <= o.timerMax && o.weatherMask > 0 && o.weatherMask < 512, e.title);
+        seen[e.title] = `${sounds.oneShots.length}/${sounds.loops.length}`;
+      } else if (e.title === "SUN.TXT") {
+        const sun = parseMtmSun(b());
+        seen[e.title] = `${sun.layers.length}/${sun.rays.length}`;
+      } else if (e.title.endsWith(".LOC")) {
+        seen[e.title] = String(parseLoc(b())?.length);
+      } else if (/^POWERBIG\.\d+$/.test(e.title)) {
+        const c = parseCockpitLayout(b());
+        assert.ok(c, e.title);
+        seen[e.title] = `${c.sections.length}/${c.mirrors.length}/${c.shiftLight}`;
+      }
+    }
+  }
+  const klp = Object.entries(seen).filter(([n]) => n.endsWith(".KLP"));
+  assert.equal(klp.length, 32);
+  assert.deepEqual(klp.filter(([, v]) => !v.startsWith("1/")).sort(), [
+    ["ACCEL3B.KLP", "3/5"], ["HUEY.KLP", "3/9"], ["JUNGL-N1.KLP", "3/9"], ["JUNGL-N3.KLP", "3/9"],
+    ["RAINRF8.KLP", "3/4"], ["TRAIN22.KLP", "3/7"],
+  ]);
+  assert.equal(seen["SOUND003.TXT"], "40/2");
+  assert.equal(seen["SOUND013.TXT"], "13/0");
+  assert.equal(seen["SUN.TXT"], "10/9");
+  assert.equal(seen["MTM2-FUN.LOC"], "93");
+  assert.equal(seen["MTM2-PIG.LOC"], "142");
+  assert.equal(seen["POWERBIG.200"], "28/1/pl200.raw");
+  assert.equal(seen["POWERBIG.480"], "28/1/pl480.raw");
 });
 
 test("MTM2 stock courses build into closed straight-arc loops", { skip: mtm2Folder.skip }, () => {

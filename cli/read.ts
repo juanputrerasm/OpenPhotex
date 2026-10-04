@@ -17,7 +17,7 @@ import {
   parseSmf, parseTexList, readPodEntry, parseTruckManifest, parseTty, parseTunnelDefs, parseTvLvl, podPathTitle, rawTextureSide,
   parseFlyScf, parseFlySceneryObjects, parseFlyBsp, parseFlyAlt, parseFlyTex, parseFlyTyp, parseFlyRef, parseFlyAl2, findPodEntry,
   parseDfm, parseSkl, parseKfm, parseCth, parseNocturneGeo, parseNocturneFog, parseNocturneSet,
-  parseNocturneThm, parseNocturneZth,
+  parseNocturneThm, parseNocturneZth, parseKlp, parseMtmAmbientSounds, parseMtmSun, parseLoc, parseCockpitLayout,
   type PodArchive, type PodEntry,
 } from "openphotex";
 import { CliError, EXIT, printJson, usageError } from "./output.ts";
@@ -48,6 +48,11 @@ const READERS: Record<string, { reader: string; read: (bytes: Uint8Array, name: 
   "tex": { reader: "parseTexList", read: (b) => parseTexList(b) },
   "evo-tex": { reader: "parseEvoTex", read: (b, n) => parseEvoTex(b, n) },
   "tty": { reader: "parseTty", read: (b) => parseTty(b) },
+  "klp": { reader: "parseKlp", read: (b) => parseKlp(b) },
+  "mtm-sounds": { reader: "parseMtmAmbientSounds", read: (b) => parseMtmAmbientSounds(b) },
+  "mtm-sun": { reader: "parseMtmSun", read: (b) => parseMtmSun(b) },
+  "loc": { reader: "parseLoc", read: (b) => parseLoc(b) },
+  "mtm-cockpit": { reader: "parseCockpitLayout", read: (b) => parseCockpitLayout(b) },
   "evo-veg": { reader: "parseEvoVeg", read: (b, n) => parseEvoVeg(b, n) },
   "smf": { reader: "parseSmf", read: (b, n) => parseSmf(b, n) },
   "cpr-trk": { reader: "parseCprTrk", read: (b) => parseCprTrk(b) },
@@ -157,7 +162,12 @@ function detect(name: string, bytes: Uint8Array, archive: PodArchive | null, arc
     case "PUP": return isHellbender(archive, archiveBytes) ? "hb-pup" : "tv-pup";
     case "TDF": return isHellbender(archive, archiveBytes) ? "hb-tdf" : "tv-tdf";
     case "ANI": return "ani";
+    case "KLP": return "klp";
+    case "LOC": return "loc";
+    case "200": case "400": case "480": return title.startsWith("POWERBIG.") ? "mtm-cockpit" : "";
     case "TXT":
+      if (/^SOUND\d+\.TXT$/.test(title)) return "mtm-sounds";
+      if (title === "SUN.TXT") return "mtm-sun";
       if (matchEvoAiLineName(name, title.replace(/^AI_\d\d/, "").replace(/\.TXT$/, ""))) return "evo-ai-line";
       return "";
     case "TIF": case "TIFF": return "tiff";

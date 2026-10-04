@@ -155,6 +155,14 @@ export { parseNocturneThm, NOCTURNE_THM_WIDTH, NOCTURNE_THM_HEIGHT, NOCTURNE_THM
 export type { NocturneThm, NocturneThumbnail } from "./nocturne/thm.ts";
 export { parseNocturneZth, NOCTURNE_ZTH_WIDTH, NOCTURNE_ZTH_HEIGHT, NOCTURNE_ZTH_MAP_BYTES } from "./nocturne/zth.ts";
 export type { NocturneZth } from "./nocturne/zth.ts";
+export { parseKlp, parseMtmAmbientSounds, weatherMaskIncludes } from "./mtm/sound.ts";
+export type { MtmKlp, KlpLoop, MtmAmbientSounds, MtmOneShotSound, MtmLoopedSound } from "./mtm/sound.ts";
+export { parseMtmSun } from "./mtm/sun.ts";
+export type { MtmSun, SunFlareLayer } from "./mtm/sun.ts";
+export { parseLoc } from "./mtm/loc.ts";
+export type { LocMessage } from "./mtm/loc.ts";
+export { parseCockpitLayout, parseCockpitSections } from "./mtm/cockpit.ts";
+export type { MtmCockpitLayout, CockpitSection, CockpitGauge, CockpitMirror } from "./mtm/cockpit.ts";
 export * as mtm2Sim from "./sim/mtm2/index.ts";
 export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
