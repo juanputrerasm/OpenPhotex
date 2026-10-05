@@ -37,3 +37,12 @@ test("a SIT declaring fewer boxes than it holds is reported and reads the declar
   assert.equal(sit.boxes.length, 1);
   assert.equal(sit.warnings[0], "Box count 1 and real object count 2 doesn't match");
 });
+
+test("a box's two sound effect entries read as its hit sound and its own looping sound; NULL.WAV is none", () => {
+  const text = sitText().replace(/@sound effect entries\r\n[^\r]*\r\n[^\r]*\r\n/, "@sound effect entries\r\ncrash1.wav\r\nTRAIN22.WAV\r\n");
+  const sit = parseMtmSit(text, "TEST.SIT");
+  assert.equal(sit.boxes[0]?.hitSound, "crash1.wav");
+  assert.equal(sit.boxes[0]?.loopSound, "TRAIN22.WAV");
+  const plain = parseMtmSit(sitText(), "TEST.SIT");
+  assert.ok(plain.boxes.every((b) => !b.hitSound && !b.loopSound));
+});

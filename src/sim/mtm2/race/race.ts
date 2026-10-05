@@ -13,7 +13,7 @@ import type { Mtm2TruckParams } from "../truck/params.ts";
 import { liftOff, truckRadius, type RecoveryContext } from "../truck/recovery.ts";
 import { autopilotGain, type Mtm2TruckState } from "../truck/state.ts";
 import type { Mtm2Ground } from "../world/ground.ts";
-import { isArc, type CourseSegment } from "../world/course.ts";
+import { isArc, orientedCourse, type CourseSegment } from "../world/course.ts";
 import type { Mtm2Checkpoint } from "../world/checkpoints.ts";
 import { createSummit, summitTick, type Summit } from "./summit.ts";
 
@@ -253,10 +253,10 @@ export function raceTick(race: Race, dt: number, ap: AutopilotContext, recover?:
   if (raceStarted(race)) {
     for (const t of race.trucks) {
       if (!race.summit) testCheckpoint(race, t, dt, recover ? { ground: recover.ground, rc: recover.rc(t) } : undefined);
-      const seg = race.course[t.s.ap.segment];
+      const seg = orientedCourse(race.course, ap.reversed)[t.s.ap.segment];
       if (seg) t.s.ap.eta += (segmentEta(t.s, t.p, seg, ap.height) - t.s.ap.eta) * dt * 0.75;
       advanceAutopilotSegment(t.s, { ...ap, place: t.place, rubberBand: !t.player && !race.trucks.some((o) => o.player && o.place === 1) && race.trucks.some((o) => o.player) }, t.p);
-      t.progress = t.s.ap.progress = segmentProgress(t, race.course, race.difficulty);
+      t.progress = t.s.ap.progress = segmentProgress(t, orientedCourse(race.course, ap.reversed), race.difficulty);
     }
     if (race.summit) summitRound(race, dt);
     else raceOrder(race);

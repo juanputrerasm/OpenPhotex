@@ -6,7 +6,7 @@
   as it does in the game. Every truck is taken to be on the primary course, and the reversed
   course is not in.
 */
-import type { CourseSegment } from "../world/course.ts";
+import { nextSegmentIndex, orientedCourse, type CourseSegment } from "../world/course.ts";
 import { headingOf, tireForwardSpeed, wrapGame, type AutopilotContext } from "./autopilot.ts";
 import type { Mtm2TruckParams } from "./params.ts";
 import { truckRadius } from "./recovery.ts";
@@ -38,9 +38,10 @@ export function applyTraffic(
   s: Mtm2TruckState, p: Mtm2TruckParams, ctx: AutopilotContext, trucks: readonly TrafficTruck[],
   hs: number, c: number, target: number,
 ): { c: number; target: number } {
-  const { course } = ctx;
+  const course = orientedCourse(ctx.course, ctx.reversed);
   const ap = s.ap;
-  const seg = course[ap.segment];
+  const seg = course[ap.segment]!;
+  const rev = ctx.reversed;
   const G0 = autopilotGain(ctx.difficulty);
   const rA = truckRadius(p);
   const oldTarget = ap.passTarget;
@@ -65,7 +66,7 @@ export function applyTraffic(
   let chosen = best;
   const old = oldTarget >= 0 ? trucks[oldTarget] : undefined;
   if (oldTarget !== best && old && onLine(old)) {
-    const next = seg.lastEntry ? old.s.ap.segment === 0 : old.s.ap.segment - ap.segment === 1;
+    const next = old.s.ap.segment === nextSegmentIndex(ctx.course, ap.segment, rev);
     if (next) { chosen = oldTarget; ap.candidates++; list.push(oldTarget); }
   }
   ap.passTarget = chosen;
@@ -102,7 +103,7 @@ export function applyTraffic(
       for (let k = trucks.length - 1; k >= 0; k--) {
         const o = trucks[k];
         if (o.s === s || k === ap.passTarget) continue;
-        const ahead = (o.s.ap.segment === ap.segment && ap.progress < o.s.ap.progress) || o.s.ap.segment - ap.segment === 1;
+        const ahead = (o.s.ap.segment === ap.segment && ap.progress < o.s.ap.progress) || o.s.ap.segment === nextSegmentIndex(ctx.course, ap.segment, rev);
         if (!ahead || !onLine(o)) continue;
         const d = dist3(s.pos, o.s.pos);
         if (d < nearest) { ap.follow = k; nearest = d; }
@@ -145,12 +146,11 @@ export function applyTraffic(
     // 5. No target: no side, and the nearest truck ahead to follow.
     ap.side = 0;
     let nearest = 999999;
-    const last = course.length - 1;
     for (let k = trucks.length - 1; k >= 0; k--) {
       const o = trucks[k];
       if (o.s === s) continue;
       const os = o.s.ap.segment;
-      const ahead = (os === ap.segment && ap.progress < o.s.ap.progress) || os - ap.segment === 1 || (ap.segment === last && os === 0);
+      const ahead = (os === ap.segment && ap.progress < o.s.ap.progress) || os === nextSegmentIndex(ctx.course, ap.segment, rev);
       if (!ahead) continue;
       const d = dist3(s.pos, o.s.pos);
       if (d < nearest && onLine(o)) { ap.follow = k; nearest = d; }

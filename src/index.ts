@@ -160,6 +160,8 @@ export type { MtmKlp, KlpLoop, MtmAmbientSounds, MtmOneShotSound, MtmLoopedSound
 export { parseMtmSun } from "./mtm/sun.ts";
 export type { MtmSun, SunFlareLayer } from "./mtm/sun.ts";
 export { parseLoc } from "./mtm/loc.ts";
+export { modChannels, parseMod, renderMod } from "./audio/mod.ts";
+export type { ModSample, ModSong, RenderedMod } from "./audio/mod.ts";
 export type { LocMessage } from "./mtm/loc.ts";
 export { parseCockpitLayout, parseCockpitSections } from "./mtm/cockpit.ts";
 export type { MtmCockpitLayout, CockpitSection, CockpitGauge, CockpitMirror } from "./mtm/cockpit.ts";
@@ -168,4 +170,4 @@ export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 
 /** The library version, as published in package.json. */
-export const VERSION = "1.0.0";
+export const VERSION = "1.0.1";

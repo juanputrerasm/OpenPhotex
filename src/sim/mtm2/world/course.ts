@@ -234,3 +234,34 @@ export function buildCourse(
   }
   return out;
 }
+
+/**
+ * The course as driven. On a reversed course (`0x647564`, MTM2_PHYSICS.md 14.22) each segment
+ * is turned round for the autopilot: a straight's start and end swap, an arc's entry and exit
+ * angles swap, and segment 1 takes the speed of the last segment.
+ */
+export function orientedCourse(course: readonly CourseSegment[], reversed = false): readonly CourseSegment[] {
+  if (!reversed || course.length === 0) return course;
+  let turned = reversedCache.get(course);
+  if (!turned) {
+    const last = course[course.length - 1]!;
+    turned = course.map((seg, i): CourseSegment => {
+      const speed = i === 0 ? last.speed : seg.speed;
+      return isArc(seg)
+        ? { ...seg, entryAngle: seg.exitAngle, exitAngle: seg.entryAngle, speed }
+        : { ...seg, start: seg.end, end: seg.start, speed };
+    });
+    reversedCache.set(course, turned);
+  }
+  return turned;
+}
+const reversedCache = new WeakMap<readonly CourseSegment[], CourseSegment[]>();
+
+/**
+ * The segment the autopilot moves on to: the next, the first after the last entry; on a
+ * reversed course the one before, the last one from the first.
+ */
+export function nextSegmentIndex(course: readonly CourseSegment[], i: number, reversed = false): number {
+  if (reversed) return i === 0 ? course.length - 1 : i - 1;
+  return course[i]?.lastEntry ? 0 : i + 1;
+}

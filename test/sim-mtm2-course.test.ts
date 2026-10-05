@@ -4,7 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  arcBetween, buildArc, buildCourse, isArc, lineIntersection, wrapAngle,
+  arcBetween, buildArc, buildCourse, isArc, lineIntersection, nextSegmentIndex, orientedCourse, wrapAngle,
   type CourseArc, type CourseStraight, type Point3,
 } from "../src/sim/mtm2/world/course.ts";
 
@@ -132,4 +132,34 @@ test("the built course: straights and arcs alternate, speeds forward, last flagg
     near(a.centre[0] + Math.sin(a.exitAngle) * a.radius, next.start[0], 1e-6);
     near(a.centre[2] + Math.cos(a.exitAngle) * a.radius, next.start[2], 1e-6);
   });
+});
+
+const built = () => buildCourse(square.map((s, i) => ({
+  startFt: s.start, endFt: s.end, ctype: 1, cspeedType: 0, cdecPoint: 30, cspeed: 60 + i,
+  speedLimit: 0, trackWidthFt: 32,
+})), flat);
+
+test("a reversed course turns every segment round, and segment 1 takes the last one's speed (14.22)", () => {
+  const course = built();
+  const turned = orientedCourse(course, true);
+  assert.equal(orientedCourse(course, false), course);
+  assert.equal(turned.length, course.length);
+  const [a, b] = [course[0] as CourseStraight, turned[0] as CourseStraight];
+  assert.deepEqual(b.start, a.end);
+  assert.deepEqual(b.end, a.start);
+  assert.equal(b.speed, course[course.length - 1]!.speed);
+  const arc = course[1] as CourseArc, arcTurned = turned[1] as CourseArc;
+  assert.equal(arcTurned.entryAngle, arc.exitAngle);
+  assert.equal(arcTurned.exitAngle, arc.entryAngle);
+  assert.equal(arcTurned.speed, arc.speed);
+  assert.equal(orientedCourse(course, true), turned, "cached");
+});
+
+test("the next segment: the one after (the first after the last), or reversed the one before (the last before the first)", () => {
+  const course = built();
+  const last = course.length - 1;
+  assert.equal(nextSegmentIndex(course, 0), 1);
+  assert.equal(nextSegmentIndex(course, last), 0);
+  assert.equal(nextSegmentIndex(course, 3, true), 2);
+  assert.equal(nextSegmentIndex(course, 0, true), last);
 });

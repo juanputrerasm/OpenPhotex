@@ -46,6 +46,13 @@ export interface SitBox {
    * detailLevel (MONSTER.EXE 0x54ec00). Absent means 0.
    */
   priority?: number;
+  /**
+   * The two names under "@sound effect entries": the sound the object makes when something hits
+   * it (MONSTER.EXE 0x428bc0 plays it) and the one it makes by itself, looping (a train's rumble,
+   * a crossing's bell, a stand's crowd). Null when the entry is NULL.WAV.
+   */
+  hitSound?: string | null;
+  loopSound?: string | null;
   /** Top-crush parts: which record they came from, and which part they are. */
   crushGroup?: number;
   crushRole?: "body" | "cab";
@@ -375,6 +382,16 @@ function parseBoxBlock(lines: string[], blockStart: number, isRamp: boolean): Si
 
   const massIdx = indexOfLinePrefix(lines, "mass", blockStart, endIndex);
   if (massIdx >= 0 && massIdx + 1 < lines.length) box.mass = parseFloat(lines[massIdx + 1]) || 0;
+
+  const soundIdx = indexOfLinePrefix(lines, "@sound effect entries", blockStart, endIndex);
+  if (soundIdx >= 0) {
+    const name = (row: string | undefined): string | null => {
+      const v = (row ?? "").trim();
+      return v === "" || /^null\.wav$/i.test(v) ? null : v;
+    };
+    box.hitSound = name(lines[soundIdx + 1]);
+    box.loopSound = name(lines[soundIdx + 2]);
+  }
 
   // Type 10 objects ("moving - use bvel" in Traxx's notes) travel along it: TPARK's train.
   const bvelIdx = indexOfLinePrefix(lines, "bvel", blockStart, endIndex);

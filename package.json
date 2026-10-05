@@ -1,6 +1,6 @@
 {
   "name": "openphotex",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Reference implementation of Terminal Reality game data formats (MTM, CPR, TV, Fury3, Hellbender, 4x4 Evolution, Fly!, Nocturne), for browsers, Node.js and command-line/agent use.",
   "license": "Apache-2.0",
   "type": "module",

@@ -8,7 +8,7 @@
   reversed course is not in yet.
 */
 import { ENGINE, G, INV_G } from "../constants.ts";
-import { isArc, type CourseArc, type CourseSegment, type CourseStraight } from "../world/course.ts";
+import { isArc, nextSegmentIndex, orientedCourse, type CourseArc, type CourseSegment, type CourseStraight } from "../world/course.ts";
 import { gearRatio } from "./drivetrain.ts";
 import { truckWeight } from "./dynamics.ts";
 import type { Mtm2TruckParams } from "./params.ts";
@@ -50,6 +50,8 @@ export interface AutopilotContext {
   sonicTrack?: boolean;
   /** Drag mode: no 17 ft/s floor, rear steer x1.25. */
   dragMode?: boolean;
+  /** The course is driven the other way round (GOLD mode, `0x647564`). */
+  reversed?: boolean;
   /** Rubber-banding (§14.23): this truck's place, and whether it is a CPU truck while the player is not first. */
   place?: number;
   rubberBand?: boolean;
@@ -109,9 +111,9 @@ export function segmentEta(s: Mtm2TruckState, p: Mtm2TruckParams, seg: CourseSeg
  * the new segment's end is set too (§14.24).
  */
 export function advanceAutopilotSegment(s: Mtm2TruckState, ctx: AutopilotContext, p?: Mtm2TruckParams): boolean {
-  const { course } = ctx;
+  const course = orientedCourse(ctx.course, ctx.reversed);
   if (course.length === 0) return false;
-  const seg = course[s.ap.segment];
+  const seg = course[s.ap.segment]!;
   const x = s.pos[0], z = s.pos[2];
   let distance: number;
   if (isArc(seg)) {
@@ -125,15 +127,15 @@ export function advanceAutopilotSegment(s: Mtm2TruckState, ctx: AutopilotContext
       distance = l === 0 ? 999999 : Math.abs(rx * ez - rz * ex) / l;
     }
   } else {
-    const next = course[(s.ap.segment + 1) % course.length];
+    const next = course[nextSegmentIndex(course, s.ap.segment, ctx.reversed) % course.length]!;
     const N: V3 = isArc(next) ? next.centre : next.start;
     distance = distanceToEndLine(seg, N, x, z);
   }
   if (!(distance < seg.decPoint)) return false;
   s.ap.integral = 0;
   s.ap.segmentsPassed++;
-  s.ap.segment = seg.lastEntry ? 0 : s.ap.segment + 1;
-  const entered = course[s.ap.segment];
+  s.ap.segment = nextSegmentIndex(ctx.course, s.ap.segment, ctx.reversed);
+  const entered = course[s.ap.segment]!;
   if (!isArc(entered)) {
     let bonus = 0;
     if (ctx.rubberBand && ctx.difficulty !== 2 && (ctx.place ?? 99) <= 2) {
@@ -197,10 +199,11 @@ function toWorld(m: ArrayLike<number>, x: number, y: number, z: number): V3 {
  * into `s.controls`. Run at the start of the step, before `stepTruck`.
  */
 export function applyAutopilot(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: AutopilotContext): void {
-  const { course, dt } = ctx;
+  const { dt } = ctx;
+  const course = orientedCourse(ctx.course, ctx.reversed);
   const fdt = ctx.frameDt ?? AUTOPILOT_FRAME_DT;
   if (course.length === 0) return;
-  const seg = course[s.ap.segment];
+  const seg = course[s.ap.segment]!;
   const arc = isArc(seg);
   const K = ctx.sonicTrack && ctx.difficulty === 2 ? K_SONIC : K_DEFAULT;
   const kSlope = ctx.sonicTrack && ctx.difficulty === 2 ? SLOPE_K_SONIC : SLOPE_K_DEFAULT;
