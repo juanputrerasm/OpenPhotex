@@ -10,6 +10,7 @@ export * from "./world/surface.ts";
 export * from "./world/water.ts";
 export * from "./world/course.ts";
 export * from "./world/ground.ts";
+export * from "./world/road.ts";
 export {
   CHECKPOINT_TYPE, DETECTOR_WIDTH_SCALE, DETECTOR_HEIGHT_SCALE, SPHERE_PRETEST_FACTOR, buildCheckpoints,
   withinCheckpointReach, speedThroughCheckpoint, checkpointCrossingTime, pointInCheckpointBox,
@@ -27,6 +28,7 @@ export { solveHullContacts } from "./truck/contacts.ts";
 export { fluidAreas, hullFaceWaterArea, wheelWaterAreas, SPLASH_SPEED } from "./truck/water-drag.ts";
 export type { FluidAreas } from "./truck/water-drag.ts";
 export * from "./truck/recovery.ts";
+export * from "./truck/damage.ts";
 export * from "./truck/autopilot.ts";
 export * from "./truck/traffic.ts";
 export * from "./collide/box.ts";

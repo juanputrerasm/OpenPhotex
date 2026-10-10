@@ -19,6 +19,12 @@ export interface Mtm2Terrain {
   heights: Uint8Array;
   /** The water level in feet, or null when the level has no water. */
   waterLevelFt: number | null;
+  /**
+   * The corner heights in feet, in the same order, for a level whose heightfield is finer than
+   * MTM2's 2 ft steps (CART Precision Racing, 4x4 Evolution). When present it is used and
+   * `heights` is not.
+   */
+  heightsFt?: Float32Array;
 }
 
 const UNITS_PER_FT = 256;
@@ -32,8 +38,17 @@ export function createTerrain(heights: Uint8Array, waterLevelFt: number | null =
   return { heights, waterLevelFt };
 }
 
+/** A terrain from corner heights in feet (see `Mtm2Terrain.heightsFt`): the same grid, cells and split. */
+export function createTerrainFt(heightsFt: Float32Array, waterLevelFt: number | null = null): Mtm2Terrain {
+  if (heightsFt.length !== TERRAIN_CELLS * TERRAIN_CELLS) {
+    throw new RangeError(`terrain needs ${TERRAIN_CELLS * TERRAIN_CELLS} heights, got ${heightsFt.length}`);
+  }
+  return { heights: new Uint8Array(0), heightsFt, waterLevelFt };
+}
+
 function corner(t: Mtm2Terrain, row: number, col: number): number {
-  return t.heights[(row & MASK) * TERRAIN_CELLS + (col & MASK)] * HEIGHT_STEP_FT;
+  const i = (row & MASK) * TERRAIN_CELLS + (col & MASK);
+  return t.heightsFt ? t.heightsFt[i]! : t.heights[i]! * HEIGHT_STEP_FT;
 }
 
 /** The cell and in-cell fractions of a position, as the game computes them. */

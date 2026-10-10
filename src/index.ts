@@ -81,8 +81,9 @@ export {
 export type { HeightGrid } from "./terrain/height.ts";
 export {
   parseMtmSit, parseMtmLvl, parseTexList, parseTty, detectSitOrigin, sitTrackTypeName, sitWorldTriplet, sitFeetTriplet,
+  BOX_LIGHT, BOX_MOVING, parseSitLight,
 } from "./mtm/sit.ts";
-export type { MtmSit, MtmLvl, TtyEntry, SitBox, SitCourse, SitCourseSegment, SitTruck, SitArena, SitOrigin } from "./mtm/sit.ts";
+export type { MtmSit, MtmLvl, TtyEntry, SitBox, SitCourse, SitCourseSegment, SitTruck, SitArena, SitOrigin, SitLight } from "./mtm/sit.ts";
 export { parseTvLvl, detectTvLvlOrigin, isNullAssetName, tvLvlFallbackName } from "./tv/lvl.ts";
 export type { TvLvl, TvLvlOrigin } from "./tv/lvl.ts";
 export { parseDef, defPlacementToEditor, TR_ANGLE_TO_RAD } from "./tv/def.ts";
@@ -100,6 +101,8 @@ export {
   isCprPitCheckpoint,
 } from "./cpr/track.ts";
 export type { CprTrk, CprTrackSurface, CprTtxEntry, CprWallLayer, CprCheckpointRole } from "./cpr/track.ts";
+export { CPR_WALL_PART_HEIGHT_FT, buildCprRoad } from "./cpr/road.ts";
+export type { CprRoad, CprRoadQuad, CprRoadWall, CprRoadWallPanel } from "./cpr/road.ts";
 export { BUNDLED_PALETTE_IDS, bundledPalette } from "./texture/bundled-palettes.ts";
 export type { BundledPaletteId } from "./texture/bundled-palettes.ts";
 export {
@@ -160,6 +163,8 @@ export type { MtmKlp, KlpLoop, MtmAmbientSounds, MtmOneShotSound, MtmLoopedSound
 export { parseMtmSun } from "./mtm/sun.ts";
 export type { MtmSun, SunFlareLayer } from "./mtm/sun.ts";
 export { parseLoc } from "./mtm/loc.ts";
+export { parseMtmReplay, writeMtmReplay, REPLAY_RING_RECORDS, REPLAY_FRAME_TICKS, REPLAY_TICKS_PER_SECOND } from "./mtm/replay.ts";
+export type { MtmReplay, MtmReplayRecord, MtmReplayVehicle } from "./mtm/replay.ts";
 export { modChannels, parseMod, renderMod } from "./audio/mod.ts";
 export type { ModSample, ModSong, RenderedMod } from "./audio/mod.ts";
 export type { LocMessage } from "./mtm/loc.ts";
@@ -170,4 +175,4 @@ export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 
 /** The library version, as published in package.json. */
-export const VERSION = "1.0.1";
+export const VERSION = "1.0.2";

@@ -159,6 +159,8 @@ export interface BinFace {
   textureName: string;
   /** The record that set that texture: MRGL.TEXTURE, TEXTURE64 or TEXTURECYCLE; null for none. */
   textureOpcode: number | null;
+  /** MRGL_TEXTURECYCLE: every frame's texture name in order (the first is `textureName`); absent otherwise. */
+  textureFrames?: string[];
   /** The current MRGL_COLOR, 0xRRGGBB (COLORREF bytes), when the face was read. */
   solidColor: number;
   /** Index into `materials` (MATFACET only), or null. */
@@ -268,6 +270,7 @@ function walk(r: Reader, model: BinModel): void {
 
   let texture = "";
   let textureOpcode: number | null = null;
+  let textureFrames: string[] | null = null;
   let solidColor = 0;
   let material: number | null = null;
   let material2: number | null = null;
@@ -312,6 +315,7 @@ function walk(r: Reader, model: BinModel): void {
         r.skip(4); // slot
         texture = r.string(16);
         textureOpcode = token;
+        textureFrames = null;
         break;
       /*
         MRGL_TEXTURE64: MRGL_TEXTURE with a 64-byte name, added because a texture name can now be
@@ -322,6 +326,7 @@ function walk(r: Reader, model: BinModel): void {
         r.skip(4); // slot
         texture = r.string(64);
         textureOpcode = token;
+        textureFrames = null;
         break;
       // A state change selecting the current material; its flags decide how every MATFACET after
       // it is shaded, so it is read, not strided.
@@ -343,8 +348,10 @@ function walk(r: Reader, model: BinModel): void {
         if (num < 0 || num > 1024) return stop("implausible MRGL_TEXTURECYCLE count");
         // The frames' names, 32 bytes each; the first is the texture in effect.
         if (r.remaining() >= num * 32) {
+          textureFrames = [];
           for (let i = 0; i < num; i++) {
             const name = r.string(32);
+            textureFrames.push(name);
             if (i === 0) { texture = name; textureOpcode = token; }
           }
         } else if (r.remaining() >= num * 8) r.skip(num * 8);
@@ -391,7 +398,10 @@ function walk(r: Reader, model: BinModel): void {
           const isMat = token === MRGL.MATFACET;
           const face = readFace(r, token, offset, MAPPED_FACETS.has(token), texture, textureOpcode, solidColor,
             isMat ? material : null, isMat ? material2 : null, vertexCount);
-          if (face) model.faces.push(face);
+          if (face) {
+            if (textureFrames && textureFrames.length > 1) face.textureFrames = textureFrames;
+            model.faces.push(face);
+          }
           break;
         }
         /*

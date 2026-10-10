@@ -79,6 +79,16 @@ test("cutout: palette-black texels become transparent black; other texels stay o
   assert.deepEqual([...cut.rgba.subarray(4, 8)], [10, 20, 30, 255]);
 });
 
+test("cutout: black as 16-bit colour holds it, so (7, 7, 7) is cut and (8, 8, 8) is not", () => {
+  const act = palette((i) => (i === 205 ? [7, 7, 7] : i === 3 ? [8, 8, 8] : [10, 20, 30]));
+  const raw = new Uint8Array(32 * 32).fill(1);
+  raw[0] = 205;
+  raw[1] = 3;
+  const cut = decodeRawTexture(raw, act, { cutout: true });
+  assert.deepEqual([...cut.rgba.subarray(0, 4)], [0, 0, 0, 0]);
+  assert.deepEqual([...cut.rgba.subarray(4, 8)], [8, 8, 8, 255]);
+});
+
 test("decodeRawTexture refuses sizes the family does not use and short palettes", () => {
   assert.throws(() => decodeRawTexture(new Uint8Array(16 * 16), new Uint8Array(768)), RangeError);
   assert.equal(decodeRawTexture(new Uint8Array(16 * 16), new Uint8Array(768), { family: "evo" }).width, 16);

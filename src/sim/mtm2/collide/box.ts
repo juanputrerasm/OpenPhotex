@@ -8,6 +8,10 @@
 import { eulerToMatrix } from "../math.ts";
 
 export interface SimBox {
+  /** Faces (bits by FACES index) a truck's points ignore: see `groundBoxesAround`'s `smoothFt`. */
+  openFaces?: number;
+  /** With `openFaces`: how far below the top a wheel may be and still be carried up onto it, feet. */
+  climbFt?: number;
   pos: [number, number, number];
   /** Body-to-world rotation, row-major. */
   matrix: Float64Array;
@@ -126,8 +130,13 @@ export const MAX_GROUND_BOXES = 600;
  * The ground boxes around a point (§14.14): every cell of the 3 x 3 around it whose lower
  * (`ra0`) and upper (`ra1`) heights differ. Heights are 2 ft steps; neighbours wrap at the map
  * edge, and so do the boxes' positions (as in the game).
+ *
+ * `smoothFt` is not the game's: with it, a box's side toward a neighbouring box whose top is no
+ * more than that many feet lower (level, or higher) is marked open, as is its bottom, so a truck
+ * drives across the seams of a floor of boxes and up small steps instead of catching on the
+ * sides the cells share.
  */
-export function groundBoxesAround(ra0: Uint8Array, ra1: Uint8Array, x: number, z: number, out: SimBox[] = []): SimBox[] {
+export function groundBoxesAround(ra0: Uint8Array, ra1: Uint8Array, x: number, z: number, out: SimBox[] = [], smoothFt?: number): SimBox[] {
   const col = (Math.trunc(x * 256) >> 13) & 255;
   const row = (Math.trunc(z * 256) >> 13) & 255;
   for (let dc = -1; dc <= 1; dc++) {
@@ -137,10 +146,25 @@ export function groundBoxesAround(ra0: Uint8Array, ra1: Uint8Array, x: number, z
       const lo = ra0[i] * 2, hi = ra1[i] * 2;
       if (lo === hi) continue;
       const h = hi - lo;
-      out.push(createBox(
+      const box = createBox(
         [c * GROUND_BOX_CELL_FT + 16, lo + Math.trunc(h / 2), r * GROUND_BOX_CELL_FT + 16],
         [GROUND_BOX_CELL_FT, h, GROUND_BOX_CELL_FT],
-      ));
+      );
+      if (smoothFt !== undefined) {
+        // Faces: 0 left (-x), 1 right (+x), 2 bottom, 4 front (+z), 5 back (-z).
+        let open = 1 << 2;
+        const beside = (nc: number, nr: number, face: number): void => {
+          const k = (nr & 255) * 256 + (nc & 255);
+          if (ra0[k] !== ra1[k] && hi - ra1[k] * 2 <= smoothFt) open |= 1 << face;
+        };
+        beside(c - 1, r, 0);
+        beside(c + 1, r, 1);
+        beside(c, r + 1, 4);
+        beside(c, r - 1, 5);
+        box.openFaces = open;
+        box.climbFt = smoothFt;
+      }
+      out.push(box);
       if (out.length > MAX_GROUND_BOXES) throw new Error("Too many ground boxes.");
     }
   }

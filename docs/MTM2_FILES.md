@@ -69,3 +69,14 @@ face redraw rectangle), steering wheel and erase rectangles, the steering wheel 
 mirrors (location, angles, translation, zoom, bitmap rectangle and name), the shifter and the
 shift light. The game's reader is not traced yet; the mirror's angles (0, 0, 32768) and zoom
 (49152) suggest 1/65536 turns and 16.16 fixed point.
+
+## `.rpl`: instant replays and demos (`parseMtmReplay`, `writeMtmReplay`, 0x565050, 0x5659f0)
+
+The engine's record of a race, as CRLF text (`core/Demo.c`): `demoLevel`, the track, `weather`,
+`vehicleCount` and a truck file and driver name per vehicle, `detailLevel`, `demoRecordPtr` and
+`demoRecordCount`, `Original object locations` with each SIT box's x, y, z, theta, phi, psi, then
+records every 0x4000 ticks (0.25 s; time is in 1/65536 s). A `type,time` line starts a record, then
+label and value pairs: type 0 a vehicle (position, body velocity, angles, rates, number, steering,
+four tire angles, throttle and brakes and course segment, damage code and gear), type 1 an object
+(the same up to the number). The game's ring holds 2240 records. See JSTrackViewer's
+`docs/MTM2_REPLAY_FORMAT.md` for measurements made from replays.

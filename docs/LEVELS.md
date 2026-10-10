@@ -53,7 +53,9 @@ A CPR track is not a free-form mesh. It is a fixed 20-point cross section extrud
 
 The helpers that interpret the records: **`isDegenerateSlot`** (a slot collapsed to zero width), **`cprVisibleSlots`** (the slots between the outermost walls, which is all the game draws), **`cprTrackIsClosed`** and **`cprSegmentPairs`** (nothing in the file says a track is a circuit, but all 17 stock tracks end one ordinary segment short of their start), **`CPR_COURSE_PURPOSES`** (what the five AI courses are for), and **`cprCheckpointRole`** (checkpoints 0 to 3 are pit entry, pit speed limit, pit speed limit end and start/finish on every stock track).
 
-The height of one wall panel is not in the data and stays with the viewer that calibrated it.
+**`buildCprRoad(surfaces, textureCount)`** lays the records out as geometry, once, for whatever draws the track and whatever drives on it: the road's quads (one a visible slot of each stretch, the closing stretch included, with its `.TTX` texture and the record's own U) and the walls (each with its stack of panels, a strip of a wall texture or the catch fence). Positions are the file's `[x, altitude, along]` in feet; `along` is the game's z, which puts the road a median 2 ft over Laguna's terrain.
+
+The height of one wall panel is not in the data: `CPR_WALL_PART_HEIGHT_FT` (4.5 ft) is JSTrackViewer's calibration against the game's screenshots.
 
 ### Writing an MTM2 level
 
