@@ -12,6 +12,7 @@
 */
 import type { Vec3 } from "../math.ts";
 import type { Mtm2Ground } from "./ground.ts";
+import { wrapCoord } from "./wrap.ts";
 
 /** Bucket side in feet. */
 const BUCKET_FT = 32;
@@ -72,6 +73,8 @@ export function createRoadGround(base: Mtm2Ground, road: RoadTriangles): RoadGro
   /** The highest road triangle over (x, z): its index, with its height left in `found`; -1 for none. */
   let found = 0;
   function triangleAt(x: number, z: number, limit = Infinity): number {
+    // The road is in the one world: a point a world away is over the same triangle.
+    x = wrapCoord(x); z = wrapCoord(z);
     const list = buckets.get(key(Math.floor(x / BUCKET_FT), Math.floor(z / BUCKET_FT)));
     if (!list) return -1;
     let best = -1;

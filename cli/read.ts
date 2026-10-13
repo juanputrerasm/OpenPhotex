@@ -17,7 +17,7 @@ import {
   parseSmf, parseTexList, readPodEntry, parseTruckManifest, parseTty, parseTunnelDefs, parseTvLvl, podPathTitle, rawTextureSide,
   parseFlyScf, parseFlySceneryObjects, parseFlyBsp, parseFlyAlt, parseFlyTex, parseFlyTyp, parseFlyRef, parseFlyAl2, findPodEntry,
   parseDfm, parseSkl, parseKfm, parseCth, parseNocturneGeo, parseNocturneFog, parseNocturneSet,
-  parseNocturneThm, parseNocturneZth, parseKlp, parseMtmAmbientSounds, parseMtmSun, parseLoc, parseCockpitLayout,
+  parseNocturneThm, parseNocturneZth, parseKlp, parseMtmAmbientSounds, parseMtmSun, parseLoc, parseTrn, parseCockpitLayout,
   type PodArchive, type PodEntry,
 } from "openphotex";
 import { CliError, EXIT, printJson, usageError } from "./output.ts";
@@ -52,6 +52,7 @@ const READERS: Record<string, { reader: string; read: (bytes: Uint8Array, name: 
   "mtm-sounds": { reader: "parseMtmAmbientSounds", read: (b) => parseMtmAmbientSounds(b) },
   "mtm-sun": { reader: "parseMtmSun", read: (b) => parseMtmSun(b) },
   "loc": { reader: "parseLoc", read: (b) => parseLoc(b) },
+  "trn": { reader: "parseTrn", read: (b) => parseTrn(b) },
   "mtm-cockpit": { reader: "parseCockpitLayout", read: (b) => parseCockpitLayout(b) },
   "evo-veg": { reader: "parseEvoVeg", read: (b, n) => parseEvoVeg(b, n) },
   "smf": { reader: "parseSmf", read: (b, n) => parseSmf(b, n) },
@@ -164,6 +165,7 @@ function detect(name: string, bytes: Uint8Array, archive: PodArchive | null, arc
     case "ANI": return "ani";
     case "KLP": return "klp";
     case "LOC": return "loc";
+    case "TRN": return "trn";
     case "200": case "400": case "480": return title.startsWith("POWERBIG.") ? "mtm-cockpit" : "";
     case "TXT":
       if (/^SOUND\d+\.TXT$/.test(title)) return "mtm-sounds";

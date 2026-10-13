@@ -11,6 +11,7 @@ export * from "./world/water.ts";
 export * from "./world/course.ts";
 export * from "./world/ground.ts";
 export * from "./world/road.ts";
+export * from "./world/wrap.ts";
 export {
   CHECKPOINT_TYPE, DETECTOR_WIDTH_SCALE, DETECTOR_HEIGHT_SCALE, SPHERE_PRETEST_FACTOR, buildCheckpoints,
   withinCheckpointReach, speedThroughCheckpoint, checkpointCrossingTime, pointInCheckpointBox,
@@ -40,10 +41,10 @@ export { createEdgeState, edgeAgainstTruck, lineDistance } from "./collide/edges
 export { collideTruckTopCrush, createTopCrush, crushCorners } from "./collide/top-crush.ts";
 export type { CrushPart, SimTopCrush, TopCrushContext, TopCrushSource } from "./collide/top-crush.ts";
 export type { EdgeContext, EdgeForces, EdgeObstacle, EdgeState } from "./collide/edges.ts";
-export { collideTrucks } from "./collide/truck-truck.ts";
+export { collideTrucks, impactVelocity } from "./collide/truck-truck.ts";
 export { collideBoxes } from "./collide/box-box.ts";
 export * from "./race/race.ts";
 export * from "./race/summit.ts";
-export type { TruckBody } from "./collide/truck-truck.ts";
+export type { TruckBody, TruckContact } from "./collide/truck-truck.ts";
 export type { SimRamp } from "./collide/ramp.ts";
 export type { ContactResult, ContactBody } from "./truck/contacts.ts";

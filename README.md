@@ -79,6 +79,7 @@ Heightfields (8-bit, and CPR's 10.6 fixed point) and ground boxes (`.RA0`, `.RA1
 | `SOUNDnnn.TXT` | MTM2 | A level's ambient sounds, checkpoint and lap sounds | `openphotex read SOUND.POD SOUND002.TXT` |
 | `SUN.TXT` | MTM2 | Sun position and lens-flare layers | `openphotex read STARTUP.POD SUN.TXT` |
 | `.LOC` | MTM2 | TRI Message System replacements (joke and Pig Latin wordings) | `openphotex read UI.POD MTM2-PIG.LOC` |
+| `.TRN` | MTM1, MTM2 | Tournaments: name, description file, drag flag, events with laps; `writeTrn` writes them | `openphotex read STARTUP.POD DOUG.TRN` |
 | `.MOD` | MTM2 | ProTracker modules (`parseMod`, and `renderMod` plays one into stereo PCM) | library only |
 | `POWERBIG.200`/`.400`/`.480` | MTM2 | Cockpit layout per screen height | `openphotex read COCKPIT.POD POWERBIG.480` |
 

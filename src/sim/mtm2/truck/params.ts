@@ -21,6 +21,12 @@ export interface Mtm2TruckGeometry {
   wheelAnchors?: readonly Triplet[] | null;
   /** The 12 hull points in body feet (the TRK scrape points). */
   scrapePoints?: readonly Triplet[] | null;
+  /**
+   * The tires' radius and width in feet, for a vehicle of another game (a CPR car, a 4x4 Evolution
+   * truck) driven by this model. Every MTM truck has the game's fixed 3 ft by 4 ft, the default.
+   */
+  tireRadiusFt?: number | null;
+  tireWidthFt?: number | null;
 }
 
 export interface Mtm2TruckSetup {
@@ -143,8 +149,8 @@ export function createTruckParams(geometry: Mtm2TruckGeometry = {}, setup: Mtm2T
     massSlug: weightLb * INV_G,
     inertia: [...TRUCK.inertia] as Triplet,
     cgOffset: [...TRUCK.cgOffset] as Triplet,
-    tireRadiusFt: TRUCK.tireRadiusFt,
-    tireWidthFt: TRUCK.tireWidthFt,
+    tireRadiusFt: geometry.tireRadiusFt && geometry.tireRadiusFt > 0 ? geometry.tireRadiusFt : TRUCK.tireRadiusFt,
+    tireWidthFt: geometry.tireWidthFt && geometry.tireWidthFt > 0 ? geometry.tireWidthFt : TRUCK.tireWidthFt,
     hubs,
     drawHubs: anchors,
     frontAxleZ,

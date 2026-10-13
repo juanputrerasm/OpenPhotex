@@ -106,6 +106,17 @@ export function collideTruckImmovableBox(s: Mtm2TruckState, p: Mtm2TruckParams, 
   }
 }
 
+/**
+ * Whether the truck is under a smoothed ground box: its centre below the box's bottom. Such a box is a bridge or an
+ * overhang to that truck, not a floor: its top carries none of its wheels, and its bottom, open to a truck that stands
+ * on a floor of boxes, is a ceiling for this one.
+ */
+function underBox(s: Mtm2TruckState, box: SimBox): boolean {
+  if (box.openFaces === undefined) return false;
+  const rel = toBody(box.matrix, s.pos[0] - box.pos[0], s.pos[1] - box.pos[1], s.pos[2] - box.pos[2]);
+  return rel[1] < -box.half[1];
+}
+
 /** Hull points 1 to 12: rays from last step's reference point through each point now. */
 function hullPoints(s: Mtm2TruckState, box: SimBox, pair: Pair, dt: number): void {
   const m = s.matrix, bm = box.matrix, half = box.half;
@@ -120,12 +131,16 @@ function hullPoints(s: Mtm2TruckState, box: SimBox, pair: Pair, dt: number): voi
       rel[2] - (iv[2] - box.vel[2]) * dt + lift[2]);
   };
   reference();
+  // Under the box its bottom is there (a ceiling), and is tried first as the game tries it.
+  const under = underBox(s, box);
+  const order = box.openFaces && !under ? TOP_FIRST_ORDER : HULL_ORDER;
+  const open = under ? (box.openFaces ?? 0) & ~(1 << 2) : box.openFaces ?? 0;
   for (let j = 0; j < 12; j++) {
     const body: V3 = [s.points[j * 3], s.points[j * 3 + 1], s.points[j * 3 + 2]];
     const w = toWorld(m, body[0], body[1], body[2]);
     const cur = toBody(bm, rel[0] + w[0], rel[1] + w[1], rel[2] + w[2]);
     const dir = unit([cur[0] - prevRef[0], cur[1] - prevRef[1], cur[2] - prevRef[2]]);
-    const { face } = nearestFace(half, prevRef, dir, true, box.openFaces ? TOP_FIRST_ORDER : HULL_ORDER, box.openFaces ?? 0);
+    const { face } = nearestFace(half, prevRef, dir, true, order, open);
     if (face < 0) continue;
     const depth = depthInside(half, cur, face);
     if (depth <= s.depths[j]) continue;
@@ -207,7 +222,10 @@ function smoothedFace(box: SimBox, contactAt: (face: number) => V3, maxWallDepth
     bestDepth = depth;
   }
   if (best >= 0) return best;
-  return over ? 3 : -1;
+  // Deep in a box and over it (a floor the truck fell into): the top. Below the box altogether there is no face: once
+  // this took the top for any tire under the box's footprint, and a truck driving under a bridge of boxes was thrown
+  // into the air.
+  return over && top[1] > -half[1] ? 3 : -1;
 }
 
 /** The wheel's suspension against the box: driving on its top (§14.14 step 3). */
@@ -229,6 +247,8 @@ function wheelSuspension(
   const origin = toBody(bm, prevCentre[0] + off[0], prevCentre[1] + off[1], prevCentre[2] + off[2]);
   // A smoothed ground box carries a wheel on its top only (see `smoothedFace`).
   const smoothed = box.openFaces !== undefined;
+  // A box over the truck carries none of its wheels.
+  if (smoothed && underBox(s, box)) return;
   const face = smoothed ? 3 : nearestFace(half, origin, dir, false, WHEEL_ORDER).face;
   if (face < 0) return;
   const out = faceNormal(face);
@@ -280,6 +300,7 @@ function tireContactPoint(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, i:
     const pb = toBody(bm, s.pos[0] + pw[0] - box.pos[0], s.pos[1] + pw[1] - box.pos[1], s.pos[2] + pw[2] - box.pos[2]);
     return { out, outWorld, point, pb };
   };
+  if (underBox(s, box)) return;
   const face = box.openFaces !== undefined
     ? smoothedFace(box, (f) => contactAt(f).pb, p.tireRadiusFt * 2)
     : nearestFace(half, origin, unit(ray), false, WHEEL_ORDER).face;

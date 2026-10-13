@@ -11,6 +11,7 @@
 import type { Vec3 } from "../math.ts";
 import { rampHeightAt, type SimRamp } from "../collide/ramp.ts";
 import { groundHeightAt, groundNormalAt, type Mtm2Terrain } from "./terrain.ts";
+import { MTM2_RULES, weatherGrip, type Mtm2Rules } from "../constants.ts";
 import { terrainSurfaceValue, type Mtm2SurfaceMap } from "./surface.ts";
 
 export interface Mtm2Ground {
@@ -26,10 +27,18 @@ export interface Mtm2Ground {
   weather: number;
   /** This frame's listed ramps, in list order; the caller keeps it up to date. */
   ramps: SimRamp[];
+  /** Which game's rules apply (constants.ts); MTM2's when absent. */
+  rules?: Mtm2Rules;
+}
+
+/** The grip factor of the ground's weather under its rules. */
+export function groundWeatherGrip(ground: Mtm2Ground): number {
+  return (ground.rules ?? MTM2_RULES).weatherGrip ? weatherGrip(ground.weather) : 1;
 }
 
 export function createTerrainGround(
   terrain: Mtm2Terrain, surface: Mtm2SurfaceMap | null, weather = 0, waterLevelFt: number | null = terrain.waterLevelFt,
+  rules: Mtm2Rules = MTM2_RULES,
 ): Mtm2Ground {
   const snow = weather === 5;
   const ramps: SimRamp[] = [];
@@ -42,9 +51,10 @@ export function createTerrainGround(
       return groundHeightAt(terrain, x, z, snow);
     },
     normal: (x, z, out) => groundNormalAt(terrain, x, z, out, snow),
-    surface: (x, _y, z) => (surface ? terrainSurfaceValue(terrain, surface, x, z, waterLevelFt, snow) : 200),
+    surface: (x, _y, z) => (surface ? terrainSurfaceValue(terrain, surface, x, z, waterLevelFt, snow, rules.deepWater) : 200),
     waterLevelFt,
     weather,
     ramps,
+    rules,
   };
 }

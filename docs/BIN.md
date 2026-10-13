@@ -18,6 +18,7 @@ MRGL_EOL                                     the end
   - the texture, `MRGL_COLOR` and material **in force when it was read**, plus which record set that texture.
 - **`materials` and `materials2`:** the `MRGL_MATERIAL` and `MRGL_MATERIAL2` records. Their 16.16 fields are decoded, and the flags are named by `MRGLMAT` and `MRGLMAT2`.
 - **`frameNames`:** for an `ANIMATED_BIN`. It is not geometry but a keyframe control file naming its frame models, which are separate `.BIN` entries.
+- **`frameSeconds`:** for an `ANIMATED_BIN`, how long one frame lasts (the header's fourth word, 16.16 seconds; 0.1 to 2 s in the stock files). The game loops the frames on its frame clock and joins them with a Catmull-Rom spline through four frames (MTM2 `MONSTER.EXE` 0x431960). TrackPOD took this word for a magnify value; `magnify` still returns it.
 
 Scaling, axes, batching into meshes, triangulation and shading are left to the consumer.
 

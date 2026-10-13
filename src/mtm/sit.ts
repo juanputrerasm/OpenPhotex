@@ -178,6 +178,22 @@ export interface MtmSit {
   /** The engine's hidden hard-track switch: the Fly-By line reads `Sonic` (MONSTER.EXE 0x551f90). */
   sonicTrack: boolean;
   localeName: string | null;
+  /**
+   * The header's file names, as written, or null where the SIT has no such line: the track's picture on the game's
+   * setup screens ("Track Logo .BMP file"), its overhead map ("Track Map .BMP file", MTM1's zoom map), its description
+   * ("Track Description .TXT file") and "Track Announcer .WAV file". The bitmaps and the text are `UI\` and `WORLD\`
+   * entries of the game's UI archive.
+   */
+  logoBmp: string | null;
+  mapBmp: string | null;
+  descriptionTxt: string | null;
+  announcerWav: string | null;
+  /**
+   * A drag strip's par time in seconds: MTM1 reads the fly-by line of a type 1 track as a number and draws the
+   * computer's qualifying and simulated times within half a second of it (MONSTER.EXE 1.00, 0x4bbd60). Null when the
+   * track is not a drag strip or the line is no number.
+   */
+  dragParTime: number | null;
   /** "Track Race Type" as stored; see sitTrackTypeName. */
   trackTypeCode: number | null;
   /** MTM1 and CPR: the CD audio track. */
@@ -242,7 +258,8 @@ export function detectSitOrigin(lines: readonly string[], sitTitle = ""): SitOri
   are 4; California and Michigan 5; Gateway, Homestead, Milwaukee, Nazareth and Rio 6; Surfers
   Paradise, Long Beach, Cleveland, Toronto and Vancouver 7.
 */
-const MTM_TRACK_TYPES: Record<number, string> = { 1: "DRAG", 2: "CIRCUIT", 3: "RALLY", 4: "RUMBLE" };
+// Type 0 is the engine's free roam: no course is followed and no checkpoint tested (MTM1's HILLCLIM.SIT).
+const MTM_TRACK_TYPES: Record<number, string> = { 0: "FREE ROAM", 1: "DRAG", 2: "CIRCUIT", 3: "RALLY", 4: "RUMBLE" };
 const CPR_TRACK_TYPES: Record<number, string> = { 4: "ROAD", 5: "SPEEDWAY", 6: "SHORT OVAL", 7: "STREET" };
 
 export function sitTrackTypeName(code: number, origin: SitOrigin): string {
@@ -308,6 +325,11 @@ export function parseMtmSit(input: Uint8Array | string, sitTitle = ""): MtmSit {
     flyBy: valueAfter("Track Fly-By .AVI file")?.trim() ?? null,
     sonicTrack: valueAfter("Track Fly-By .AVI file")?.trim() === "Sonic",
     localeName: valueAfter("Race Track Locale")?.trim() ?? null,
+    logoBmp: valueAfter("Track Logo .BMP file")?.trim() || null,
+    mapBmp: valueAfter("Track Map .BMP file")?.trim() || null,
+    descriptionTxt: valueAfter("Track Description .TXT file")?.trim() || null,
+    announcerWav: valueAfter("Track Announcer .WAV file")?.trim() || null,
+    dragParTime: null,
     trackTypeCode: null,
     redbookTrack: null,
     ambientSound: null,
@@ -324,6 +346,7 @@ export function parseMtmSit(input: Uint8Array | string, sitTitle = ""): MtmSit {
   };
   const trackType = valueAfter("Track Race Type");
   if (trackType !== null) sit.trackTypeCode = parseLeadingInt(trackType);
+  if (sit.trackTypeCode === 1 && sit.flyBy !== null && /^\d+(\.\d+)?$/.test(sit.flyBy)) sit.dragParTime = Number(sit.flyBy);
   /*
     @Redbook Audio Track: the CD audio track the game plays on this course. MTM1 and CPR have no
     ambient-sound field at all (that line is one of the two MTM2 markers), and carry this instead.

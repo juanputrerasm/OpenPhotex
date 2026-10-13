@@ -16,6 +16,44 @@ export const INV_G = 0.031081;
 export const AIR_DENSITY = 0.002377;
 export const WATER_DRAG_DENSITY = 0.15;
 
+/**
+ * The rules that differ between the two games' builds of this simulation. Monster Truck Madness
+ * (1996, version 1.00) runs the same vehicle model with these differences, each read from its
+ * executable (OpenMTM2 docs/MTM1_MONSTER_EXE_ANALYSIS.md 4.3); nothing else is known to differ.
+ */
+export interface Mtm2Rules {
+  id: "mtm2" | "mtm1";
+  /** Drag density of water, slug/ft³: a submerged part drags 6.7 times harder in MTM1. */
+  waterDragDensity: number;
+  /** Ground below the water level reads deep water (type 13), or ice in Snow. MTM1 has neither. */
+  deepWater: boolean;
+  /** Rain and Snow lower the grip. MTM1 has no weather. */
+  weatherGrip: boolean;
+  /** Hull impacts are reported for crash damage (the host's to honour). */
+  crashDamage: boolean;
+  /**
+   * A tire against a tire, the velocity the force is made from: half the relative velocity
+   * (MTM2), or axis by axis the relative velocity unless the faster point's own is smaller (MTM1).
+   */
+  wheelImpact: "half" | "smaller";
+  /** A tire against a tire, the factor on the spinning tires' climb. */
+  wheelSpinClimb: number;
+  /** Whether a tire's spin counts in that climb only while it is on the ground. */
+  wheelSpinNeedsGround: boolean;
+}
+export const MTM2_RULES: Mtm2Rules = Object.freeze({
+  id: "mtm2", waterDragDensity: 0.15, deepWater: true, weatherGrip: true, crashDamage: true,
+  wheelImpact: "half", wheelSpinClimb: 0.05, wheelSpinNeedsGround: true,
+});
+export const MTM1_RULES: Mtm2Rules = Object.freeze({
+  id: "mtm1", waterDragDensity: 1.0, deepWater: false, weatherGrip: false, crashDamage: false,
+  wheelImpact: "smaller", wheelSpinClimb: 0.1, wheelSpinNeedsGround: false,
+});
+/** The rules by name; an unknown name is MTM2's. */
+export function simRules(id: string | null | undefined): Mtm2Rules {
+  return id === "mtm1" ? MTM1_RULES : MTM2_RULES;
+}
+
 /** Terrain grid (§2.1): 256 × 256 cells of 32 ft, heights in 2 ft steps. */
 export const TERRAIN_CELLS = 256;
 export const CELL_FT = 32;

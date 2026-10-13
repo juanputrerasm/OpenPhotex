@@ -77,6 +77,48 @@ direction of each of the 12 hull-point zones) and `dentVertices`, which pushes t
 model near a zone's point, in feet, by `dentUnits(level)` model units (1/256 ft). The simulation
 itself does not change; callers sample the hull points' contact depth after `postStepTruck`.
 
+## Rules of the 1996 game
+
+Monster Truck Madness 1 (version 1.00) runs the same vehicle model. `constants.ts` names the
+differences read from its executable (OpenMTM2 `docs/MTM1_MONSTER_EXE_ANALYSIS.md` 4.3) as a set of
+rules, `Mtm2Rules`: `MTM2_RULES` (the default everywhere), `MTM1_RULES`, and `simRules(id)`.
+
+| Rule | MTM2 | MTM1 |
+|---|---|---|
+| `waterDragDensity` | 0.15 | 1.0 |
+| `deepWater` (ground below the water level reads type 13, or ice in Snow) | yes | no |
+| `weatherGrip` (Rain 0.8, Snow 0.6) | yes | no |
+| `crashDamage` (for the host to honour) | yes | no |
+| `wheelImpact` (a tire against a tire: the velocity the force is made from) | half the relative velocity | per axis, the relative velocity unless the faster point's own is smaller |
+| `wheelSpinClimb`, `wheelSpinNeedsGround` | 0.05, tires on the ground | 0.1, always |
+
+A ground carries its rules (`createTerrainGround(..., rules)`, `Mtm2Ground.rules`; a host that
+wraps a ground sets the field on its own), and `collideTrucks(a, b, dt, rules)` takes them.
+
+## What a host is told, and what it must pass
+
+- `collideTrucks` returns `{ hull, wheels }`: whether the two trucks' hulls met and whether only their tires did.
+- `postStepTruck` must be given the same ground as that truck's `stepTruck`. Where a level has surfaces over the
+  terrain (`createRoadGround(...).below(...)`, one view a truck), the wheels are measured against it there; given the
+  terrain alone, a truck on a deck rests on its hull with its wheels hanging.
+- A smoothed ground box (`groundBoxesAround`'s `smoothFt`) whose bottom is over a truck's centre is a bridge to that
+  truck: it carries none of its wheels and its bottom is a ceiling.
+
+## The world as a torus
+
+`world/wrap.ts`. The game wraps a truck's x and z into the 8192 ft world every frame (`0x5559c0`; OpenMTM2
+`docs/MONSTER_EXE_ANALYSIS.md`, "The wrapping world"): `wrapTruck(s)` does that and returns what it added, for a host to
+move whatever it draws from. The game takes no distance the short way round. The port does, in its pair tests:
+`collideTrucks` tests the second truck as the copy nearest the first, `withNearest(s, x, z, test)` does the same for a
+truck against anything at (x, z), `groundBoxesAround` places a box beside the point across the map's edge, and
+`createRoadGround` reads its triangles wrapped. `wrapCoord`, `wrapDelta` and `nearestShift` are the arithmetic.
+
+## Vehicles of other games
+
+`createTruckParams` takes `tireRadiusFt` and `tireWidthFt` beside the wheel anchors and hull
+points, for a CPR car or a 4x4 Evolution truck driven by this model; every MTM truck has the
+game's fixed 3 ft by 4 ft. Nothing else of the truck changes.
+
 ## Levels finer than MTM2's
 
 `createTerrainFt(heightsFt, waterLevelFt)` makes the same terrain (256 cells of 32 ft, the checkerboard split, the wrap) from corner heights in feet, for a heightfield finer than MTM2's 2 ft steps: CART Precision Racing's is 16 bits a corner in sixteenths of a foot, 4x4 Evolution's in thirty-seconds. MTM2's byte heightfield is read as before.

@@ -10,7 +10,7 @@ import { DIFFICULTY, ENGINE, G, INV_G, LATERAL_TABLE, MPH_10, TRUCK } from "../c
 import { eulerToMatrix, matrixToEuler, wrapPi, wrapTwoPi } from "../math.ts";
 import type { Mtm2Ground } from "../world/ground.ts";
 import { cutFactor, surfaceMu, surfaceSinkFt, surfaceType } from "../world/surface.ts";
-import { weatherGrip } from "../constants.ts";
+import { groundWeatherGrip } from "../world/ground.ts";
 import { deliveredTorque, gearRatio, stepGearbox } from "./drivetrain.ts";
 import type { Mtm2TruckParams } from "./params.ts";
 import type { Mtm2TruckState, TireState } from "./state.ts";
@@ -133,7 +133,7 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
   }
 
   // Tires (§14.3-§14.6).
-  const weather = weatherGrip(ctx.ground.weather);
+  const weather = groundWeatherGrip(ctx.ground);
   for (let i = 0; i < 4; i++) {
     const t = s.tires[i];
     const axleIdx = i < 2 ? 0 : 1;

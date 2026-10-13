@@ -4,12 +4,16 @@
   soonest, and the inelastic force law with the lighter truck's mass; after each pass, the
   wheels against the wheels (a rim point of one tire against the other's cylinder). As for
   boxes, each contact replaces the pair's forces and only the last one is applied.
+
+  The wheel contact's response is the one part Monster Truck Madness 1 does differently
+  (`rules`, constants.ts): its `0x467fd0` against MTM2's `0x491e20`.
 */
-import { INV_G } from "../constants.ts";
+import { INV_G, MTM2_RULES, type Mtm2Rules } from "../constants.ts";
 import { truckWeight } from "../truck/dynamics.ts";
 import type { Mtm2TruckParams } from "../truck/params.ts";
 import { truckRadius } from "../truck/recovery.ts";
 import type { Mtm2TruckState } from "../truck/state.ts";
+import { withNearest } from "../world/wrap.ts";
 
 type V3 = [number, number, number];
 const toWorld = (m: ArrayLike<number>, x: number, y: number, z: number): V3 =>
@@ -43,32 +47,45 @@ interface PairForces {
   /** Each truck's force and moment in its own axes, from the last contact. */
   a: { f: V3; m: V3 } | null;
   b: { f: V3; m: V3 } | null;
+  /** Whether a hull point met the other's hull box, and whether a tire met a tire. */
+  hull: boolean;
+  wheels: boolean;
 }
+
+/** What two trucks met with in a step: their hulls, their tires, both or neither. */
+export interface TruckContact { hull: boolean; wheels: boolean }
 
 /**
  * The pair test of two trucks (§14.20). `a` is the pair's first truck. Pair forces go to each
- * truck's `extForce` / `extMoment`; the faster truck is moved out of the slower one.
+ * truck's `extForce` / `extMoment`; the faster truck is moved out of the slower one. Returns what
+ * met (for a host's sounds and effects).
  */
-export function collideTrucks(a: TruckBody, b: TruckBody, dt: number): void {
-  if (a.s.heliTimer > 0 || b.s.heliTimer > 0) return;
+export function collideTrucks(a: TruckBody, b: TruckBody, dt: number, rules: Mtm2Rules = MTM2_RULES): TruckContact {
+  // Across the world's seam the two are a world apart by their numbers: `b` is tested as the copy nearest `a`.
+  return withNearest(b.s, a.s.pos[0], a.s.pos[2], () => collideNear(a, b, dt, rules));
+}
+
+function collideNear(a: TruckBody, b: TruckBody, dt: number, rules: Mtm2Rules): TruckContact {
+  if (a.s.heliTimer > 0 || b.s.heliTimer > 0) return { hull: false, wheels: false };
   const ra = truckRadius(a.p), rb = truckRadius(b.p);
   const d = Math.hypot(a.s.pos[0] - b.s.pos[0], a.s.pos[1] - b.s.pos[1], a.s.pos[2] - b.s.pos[2]);
-  if (d >= ra + rb) return;
+  if (d >= ra + rb) return { hull: false, wheels: false };
   const speed = (t: TruckBody) => {
     const v = toWorld(t.s.matrix, t.s.bvel[0], t.s.bvel[1], t.s.bvel[2]);
     return Math.hypot(v[0], v[1], v[2]);
   };
   const [slow, fast] = speed(b) < speed(a) ? [b, a] : [a, b];
   const mEff = Math.min(truckWeight(a.p), truckWeight(b.p)) * INV_G;
-  const out: PairForces = { a: null, b: null };
+  const out: PairForces = { a: null, b: null, hull: false, wheels: false };
   pass(fast, slow, slow, mEff, dt, a, out);
-  wheels(fast, slow, slow, mEff, dt, a, out);
+  wheels(fast, slow, slow, mEff, dt, a, out, rules);
   pass(slow, fast, slow, mEff, dt, a, out);
-  wheels(slow, fast, slow, mEff, dt, a, out);
+  wheels(slow, fast, slow, mEff, dt, a, out, rules);
   for (const [t, f] of [[a, out.a], [b, out.b]] as const) {
     if (!f) continue;
     for (let k = 0; k < 3; k++) { t.s.extForce[k] += f.f[k]; t.s.extMoment[k] += f.m[k]; }
   }
+  return { hull: out.hull, wheels: out.wheels };
 }
 
 /** The points of `T` against the hull box of `O`. */
@@ -123,6 +140,7 @@ function respond(
   const fo: V3 = [-F * e[0], -F * e[1], -F * e[2]];
   const fw = toWorld(mo, F * e[0], F * e[1], F * e[2]);
   const ft = toBody(mt, fw[0], fw[1], fw[2]);
+  out.hull = true;
   const forO = { f: fo, m: cross(r, fo) }, forT = { f: ft, m: cross(P, ft) };
   if (O === first) { out.a = forO; out.b = forT; } else { out.a = forT; out.b = forO; }
 }
@@ -145,19 +163,19 @@ function halfAxis(t: TruckBody, wheel: number): V3 {
 }
 
 /** The wheels of `B` against the wheels of `A` (`0x491950`, §14.20). */
-function wheels(A: TruckBody, B: TruckBody, slow: TruckBody, mEff: number, dt: number, first: TruckBody, out: PairForces): void {
+function wheels(A: TruckBody, B: TruckBody, slow: TruckBody, mEff: number, dt: number, first: TruckBody, out: PairForces, rules: Mtm2Rules): void {
   const rho = (t: TruckBody) => Math.hypot(t.p.tireWidthFt * 0.5, t.p.tireRadiusFt);
   const RA = truckRadius(A.p);
   const hubWorld = (t: TruckBody, k: number) => add(t.s.pos, toWorld(t.s.matrix, ...(t.s.tires[k].hub as unknown as [number, number, number])));
   for (const bw of [0, 1, 2, 3]) {
     if (!(len(sub(hubWorld(B, bw), A.s.pos)) < rho(B) + RA)) continue;
-    for (const aw of [0, 1, 2, 3]) wheelPair(A, aw, B, bw, slow, mEff, dt, first, out, hubWorld, rho);
+    for (const aw of [0, 1, 2, 3]) wheelPair(A, aw, B, bw, slow, mEff, dt, first, out, hubWorld, rho, rules);
   }
 }
 
 function wheelPair(
   A: TruckBody, aw: number, B: TruckBody, bw: number, slow: TruckBody, mEff: number, dt: number, first: TruckBody, out: PairForces,
-  hubWorld: (t: TruckBody, k: number) => V3, rho: (t: TruckBody) => number,
+  hubWorld: (t: TruckBody, k: number) => V3, rho: (t: TruckBody) => number, rules: Mtm2Rules,
 ): void {
   const mA = A.s.matrix, mB = B.s.matrix;
   const hA = hubWorld(A, aw), hB = hubWorld(B, bw);
@@ -180,17 +198,33 @@ function wheelPair(
   if (!(dist <= A.p.tireRadiusFt)) return;
   const rel = sub(RA, cA);
   if (!(Math.sqrt(Math.max(0, dot(rel, rel) - dist * dist)) <= A.p.tireWidthFt * 0.5)) return;
-  respondWheels(A, aw, B, bw, slow, mEff, dt, first, out, RA, RB, E, unit(axis));
+  respondWheels(A, aw, B, bw, slow, mEff, dt, first, out, RA, RB, E, unit(axis), rules);
+}
+
+/**
+ * The velocity a wheel contact's force is made from, in A's axes. MTM2: half the relative
+ * velocity. MTM1: axis by axis, the larger in magnitude of the two points' velocities (B's on a
+ * tie), replaced by the relative velocity when that is smaller in magnitude.
+ */
+export function impactVelocity(vA: ArrayLike<number>, vB: ArrayLike<number>, rel: ArrayLike<number>, rules: Mtm2Rules): V3 {
+  if (rules.wheelImpact === "half") return scale(rel, 0.5);
+  const out: V3 = [0, 0, 0];
+  for (let k = 0; k < 3; k++) {
+    const big = Math.abs(vB[k]) < Math.abs(vA[k]) ? vA[k] : vB[k];
+    out[k] = Math.abs(rel[k]) < Math.abs(big) ? rel[k] : big;
+  }
+  return out;
 }
 
 /** The wheel contact's response (`0x491e20`, §14.20), in A's axes. */
 function respondWheels(
   A: TruckBody, aw: number, B: TruckBody, bw: number, slow: TruckBody, mEff: number, dt: number, first: TruckBody, out: PairForces,
-  RA: V3, RB: V3, EB: V3, D: V3,
+  RA: V3, RB: V3, EB: V3, D: V3, rules: Mtm2Rules,
 ): void {
   const mA = A.s.matrix, mB = B.s.matrix;
   const vBw = toWorld(mB, ...pointVelocity(B.s, RB));
-  const v = sub(toBody(mA, ...vBw), pointVelocity(A.s, RA));
+  const vB = toBody(mA, ...vBw), vA = pointVelocity(A.s, RA);
+  const v = sub(vB, vA);
   const nv = scale(v, -1);
   const n = unit(nv);
   const cA = A.s.tires[aw].hub;
@@ -229,21 +263,22 @@ function respondWheels(
   const push = toWorld(mA, ...scale(N, depth + 0.05));
   if (A === slow) for (let i = 0; i < 3; i++) B.s.pos[i] += push[i];
   else for (let i = 0; i < 3; i++) A.s.pos[i] -= push[i];
-  const F = (Math.abs(dot(scale(v, 0.5), N)) / dt) * mEff;
+  const F = (Math.abs(dot(impactVelocity(vA, vB, v, rules), N)) / dt) * mEff;
   const f = scale(N, F);
   if (radial) {
     // Spinning tyres climb.
     let sp = 0;
     const ta_ = A.s.tires[aw], tb = B.s.tires[bw];
-    if (ta_.onGround) sp = rA * ta_.spin;
-    if (tb.onGround) sp += rB * tb.spin;
-    const G = (sp / dt) * mEff * 0.05;
+    if (ta_.onGround || !rules.wheelSpinNeedsGround) sp = rA * ta_.spin;
+    if (tb.onGround || !rules.wheelSpinNeedsGround) sp += rB * tb.spin;
+    const G = (sp / dt) * mEff * rules.wheelSpinClimb;
     f[1] += -G * N[2];
     f[2] += G * N[1];
   }
   const fA = scale(f, -1);
   const fw = toWorld(mA, ...f);
   const fB = toBody(mB, ...fw);
+  out.wheels = true;
   const forA = { f: fA, m: cross(RA, fA) }, forB = { f: fB, m: cross(RB, fB) };
   if (A === first) { out.a = forA; out.b = forB; } else { out.a = forB; out.b = forA; }
 }

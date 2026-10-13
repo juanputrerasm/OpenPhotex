@@ -80,3 +80,29 @@ label and value pairs: type 0 a vehicle (position, body velocity, angles, rates,
 four tire angles, throttle and brakes and course segment, damage code and gear), type 1 an object
 (the same up to the number). The game's ring holds 2240 records. See JSTrackViewer's
 `docs/MTM2_REPLAY_FORMAT.md` for measurements made from replays.
+
+## `.TRN`: Monster Truck Madness tournaments (`parseTrn`, `writeTrn`)
+
+`TOURNEY\*.TRN` in `STARTUP.POD` of MTM1 and MTM2 (`TRI.TRN`, `DOUG.TRN`, `WHIRL.TRN`), each with a
+plain-text description beside it. Only MTM1 reads them (its custom tournament editor writes them,
+`MONSTER.EXE` 1.00 at 0x4c6960); MTM2 ships the files and no code for them.
+
+Text, a label line then its value, CRLF line ends; two of the stock files end with a Ctrl+Z,
+which closes the text:
+
+    == Tournament Name ==
+    == Tournament Description File ==
+    == Has Drag Race Flag ==          1 when an event is a drag race (the game then wants 2, 4 or 8 trucks)
+    == Number Of Tracks ==
+    == Track Entry #n ==              file,laps (laps 0 for a drag strip or a rally)
+
+The game takes at most 16 events (`TRN_MAX_EVENTS`) and 1 to 20 laps (`TRN_MAX_LAPS`).
+`parseTrn` finds the values by their labels, returns null without a name label, and warns when the
+count disagrees with the entries. `writeTrn` writes the game's form, without the Ctrl+Z.
+
+## SIT header lines of the setup screens (`parseMtmSit`)
+
+`logoBmp` ("Track Logo .BMP file"), `mapBmp` ("Track Map .BMP file", MTM1's zoom map),
+`descriptionTxt` and `announcerWav`, as written, null where the line is missing. `dragParTime` is
+the fly-by line of a type 1 track read as a number: MTM1 draws the computer's drag times within
+half a second of it (0x4bbd60). Track type 0 is free roam (`sitTrackTypeName` "FREE ROAM").

@@ -43,7 +43,7 @@ export function wheelWaterAreas(depth: number, radius: number, width: number): [
 
 /** The density of the surface at a world point (§14.7.1). */
 function densityAt(ground: Mtm2Ground, x: number, y: number, z: number): number {
-  return surfaceDragDensity(surfaceType(ground.surface(x, y, z)));
+  return surfaceDragDensity(surfaceType(ground.surface(x, y, z)), ground.rules?.waterDragDensity);
 }
 
 const toWorld = (m: ArrayLike<number>, x: number, y: number, z: number): [number, number, number] =>
@@ -134,7 +134,8 @@ export function fluidAreas(s: Mtm2TruckState, p: Mtm2TruckParams, ground: Mtm2Gr
   dry[2] -= zFace.area;
   rhoA[1] += yDensity * yArea;
   rhoA[2] += zFace.density * zFace.area;
-  const splash = (yDensity === WATER_DRAG_DENSITY || zFace.density === WATER_DRAG_DENSITY)
+  const wet = ground.rules?.waterDragDensity ?? WATER_DRAG_DENSITY;
+  const splash = (yDensity === wet || zFace.density === wet)
     && Math.hypot(s.bvel[0], s.bvel[1], s.bvel[2]) > SPLASH_SPEED;
 
   for (let k = 0; k < 3; k++) rhoA[k] += Math.max(0, dry[k]) * AIR_DENSITY;

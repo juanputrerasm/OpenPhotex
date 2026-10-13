@@ -200,6 +200,11 @@ export interface BinModel {
   materials2: BinMaterial2[];
   /** ANIMATED_BIN: the frame models, as written (up to 16 bytes each). */
   frameNames: string[];
+  /**
+   * ANIMATED_BIN: how long one frame lasts, in seconds (the header's fourth word, 16.16), or null. The game runs the
+   * frames in a loop on its frame clock and joins them with a Catmull-Rom spline (MONSTER.EXE 0x431960).
+   */
+  frameSeconds: number | null;
   /** Whether the walk stopped before MRGL_EOL, and why. */
   incomplete: boolean;
   stopReason: string | null;
@@ -211,7 +216,7 @@ export function parseBin(input: Uint8Array | ArrayBuffer): BinModel {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const model: BinModel = {
     kind: "unknown", signature: null, magnify: null, magnifyRecords: [], vertexListValid: false,
-    vertices: new Int32Array(0), faces: [], materials: [], materials2: [], frameNames: [],
+    vertices: new Int32Array(0), faces: [], materials: [], materials2: [], frameNames: [], frameSeconds: null,
     incomplete: false, stopReason: null, warnings: [],
   };
   if (bytes.length < 4) return model;
@@ -236,9 +241,16 @@ export function parseBin(input: Uint8Array | ArrayBuffer): BinModel {
 
     int[0]  0x00000020
     int[2]  frame count
-    int[3]  magnify (6,553 to 131,072 in the stock files)
-    int[4]  0, a vertex count; int[5] 0, MRGL_EOL
+    int[3]  the time one frame lasts, 16.16 seconds (6,553 to 131,072 in the stock files: 0.1 to 2 s)
+    int[4]  0 in the file: the engine keeps the animation's clock here
+    int[5]  0 in the file: the engine keeps its working model's pointer here
     byte 24 onwards: the frame names, 16 bytes each, NUL-padded
+
+  The engine (MTM2 MONSTER.EXE 0x431530, 0x431960) loads the named frames, scales each to the
+  first one's magnify, and each time the model is drawn sets its working copy's vertices to a
+  Catmull-Rom spline through four frames (the one before, the current, and the two after, the
+  list taken as a loop) at `clock mod (frames * frame time)`. TrackPOD read int[3] as a magnify
+  word, and `magnify` below still returns it under that name for those who relied on it.
 
   All 53 stock and community ANIMATED_BINs carry no geometry.
 */
@@ -246,7 +258,10 @@ function readAnimated(bytes: Uint8Array, model: BinModel): void {
   model.kind = "animated";
   if (bytes.length < 12) return;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (bytes.length >= 16) model.magnify = view.getInt32(12, true);
+  if (bytes.length >= 16) {
+    model.magnify = view.getInt32(12, true);
+    model.frameSeconds = model.magnify > 0 ? model.magnify / 65536 : null;
+  }
   const frameCount = view.getInt32(8, true);
   if (frameCount < 1 || frameCount > 4096) return;
   for (let i = 0, at = 24; i < frameCount && at + 16 <= bytes.length; i++, at += 16) {

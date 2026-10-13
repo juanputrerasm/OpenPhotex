@@ -163,6 +163,8 @@ export type { MtmKlp, KlpLoop, MtmAmbientSounds, MtmOneShotSound, MtmLoopedSound
 export { parseMtmSun } from "./mtm/sun.ts";
 export type { MtmSun, SunFlareLayer } from "./mtm/sun.ts";
 export { parseLoc } from "./mtm/loc.ts";
+export { parseTrn, writeTrn, TRN_MAX_EVENTS, TRN_MAX_LAPS } from "./mtm/trn.ts";
+export type { MtmTrn, MtmTrnEvent } from "./mtm/trn.ts";
 export { parseMtmReplay, writeMtmReplay, REPLAY_RING_RECORDS, REPLAY_FRAME_TICKS, REPLAY_TICKS_PER_SECOND } from "./mtm/replay.ts";
 export type { MtmReplay, MtmReplayRecord, MtmReplayVehicle } from "./mtm/replay.ts";
 export { modChannels, parseMod, renderMod } from "./audio/mod.ts";
@@ -175,4 +177,4 @@ export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 
 /** The library version, as published in package.json. */
-export const VERSION = "1.0.2";
+export const VERSION = "1.1.0";

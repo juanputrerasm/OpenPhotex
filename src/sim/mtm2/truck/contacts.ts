@@ -7,7 +7,7 @@
   The game's two-contact split is the reverse of the lever rule, and its sliding friction uses
   |vt + v| rather than |vt|; both are kept (§14.12).
 */
-import { weatherGrip } from "../constants.ts";
+import { groundWeatherGrip } from "../world/ground.ts";
 import type { Mtm2Ground } from "../world/ground.ts";
 import { surfaceMu, surfaceType } from "../world/surface.ts";
 
@@ -184,7 +184,7 @@ export function solveHullContacts(
 
   // Friction (§14.12).
   const total = sumN();
-  const weather = weatherGrip(ground.weather);
+  const weather = groundWeatherGrip(ground);
   for (let i = 0; i < k; i++) {
     const c = used[i];
     const share = total !== 0 ? Math.abs(N[i]) / total : 1;

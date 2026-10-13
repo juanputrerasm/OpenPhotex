@@ -560,3 +560,51 @@ test("a truck dropped onto a top-crush car rests on it and flattens the cab (14.
   for (let i = 0; i < 240; i++) { S.stepTruck(onGround, p, ctx, 1 / 60); S.postStepTruck(onGround, p, ground, 1 / 60); }
   assert.ok(s.pos[1] > onGround.pos[1] + 1, `on the car at ${s.pos[1]}, on the ground at ${onGround.pos[1]}`);
 });
+
+test("a truck under a bridge of ground boxes is not thrown up by it; one on it is carried (smoothed boxes)", () => {
+  // Terrain at 100 ft. A row of boxes across z = 480..544 from 112 to 116 ft: a deck whose underside is 12 ft over the
+  // ground, just over a truck's roof.
+  const heights = new Uint8Array(65536).fill(50), ra0 = new Uint8Array(65536).fill(50), ra1 = new Uint8Array(65536).fill(50);
+  for (let col = 10; col <= 20; col++) for (const row of [15, 16]) { ra0[row * 256 + col] = 56; ra1[row * 256 + col] = 58; }
+  const terrain = S.createTerrain(heights);
+  const ground = S.createTerrainGround(terrain, null, 0, null);
+  const ctx = { ground, human: false, difficulty: S.DIFFICULTY.INTERMEDIATE, sonicTrack: false };
+  const dt = 1 / 60;
+  const run = (start: T3, steps: number) => {
+    const p = S.createTruckParams({ scrapePoints: TRK_HULL }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+    const s = S.createTruckState(start, 0, S.GEAR.NEUTRAL, p);
+    s.bvel[2] = 40;
+    let highest = -Infinity, lowest = Infinity;
+    for (let i = 0; i < steps; i++) {
+      S.stepTruck(s, p, ctx, dt);
+      for (const box of S.groundBoxesAround(ra0, ra1, s.pos[0], s.pos[2], [], 4)) S.collideTruckImmovableBox(s, p, box, dt);
+      S.postStepTruck(s, p, ground, dt);
+      highest = Math.max(highest, s.pos[1]);
+      lowest = Math.min(lowest, s.pos[1]);
+    }
+    return { s, highest, lowest };
+  };
+  // Under the deck, along +z from z 400 to past 640 at 40 ft/s: it stays on the ground.
+  const under = run([500, 106, 400], 420);
+  assert.ok(under.s.pos[2] > 560, `drove through to z ${under.s.pos[2]}`);
+  assert.ok(under.highest < 107.5, `never lifted: highest ${under.highest} ft over ground at 100`);
+  // On the deck (its top at 116 ft), along +x: carried by it.
+  const p = S.createTruckParams({ scrapePoints: TRK_HULL }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+  const on = S.createTruckState([400, 123, 512], Math.PI / 2, S.GEAR.NEUTRAL, p);
+  for (let i = 0; i < 200; i++) {
+    S.stepTruck(on, p, ctx, dt);
+    for (const box of S.groundBoxesAround(ra0, ra1, on.pos[0], on.pos[2], [], 4)) S.collideTruckImmovableBox(on, p, box, dt);
+    S.postStepTruck(on, p, ground, dt);
+  }
+  assert.ok(on.pos[1] > 120 && on.pos[1] < 124, `rests on the deck at ${on.pos[1]}`);
+  assert.ok(on.tires.every((t) => t.onGround), "on its wheels");
+});
+
+test("ground boxes of a level whose height step is not 2 ft (Hellbender's 1.5)", () => {
+  const ra0 = new Uint8Array(65536), ra1 = new Uint8Array(65536);
+  ra0[5 * 256 + 5] = 10; ra1[5 * 256 + 5] = 20;
+  const [mtm] = S.groundBoxesAround(ra0, ra1, 5 * 32 + 16, 5 * 32 + 16, []);
+  assert.deepEqual([mtm.pos[1], mtm.half[1]], [30, 10]);
+  const [hb] = S.groundBoxesAround(ra0, ra1, 5 * 32 + 16, 5 * 32 + 16, [], undefined, 1.5);
+  assert.deepEqual([hb.pos[1], hb.half[1]], [22.5, 7.5]);
+});

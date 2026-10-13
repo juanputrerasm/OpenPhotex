@@ -115,6 +115,8 @@ test("ANIMATED_BIN: the frame names, and nothing else", () => {
   assert.equal(bin.kind, "animated");
   assert.equal(bin.magnify, 32768);
   assert.deepEqual(bin.frameNames, ["CAB1.BIN", "CAB2.BIN"]);
+  // The fourth word is the time a frame lasts, 16.16 seconds (MONSTER.EXE 0x431960): half a second here.
+  assert.equal(bin.frameSeconds, 0.5);
   assert.equal(bin.faces.length, 0);
 });
 
