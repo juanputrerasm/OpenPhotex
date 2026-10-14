@@ -89,3 +89,17 @@ test("the order: more checkpoints, then segments, then progress; finished trucks
   S.raceOrder(race);
   assert.deepEqual(race.trucks.map((t) => t.place), [2, 1, 3]);
 });
+
+test("a Rumble always scores: with one checkpoint it is the zone and there is no summit (§6.3)", () => {
+  const inZone = truckAt(1000, 1100, 0);
+  const race = S.createRace([inZone], oneCheckpoint(), [], 5, 1, "summit");
+  assert.ok(race.summit, "scored, not run as a circuit");
+  assert.equal(race.roundSeconds, 300);
+  const out = S.createRace([truckAt(0, 0, 0)], [], [], 5, 1, "summit");
+  assert.ok(out.summit, "even with no checkpoint");
+  S.summitTick(race.summit!, [inZone.s.pos], 1.01);
+  assert.equal(race.summit!.trucks[0]!.state, 2);
+  assert.equal(race.summit!.trucks[0]!.score, 10);
+  S.summitTick(out.summit!, [[0, 106, 0]], 1.01);
+  assert.equal(out.summit!.trucks[0]!.state, 0);
+});

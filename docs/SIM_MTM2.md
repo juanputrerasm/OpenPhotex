@@ -95,6 +95,13 @@ rules, `Mtm2Rules`: `MTM2_RULES` (the default everywhere), `MTM1_RULES`, and `si
 A ground carries its rules (`createTerrainGround(..., rules)`, `Mtm2Ground.rules`; a host that
 wraps a ground sets the field on its own), and `collideTrucks(a, b, dt, rules)` takes them.
 
+## Summit Rumble
+
+`createRace(..., "summit")` always scores a Rumble (OpenMTM2 `docs/MONSTER_EXE_ANALYSIS.md` 6.3):
+mode 4 never tests checkpoints, so a level with one type 6 box has that box as the scoring zone and
+no summit, and one with none has neither (a box no truck is ever inside). Run as a Circuit, every
+pass through the box would count as a lap.
+
 ## What a host is told, and what it must pass
 
 - `collideTrucks` returns `{ hull, wheels }`: whether the two trucks' hulls met and whether only their tires did.
