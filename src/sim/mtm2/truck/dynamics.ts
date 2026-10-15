@@ -142,12 +142,15 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
     if (t.onGround) {
       const nLoad = t.load * (t.normal[0] * m[1] + t.normal[1] * m[4] + t.normal[2] * m[7]);
       const w = toWorld(m, t.hub[0], t.hub[1], t.hub[2]);
-      const type = surfaceType(ctx.ground.surface(s.pos[0] + w[0], s.pos[1] + w[1] + 100, s.pos[2] + w[2]));
+      t.surface = ctx.ground.surface(s.pos[0] + w[0], s.pos[1] + w[1] + 100, s.pos[2] + w[2]);
+      const type = surfaceType(t.surface);
       t.mu = gripK * surfaceMu(type) * weather * cutFactor(type, p.tireCut);
       t.grip = t.mu * nLoad;
     } else {
       t.grip = 0;
+      t.surface = -1;
     }
+    t.lateral = 0;
     t.load = Math.max(0, t.load - damper * t.extensionRate);
   }
 
@@ -222,6 +225,7 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
       alpha = Math.atan2(f.vLat, f.vFwd);
     }
     const C = lateralCoefficient(alpha);
+    t.lateral = C;
     const share = totalGrip !== 0 ? t.grip / totalGrip : 1;
     const tL = toWorld(m, f.nb[1], -f.nb[0], f.nb[2]);
     const slope = tL[1] * W * share;

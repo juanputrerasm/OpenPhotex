@@ -180,6 +180,22 @@ test("a box at rest with nothing on it is not stepped; a dropped one settles on 
   assert.deepEqual(dropped.vel, [0, 0, 0], "at rest");
 });
 
+test("a wheel's rays start at its hub: a hub over a box's top meets no wall of it, however high the truck's centre (14.14)", () => {
+  // A car 3.5 ft high (top at 103.5), its near side at z 1008. The front hubs are 1.25 ft over its top and 2 ft short of
+  // that side, moving forward; the truck's centre is 4 ft over them. The line from the centre through a hub meets the
+  // side below the top within a tire's reach of the hub, which once made it a wall in front of a wheel that is over it.
+  const params = S.createTruckParams({ scrapePoints: scrapePoints() }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+  const car = S.createBox([1000, 101.75, 1011], [20, 3.5, 6], 0);
+  const pos: T3 = [1000, 103.5 + 1.25 + 4, 1006 - params.hubs[0][2]];
+  const state = S.createTruckState(pos, 0, S.GEAR.FIRST, params);
+  state.prevPos.set([pos[0], pos[1], pos[2] - 0.3]);
+  state.prevMatrix.set(state.matrix);
+  state.tires.forEach((t, i) => { t.hub = [...params.hubs[i]] as T3; });
+  state.depths.fill(-9999);
+  S.collideTruckImmovableBox(state, params, car, 1 / 60);
+  for (const j of [12, 13]) assert.ok(!(state.depths[j] > 0), `tire point ${j} ${state.depths[j]} ft into the car's side`);
+});
+
 test("pushing a box: the pair forces are equal and opposite, and the box moves on", () => {
   const box = S.createBox([1000, 102, 1030], [6, 4, 6], 50);
   const t = scene([1000, 106.2, 1000], [box]);
@@ -190,6 +206,8 @@ test("pushing a box: the pair forces are equal and opposite, and the box moves o
     t.step(() => {
       const { truck, boxes } = t.pairForces();
       if (Math.hypot(...boxes) === 0) return;
+      // A box corner leaving a wheel only wakes the box with (0, 0.01, 0) and gives the truck nothing (14.17).
+      if (Math.hypot(...truck) === 0 && Math.hypot(...boxes) <= 0.0100001) return;
       pairs++;
       for (let k = 0; k < 3; k++) near(truck[k], -boxes[k], 1e-6 * Math.max(1, Math.abs(boxes[k])));
     });

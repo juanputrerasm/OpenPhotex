@@ -35,6 +35,10 @@ export interface TireState {
   grip: number;
   /** The grip factor `K mu weather cut` (tire +0x8c); kept from the last contact in the air. */
   mu: number;
+  /** The surface value under the hub (`type * 100 + depth`, tire +0xbc's high word), -1 in the air. */
+  surface: number;
+  /** The lateral coefficient C(alpha) of this step (tire +0x88), 0 in the air; the corner skid sound reads it. */
+  lateral: number;
   /** Hub and contact point, body feet; contact velocity, body ft/s. */
   hub: [number, number, number];
   contact: [number, number, number];
@@ -137,7 +141,7 @@ export function autopilotGain(difficulty: number): number {
 function tire(): TireState {
   return {
     compression: 0, extensionRate: 0, penetration: -9999, lever: 0, normal: [0, 1, 0], onGround: false,
-    spin: 0, angle: 0, pitchG: 0, rollG: 0, load: 0, grip: 0, mu: 0,
+    spin: 0, angle: 0, pitchG: 0, rollG: 0, load: 0, grip: 0, mu: 0, surface: -1, lateral: 0,
     hub: [0, 0, 0], contact: [0, 0, 0], velocity: [0, 0, 0], force: [0, 0, 0],
     waterDepth: 0, waterPoint: [0, 0, 0],
   };
