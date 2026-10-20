@@ -1,11 +1,21 @@
 import { splitEvoLines, evoNumbers } from "./text.ts";
 
-/** One .TEX record. param0/param1 are preserved verbatim; their meaning is unknown. */
+/**
+ * One .TEX record. `surfaceValue` is the texture's surface (`type * 100 + depth`, the MTM2
+ * encoding) and `vegClass` its vegetation density (0 none, 1 sparse, 2 medium, 3 dense), as
+ * 4x4 Evolution 2 reads them (OpenMTM2 docs/EVO2_EXE_ANALYSIS.md 4.1). `param0` and `param1`
+ * are the same two numbers under their old names, kept for existing consumers.
+ */
 export interface EvoTexRecord {
+  surfaceValue: number;
+  vegClass: number;
   param0: number;
   param1: number;
   name: string;
 }
+
+/** Vegetation density classes of a .TEX record (the game's names, `0x673038`). */
+export const EVO_VEG_CLASS = Object.freeze({ NONE: 0, SPARSE: 1, MEDIUM: 2, DENSE: 3 });
 
 /** A parsed Evo .TEX terrain and shadow texture table. */
 export interface EvoTex {
@@ -39,10 +49,12 @@ export interface EvoTex {
     - .SDW references the appended SHADOW group. Its non-sentinel values land exactly on
       ordinaryCount..ordinaryCount+shadowCount-1 in every sample.
 
-  param0 and param1 are material/alignment metadata whose semantics are unknown. Observed
-  param0 values are 0, 100, 20x, 50x, 60x, 701, 100x, 120x and observed param1 values are
-  0..3. They are preserved verbatim rather than being named "friction" and "rotation" on a
-  guess, because a wrong name in the normalized model is harder to undo than a missing one.
+  The two numbers are read by 4x4 Evolution 2's CTextureList::load (0x5cb530): the first is the
+  texture's surface value, `type * 100 + depth` as in MTM2's .TTY (1 cement, 2 dirt, 3 water,
+  4 mud, 5 sand, 6 grass, 7 gravel, 8 ice, 9 snow, 10 metal, 11 wood, 12 rock, 14 train track),
+  the second its vegetation class (0 none, 1 sparse, 2 medium, 3 dense), which sets the grass
+  density and the tree spacing. Observed first values are 0, 100, 20x, 50x, 60x, 701, 100x,
+  120x and second values 0..3, as the game expects.
 
   Ported from JSTrackViewer's src/worker/evo/evo-tex-parser.js (identical in JSMTM2Converter).
 */
@@ -65,11 +77,9 @@ export function parseEvoTex(bytes: Uint8Array, sourceName: string): EvoTex {
     const first = line.indexOf(",");
     const second = line.indexOf(",", first + 1);
     if (first < 0 || second < 0) continue;
-    records.push({
-      param0: Number.parseInt(line.slice(0, first), 10) || 0,
-      param1: Number.parseInt(line.slice(first + 1, second), 10) || 0,
-      name: line.slice(second + 1).trim(),
-    });
+    const surfaceValue = Number.parseInt(line.slice(0, first), 10) || 0;
+    const vegClass = Number.parseInt(line.slice(first + 1, second), 10) || 0;
+    records.push({ surfaceValue, vegClass, param0: surfaceValue, param1: vegClass, name: line.slice(second + 1).trim() });
   }
 
   const expected = ordinaryCount + shadowCount;

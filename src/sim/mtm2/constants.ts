@@ -22,7 +22,7 @@ export const WATER_DRAG_DENSITY = 0.15;
  * executable (OpenMTM2 docs/MTM1_MONSTER_EXE_ANALYSIS.md 4.3); nothing else is known to differ.
  */
 export interface Mtm2Rules {
-  id: "mtm2" | "mtm1";
+  id: "mtm2" | "mtm1" | "evo1" | "evo2";
   /** Drag density of water, slug/ft³: a submerged part drags 6.7 times harder in MTM1. */
   waterDragDensity: number;
   /** Ground below the water level reads deep water (type 13), or ice in Snow. MTM1 has neither. */

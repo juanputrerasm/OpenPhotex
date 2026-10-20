@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   evoTrackTypeName, isEvoSit, isEvoTrk, isSmfModel, parseEvoLvl, parseEvoSit, parseEvoTex, parseEvoTrk,
-  parseEvoVeg, parseEvoWat, parseSmf, smfTextureReference, truckManifestLines,
+  parseEvoScript, parseEvoVeg, parseEvoWat, parseSmf, smfTextureReference, truckManifestLines,
 } from "../src/index.ts";
 import { latin1 } from "./fixtures/build.ts";
 
@@ -95,7 +95,7 @@ test("WAT: labels on their own lines", () => {
 test("TEX: ordinary and shadow groups kept apart", () => {
   const tex = parseEvoTex(text(["Version", "1", "textureCount,shadowTextureCount", "2,1", "0,0,A.RAW", "100,1,B.RAW", "0,3,S.RAW"]), "X.TEX");
   assert.deepEqual(tex.ordinary.map((r) => r.name), ["A.RAW", "B.RAW"]);
-  assert.deepEqual(tex.shadow, [{ param0: 0, param1: 3, name: "S.RAW" }]);
+  assert.deepEqual(tex.shadow, [{ surfaceValue: 0, vegClass: 3, param0: 0, param1: 3, name: "S.RAW" }]);
   assert.deepEqual(tex.warnings, []);
   assert.equal(parseEvoTex(text(["Version", "1", "c", "3,0", "0,0,A.RAW"]), "Y.TEX").warnings.length, 1);
 });
@@ -186,4 +186,63 @@ test("TRK v7: counted lists, vec3 anchors, uncounted scrape points, lights, colo
 
 test("truckManifestLines drops NUL padding and the DOS EOF marker, and splits any line ending", () => {
   assert.deepEqual(truckManifestLines(latin1("a\r\nb\rc\n\u001a\n  d  \0\0")), ["a", "b", "c", "d"]);
+});
+
+test("SIT v7 paths: header fields, points, NULL.WAV as none", () => {
+  const sit = parseEvoSit(text([
+    "version", "7", "PEAK.lvl",
+    "#*** Paths ***", "pathCount", "2",
+    "Path 1 of 2 ---------------------------",
+    "pointCount", "2", "type", "1", "direction", "0", "cycles", "0", "time", "60", "pauseTimeElapsed", "0", "t", "0.5",
+    "tension", "0", "stopFlag", "1", "collisionType", "0", "object", "206",
+    "Point 1 of 2 ---------------------------",
+    "wPos", "7248,1465.53,1816", "wOrient", "6.18,0.5,4.68", "vel", "10", "time", "0", "pauseTime", "2",
+    "segmentFlag", "0", "orientFlag", "1", "velFlag", "0", "followTerrainFlag", "0", "animationFlag", "0", "lightFlag", "0",
+    "AIFlag", "1", "pointWavName", "NULL.WAV", "continuousWavName", "JET.WAV",
+    "Point 2 of 2 ---------------------------",
+    "wPos", "4344,1465.53,1816", "wOrient", "0,0,0", "vel", "80", "time", "0", "pauseTime", "0",
+    "segmentFlag", "1", "orientFlag", "0", "velFlag", "1", "followTerrainFlag", "1", "animationFlag", "0", "lightFlag", "0",
+    "AIFlag", "0", "pointWavName", "NULL.WAV", "continuousWavName", "NULL.WAV",
+    "Path 2 of 2 ---------------------------",
+    "pointCount", "0", "type", "1173320264", "direction", "0", "cycles", "0", "time", "0", "pauseTimeElapsed", "0", "t", "0",
+    "tension", "0", "stopFlag", "0", "collisionType", "0", "object", "0",
+  ]), "PEAK.SIT");
+  assert.equal(sit.paths.length, 2);
+  const [p, unused] = sit.paths;
+  assert.equal(p.object, 206);
+  assert.equal(p.time, 60);
+  assert.equal(p.t, 0.5);
+  assert.equal(p.stopFlag, 1);
+  assert.equal(p.points.length, 2);
+  assert.deepEqual(p.points[0].position, [7248, 1465.53, 1816]);
+  assert.deepEqual(p.points[0].orient, [6.18, 0.5, 4.68]);
+  assert.equal(p.points[0].pauseTime, 2);
+  assert.equal(p.points[0].orientFlag, 1);
+  assert.equal(p.points[0].pointWavName, "");
+  assert.equal(p.points[0].continuousWavName, "JET.WAV");
+  assert.equal(p.points[1].vel, 80);
+  assert.equal(p.points[1].segmentFlag, 1);
+  assert.equal(p.points[1].followTerrainFlag, 1);
+  assert.equal(unused.object, 0);
+  assert.equal(unused.points.length, 0);
+});
+
+test("track scripts: rules, flags, negation, quoted arguments, comments", () => {
+  const script = parseEvoScript(text([
+    "// vulture script",
+    "\t\tobjectsIntersect(boxc,vehicle1)\t\t->\tstartPathObject(9)",
+    "//\tobjectsIntersect(secret1,vehicle1)\t->\traise(foundSecret1,forever)",
+    "\tfoundSecret1 && !gaveSecret1 -> raise(gaveSecret1,forever); Message(\"Found secret 1, at last\"); giveMoney(1500)",
+    "\tco1 & co2 & !gaveComp -> raise(gaveComp,forever)",
+    "\tunlockObjective(1); unlockObjective(2)",
+  ]), "VULTURE.SC");
+  assert.deepEqual(script.warnings, []);
+  assert.equal(script.rules.length, 4);
+  assert.deepEqual(script.rules[0].conditions, [{ negate: false, call: { name: "objectsIntersect", args: ["boxc", "vehicle1"] }, flag: null }]);
+  assert.deepEqual(script.rules[0].actions, [{ name: "startPathObject", args: ["9"] }]);
+  assert.deepEqual(script.rules[1].conditions.map((c) => [c.negate, c.flag]), [[false, "foundSecret1"], [true, "gaveSecret1"]]);
+  assert.deepEqual(script.rules[1].actions[1], { name: "Message", args: ["Found secret 1, at last"] });
+  assert.equal(script.rules[2].conditions.length, 3);
+  assert.deepEqual(script.rules[3].conditions, []);
+  assert.equal(script.rules[3].actions.length, 2);
 });

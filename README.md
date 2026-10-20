@@ -207,6 +207,7 @@ The core is environment-neutral. It takes a `Uint8Array` or `ArrayBuffer` and re
 | `parseMtmSit`, `parseMtmLvl`, `parseTexList`, `parseTty` | MTM1, MTM2 and CPR scene scripts and level files; `detectSitOrigin` tells the three apart. |
 | `parseKlp`, `parseMtmAmbientSounds`, `parseMtmSun`, `parseLoc`, `parseCockpitLayout`, `parseMod`, `renderMod` | MTM2 loop points, ambient sounds, sun and flare, message replacements and cockpit layouts. |
 | `mtm2Sim` | The MTM2 simulation: terrain, surfaces, water, courses, checkpoints, truck parameters, controls and drivetrain ([docs/SIM_MTM2.md](docs/SIM_MTM2.md)). |
+| `evoSim` | The 4x4 Evolution 1 and 2 vehicle model on the MTM2 world: rules, surface and tread tables, `.TRK` figures, driveline and step ([docs/SIM_EVO.md](docs/SIM_EVO.md)). |
 | `parseCprTrk`, `parseCprTtx` | CPR's road layer and its texture list, with the cross-section schema (`CPR_POINT_NAMES`, `CPR_WALL_LAYERS`, `cprVisibleSlots`, `cprTrackIsClosed`). |
 | `parseTvLvl`, `parseDef`, `parseNavPoints`, `parseHbNavPoints`, `parsePowerups`, `parseTunnelDefs`, `parseAnimations`, `parseHbBriefing` | Terminal Velocity, Fury3 and Hellbender level files; `placementToEditor` converts their coordinates. |
 | `decodeHeightSample`, `decodeGroundBoxes`, `decodeHbUnderground`, `skyGradient` | Heightfields, ground boxes, Hellbender's cavern and the sky gradient. |

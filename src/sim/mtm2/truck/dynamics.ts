@@ -79,15 +79,15 @@ export function tireGeometry(s: Mtm2TruckState, p: Mtm2TruckParams, i: number): 
 }
 
 /** The hold rule shared by both tire forces (§14.4). */
-function holdRule(current: number, slope: number, hold: number): number {
+export function holdRule(current: number, slope: number, hold: number): number {
   const f = slope + hold;
   if (hold === 0) return Math.abs(f) <= Math.abs(current) && current !== 0 ? f : current;
   return hold > 0 ? Math.min(current, f) : Math.max(current, f);
 }
 
-interface TireFrame { vFwd: number; vLat: number; nb: [number, number, number]; cd: number; sd: number }
+export interface TireFrame { vFwd: number; vLat: number; nb: [number, number, number]; cd: number; sd: number }
 
-function tireFrame(s: Mtm2TruckState, t: TireState, steer: number): TireFrame {
+export function tireFrame(s: Mtm2TruckState, t: TireState, steer: number): TireFrame {
   const nb = toBody(s.matrix, t.normal[0], t.normal[1], t.normal[2]);
   t.pitchG = Math.atan2(nb[2], nb[1]);
   t.rollG = Math.atan2(nb[0], nb[1]);
@@ -385,7 +385,7 @@ export function probeGround(
 }
 
 /** Contact probing at the end of the step (§14.10): tire contact points 13-16. */
-function probeContacts(s: Mtm2TruckState, p: Mtm2TruckParams, ground: Mtm2Ground): void {
+export function probeContacts(s: Mtm2TruckState, p: Mtm2TruckParams, ground: Mtm2Ground): void {
   const m = s.matrix;
   let sign = 1;
   for (let i = 0; i < 4; i++) {
@@ -489,7 +489,7 @@ export function postStepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ground: Mtm
   const corr = [0, 0, 0];
   for (const i of [1, 0, 3, 2]) {
     const t = s.tires[i];
-    if (TRUCK.bumpTravelFt > t.compression) continue;
+    if ((p.bumpTravelFt?.[i < 2 ? 0 : 1] ?? TRUCK.bumpTravelFt) > t.compression) continue;
     const vn = dot(t.normal, iv);
     if (vn < 0) for (let k = 0; k < 3; k++) corr[k] += t.normal[k] * vn * 0.25;
   }
@@ -504,7 +504,8 @@ function solveAxle(s: Mtm2TruckState, p: Mtm2TruckParams, axleIdx: number, carry
   const axle = s.axles[axleIdx];
   const R = s.tires[axleIdx * 2], Lt = s.tires[axleIdx * 2 + 1];
   const anchorY = p.hubs[axleIdx * 2][1];
-  const bump = TRUCK.bumpTravelFt, limit = TRUCK.articulationLimit;
+  const bump = p.bumpTravelFt?.[axleIdx] ?? TRUCK.bumpTravelFt, limit = p.articulationLimit?.[axleIdx] ?? TRUCK.articulationLimit;
+  const arm = p.springArmFt ?? 5;
   R.penetration -= carry; Lt.penetration -= carry;
   const oldR = R.compression, oldL = Lt.compression;
 
@@ -527,9 +528,9 @@ function solveAxle(s: Mtm2TruckState, p: Mtm2TruckParams, axleIdx: number, carry
     axle.articulation = art;
   }
   const sa = Math.sin(axle.articulation);
-  // Each tire's lateral offset for the compression is +5 ft (right) and -5 ft (left) (§14.13).
-  R.compression = 5 * sa - anchorY + axle.travel;
-  Lt.compression = -5 * sa - anchorY + axle.travel;
+  // Each tire's lateral offset for the compression is +arm (right) and -arm (left): 5 ft in MTM2 (§14.13).
+  R.compression = arm * sa - anchorY + axle.travel;
+  Lt.compression = -arm * sa - anchorY + axle.travel;
 
   const overBump = (t: TireState, other: TireState) => {
     if (t.compression <= bump) return;

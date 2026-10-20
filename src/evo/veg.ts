@@ -1,11 +1,33 @@
 import { splitEvoLines, evoNumbers } from "./text.ts";
 
-/** One tree placement, in Evo world units. `value`'s meaning is unknown; kept verbatim. */
+/**
+ * One tree placement, in Evo world units. `value` is the tree's yaw in 1/256 turns
+ * (`evoTreeYaw`); `sector` the 512 ft sector of its treeGrid block (x `sector % 16`, z
+ * `sector >> 4`) and `index` its place in that block, whose low two bits pick the model slot
+ * (`evoTreeSlot`).
+ */
 export interface EvoTree {
   x: number;
   y: number;
   z: number;
   value: number;
+  sector: number;
+  index: number;
+}
+
+/** Trees per sector side, the most trees one sector holds, and a sector's side in feet. */
+export const EVO_TREE_SECTORS = 16;
+export const EVO_TREES_PER_SECTOR = 100;
+export const EVO_TREE_SECTOR_FT = 512;
+
+/** A tree's yaw about the vertical axis, radians, from its stored byte (0x468910: byte * pi / 128). */
+export function evoTreeYaw(value: number): number {
+  return (value & 0xff) * (Math.PI / 128);
+}
+
+/** A tree's model slot (0..3): its index in its sector's list, low two bits (0x4660b0). */
+export function evoTreeSlot(index: number): number {
+  return index & 3;
 }
 
 /** A parsed Evo 2 .VEG vegetation record. */
@@ -18,6 +40,8 @@ export interface EvoVeg {
   treeLine: number;
   minDistanceSquared: { dense: number; medium: number; sparse: number };
   treeSizes: { sizeX: number; sizeY: number; biasY: number }[];
+  /** Read and never used by the game (0x466af0). */
+  whackTrees: number;
   grassTexture: string | null;
   vegSizes: { min: number; max: number; bias: number }[];
   color: { min: number; max: number; scrub: number } | null;
@@ -43,15 +67,17 @@ export interface EvoVeg {
     treeGrid / <count> / <count> records of x,y,z,value
     ... repeated
 
-  There are exactly 256 treeGrid blocks - one per terrain row - and each declares its own
-  count, so an empty band is a zero rather than a missing block. BAJBEACH holds 6,169 trees
-  across its 256 blocks and PEAK 11,342, both well under their declared maxTrees. Positions
-  are already Evo world coordinates, on the same axes as .SIT placements.
+  There are exactly 256 treeGrid blocks, one per 512 ft sector of a 16 x 16 grid: block b is
+  the sector at x b % 16, z b / 16 (4x4 Evolution 2 reads them into its sector table, 0x466af0;
+  on ALASKA1 block 1 holds x sector 1 and block 16 z sector 1). Each declares its own count, at
+  most 100 in the game. BAJBEACH holds 6,169 trees and PEAK 11,342, both well under their
+  declared maxTrees. Positions are already Evo world coordinates, on the same axes as .SIT
+  placements; the stored height already sits treeBiasY * (1 - r) under the ground, as the
+  game's generator wrote it.
 
-  The fourth per-tree value spans the full 0..255 byte range in both stock tracks and its
-  meaning is unknown. It is preserved verbatim; the viewer derives a deterministic model
-  choice from it so that placement is stable between loads, but that mapping is a viewer
-  convention, not a decoded fact.
+  The fourth per-tree value is the byte rand() gave the tree when it was placed, and the game
+  uses it as the tree's yaw, value * pi / 128 (0x468910). The model slot is not in the record:
+  it is the tree's index in its block, & 3 (0x4660b0).
 
   Ported from JSTrackViewer's src/worker/evo/veg-parser.js (identical in JSMTM2Converter).
 */
@@ -69,6 +95,7 @@ export function parseEvoVeg(bytes: Uint8Array, sourceName: string): EvoVeg {
     treeLine: 0,
     minDistanceSquared: { dense: 0, medium: 0, sparse: 0 },
     treeSizes: [],
+    whackTrees: 0,
     grassTexture: null,
     vegSizes: [],
     color: null,
@@ -101,7 +128,8 @@ export function parseEvoVeg(bytes: Uint8Array, sourceName: string): EvoVeg {
         if (triple.length === 3) veg.treeSizes.push({ sizeX: triple[0], sizeY: triple[1], biasY: triple[2] });
       }
       i += TREE_MODEL_SLOTS;
-    } else if (label === "grassTexture") { veg.grassTexture = value.toUpperCase() || null; i++; }
+    } else if (label === "whackTrees") { veg.whackTrees = int(value); i++; }
+    else if (label === "grassTexture") { veg.grassTexture = value.toUpperCase() || null; i++; }
     else if (label === "vegMinSize,vegMaxSize,vegBias") {
       for (let m = 0; m < TREE_MODEL_SLOTS; m++) {
         const triple = evoNumbers(lines[i + 1 + m] ?? "");
@@ -118,6 +146,7 @@ export function parseEvoVeg(bytes: Uint8Array, sourceName: string): EvoVeg {
   for (; i < lines.length; i++) {
     if (lines[i] !== "treeGrid") continue;
     const count = int(lines[i + 1]);
+    const sector = veg.gridCount;
     veg.gridCount++;
     if (!(count >= 0 && count < 1 << 20)) {
       veg.warnings.push(`${sourceName}: implausible treeGrid count ${lines[i + 1]}`);
@@ -129,7 +158,7 @@ export function parseEvoVeg(bytes: Uint8Array, sourceName: string): EvoVeg {
         veg.warnings.push(`${sourceName}: malformed tree record in grid ${veg.gridCount}`);
         continue;
       }
-      veg.trees.push({ x: record[0], y: record[1], z: record[2], value: record[3] });
+      veg.trees.push({ x: record[0], y: record[1], z: record[2], value: record[3], sector, index: t });
     }
     i += 1 + count;
   }

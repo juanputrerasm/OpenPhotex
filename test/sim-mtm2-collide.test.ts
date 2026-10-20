@@ -579,7 +579,7 @@ test("a truck dropped onto a top-crush car rests on it and flattens the cab (14.
   assert.ok(s.pos[1] > onGround.pos[1] + 1, `on the car at ${s.pos[1]}, on the ground at ${onGround.pos[1]}`);
 });
 
-test("a truck under a bridge of ground boxes is not thrown up by it; one on it is carried (smoothed boxes)", () => {
+test("a truck under a bridge of ground boxes is not thrown up by it; one on it is carried", () => {
   // Terrain at 100 ft. A row of boxes across z = 480..544 from 112 to 116 ft: a deck whose underside is 12 ft over the
   // ground, just over a truck's roof.
   const heights = new Uint8Array(65536).fill(50), ra0 = new Uint8Array(65536).fill(50), ra1 = new Uint8Array(65536).fill(50);
@@ -595,7 +595,7 @@ test("a truck under a bridge of ground boxes is not thrown up by it; one on it i
     let highest = -Infinity, lowest = Infinity;
     for (let i = 0; i < steps; i++) {
       S.stepTruck(s, p, ctx, dt);
-      for (const box of S.groundBoxesAround(ra0, ra1, s.pos[0], s.pos[2], [], 4)) S.collideTruckImmovableBox(s, p, box, dt);
+      for (const box of S.groundBoxesAround(ra0, ra1, s.pos[0], s.pos[2], [])) S.collideTruckImmovableBox(s, p, box, dt);
       S.postStepTruck(s, p, ground, dt);
       highest = Math.max(highest, s.pos[1]);
       lowest = Math.min(lowest, s.pos[1]);
@@ -611,11 +611,41 @@ test("a truck under a bridge of ground boxes is not thrown up by it; one on it i
   const on = S.createTruckState([400, 123, 512], Math.PI / 2, S.GEAR.NEUTRAL, p);
   for (let i = 0; i < 200; i++) {
     S.stepTruck(on, p, ctx, dt);
-    for (const box of S.groundBoxesAround(ra0, ra1, on.pos[0], on.pos[2], [], 4)) S.collideTruckImmovableBox(on, p, box, dt);
+    for (const box of S.groundBoxesAround(ra0, ra1, on.pos[0], on.pos[2], [])) S.collideTruckImmovableBox(on, p, box, dt);
     S.postStepTruck(on, p, ground, dt);
   }
   assert.ok(on.pos[1] > 120 && on.pos[1] < 124, `rests on the deck at ${on.pos[1]}`);
   assert.ok(on.tires.every((t) => t.onGround), "on its wheels");
+});
+
+test("a ground box taller than the hub is a wall, a low one is climbed: no step is carried up (§14.14 step 3)", () => {
+  // Terrain at 100 ft; a row of cells across x from z = 512 to 544 standing `stepFt` over it.
+  const run = (stepFt: number) => {
+    const heights = new Uint8Array(65536).fill(50), ra0 = new Uint8Array(65536).fill(50), ra1 = new Uint8Array(65536).fill(50);
+    for (let col = 5; col <= 25; col++) ra1[16 * 256 + col] = 50 + stepFt / 2;
+    const terrain = S.createTerrain(heights);
+    const ground = S.createTerrainGround(terrain, null, 0, null);
+    const ctx = { ground, human: false, difficulty: S.DIFFICULTY.INTERMEDIATE, sonicTrack: false };
+    const p = S.createTruckParams({ scrapePoints: TRK_HULL }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+    const s = S.createTruckState([500, 106, 440], 0, S.GEAR.NEUTRAL, p);
+    const dt = 1 / 60;
+    let highest = -Infinity;
+    for (let i = 0; i < 480; i++) {
+      s.bvel[2] = Math.max(s.bvel[2], 20);
+      S.stepTruck(s, p, ctx, dt);
+      for (const box of S.groundBoxesAround(ra0, ra1, s.pos[0], s.pos[2], [])) S.collideTruckImmovableBox(s, p, box, dt);
+      S.postStepTruck(s, p, ground, dt);
+      highest = Math.max(highest, s.pos[1]);
+    }
+    return { s, highest };
+  };
+  // 8 ft, well over the hub: the truck stops at the wall and is never lifted onto the top at 108.
+  const wall = run(8);
+  assert.ok(wall.s.pos[2] < 512, `held at the wall: z ${wall.s.pos[2]}`);
+  assert.ok(wall.highest < 108, `never on top: highest ${wall.highest}`);
+  // 2 ft, under the hub: the wheels land on it and the truck drives on over it and off its far side.
+  const curb = run(2);
+  assert.ok(curb.s.pos[2] > 560, `over the curb: z ${curb.s.pos[2]}`);
 });
 
 test("ground boxes of a level whose height step is not 2 ft (Hellbender's 1.5)", () => {
@@ -623,6 +653,40 @@ test("ground boxes of a level whose height step is not 2 ft (Hellbender's 1.5)",
   ra0[5 * 256 + 5] = 10; ra1[5 * 256 + 5] = 20;
   const [mtm] = S.groundBoxesAround(ra0, ra1, 5 * 32 + 16, 5 * 32 + 16, []);
   assert.deepEqual([mtm.pos[1], mtm.half[1]], [30, 10]);
-  const [hb] = S.groundBoxesAround(ra0, ra1, 5 * 32 + 16, 5 * 32 + 16, [], undefined, 1.5);
+  const [hb] = S.groundBoxesAround(ra0, ra1, 5 * 32 + 16, 5 * 32 + 16, [], 1.5);
   assert.deepEqual([hb.pos[1], hb.half[1]], [22.5, 7.5]);
+});
+
+test("a wall face stops a truck driven at it, and only over the triangle (the port's, collide/truck-face.ts)", () => {
+  // A wall across z at 1030, facing the truck (-z), 40 ft wide and 20 ft high: two triangles.
+  const lo = 100, hi = 120;
+  const faces = [
+    S.createFace([980, lo, 1030], [1020, lo, 1030], [1020, hi, 1030], [0, 0, -1])!,
+    S.createFace([980, lo, 1030], [1020, hi, 1030], [980, hi, 1030], [0, 0, -1])!,
+  ];
+  assert.deepEqual(faces[0].normal.map((v) => v + 0), [0, 0, -1]);
+  const run = (x: number) => {
+    const t = scene([x, 106.2, 1000], []);
+    for (let i = 0; i < 60; i++) t.step();
+    let furthest = -Infinity;
+    for (let i = 0; i < 240; i++) {
+      t.state.bvel[2] = Math.max(t.state.bvel[2], i < 120 ? 60 : 0);
+      S.stepTruck(t.state, t.params, { ground: t.ground, human: true, difficulty: S.DIFFICULTY.INTERMEDIATE, sonicTrack: false }, t.dt);
+      for (const f of faces) S.collideTruckFace(t.state, t.params, f, t.dt);
+      S.postStepTruck(t.state, t.params, t.ground, t.dt);
+      furthest = Math.max(furthest, t.state.pos[2]);
+    }
+    return furthest;
+  };
+  const stopped = run(1000);
+  assert.ok(stopped < 1030, `the truck's centre reached z ${stopped}, past the wall`);
+  // Beside the wall (its edge at x 1020, the truck 30 ft past it), nothing is in the way.
+  const beside = run(1050);
+  assert.ok(beside > 1060, `beside the wall the truck stopped at z ${beside}`);
+});
+
+test("a face takes its side from `outward`, and one with no area is none", () => {
+  const f = S.createFace([0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, -5])!;
+  assert.deepEqual(f.normal.map((v) => v + 0), [0, 0, -1]);
+  assert.equal(S.createFace([0, 0, 0], [1, 0, 0], [2, 0, 0]), null);
 });

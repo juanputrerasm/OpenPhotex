@@ -38,6 +38,55 @@ export interface EvoCourseSegment {
   trackWidth: number;
 }
 
+/** One point of an object path (`EvoPath`), as 4x42.exe reads it (0x4f2840). */
+export interface EvoPathPoint {
+  position: number[];
+  /** (pitch, roll, heading) in radians, the box `orient` order. */
+  orient: number[];
+  /** The speed at the point, mph (the game turns it into ft/s at 1.46667). */
+  vel: number;
+  /** Seconds the segment from this point takes, when over 0. */
+  time: number;
+  /** Seconds the object stops at this point. */
+  pauseTime: number;
+  /** 0 a curve (a cardinal spline through the neighbours), 1 a straight segment to the next point. */
+  segmentFlag: number;
+  /** 1 turns the object from this point's orientation to the next's; 0 along its way. */
+  orientFlag: number;
+  /** 1 holds this point's speed over the segment; 0 blends to the next point's. */
+  velFlag: number;
+  /** 1 sets the object on the ground and turns it with the ground. */
+  followTerrainFlag: number;
+  animationFlag: number;
+  lightFlag: number;
+  AIFlag: number;
+  /** A sound played at the point, and one played along the segment; "" for none (NULL.WAV). */
+  pointWavName: string;
+  continuousWavName: string;
+}
+
+/** An object path: one placement moved through its points (4x42.exe `CObjectPath`, 0x4f2840 read, 0x4f3680 stepped). */
+export interface EvoPath {
+  /** 0 runs `cycles` times and stops; 1 loops. */
+  type: number;
+  /** 0 forward round the points; 1 forward and back. */
+  direction: number;
+  cycles: number;
+  /** Seconds the whole path takes, its pauses apart, when over 0. */
+  time: number;
+  pauseTimeElapsed: number;
+  /** Where the object starts: the segment, and the fraction of it (the whole and the fractional part). */
+  t: number;
+  /** The spline's tension, 0 a Catmull-Rom curve. */
+  tension: number;
+  /** 1 holds the object until a script starts it (startPathObject). */
+  stopFlag: number;
+  collisionType: number;
+  /** The box it moves, counted from 1 in the box list (0 for an unused path). */
+  object: number;
+  points: EvoPathPoint[];
+}
+
 /** A parsed Evo .SIT scene script. */
 export interface EvoSit {
   sourceName: string;
@@ -55,6 +104,8 @@ export interface EvoSit {
   boxes: EvoSitBox[];
   vehicles: EvoSitVehicle[];
   courses: { segments: EvoCourseSegment[] }[];
+  /** The object paths (`#*** Paths ***`, a v7 .SIT's last section), unused ones (object 0) included, in file order. */
+  paths: EvoPath[];
   warnings: string[];
 }
 
@@ -115,6 +166,7 @@ export function parseEvoSit(bytes: Uint8Array, sourceName: string): EvoSit {
     boxes: [],
     vehicles: [],
     courses: [],
+    paths: [],
     warnings: [],
   };
 
@@ -135,7 +187,61 @@ export function parseEvoSit(bytes: Uint8Array, sourceName: string): EvoSit {
   const courseAt = lines.findIndex((line) => line.trim() === "*** Course ***");
   if (courseAt >= 0) sit.courses = parseCourses(lines, courseAt);
 
+  const pathsAt = lines.findIndex((line) => line.trim() === "#*** Paths ***");
+  if (pathsAt >= 0) sit.paths = parsePaths(lines, pathsAt);
+
   return sit;
+}
+
+/*
+  The object paths: `pathCount`, then per path `Path N of M` and label/value lines (pointCount, type, direction, cycles,
+  time, pauseTimeElapsed, t, tension, stopFlag, collisionType, object), then per point `Point N of M` and its own (wPos,
+  wOrient, vel, time, pauseTime, segmentFlag, orientFlag, velFlag, followTerrainFlag, animationFlag, lightFlag, AIFlag,
+  pointWavName, continuousWavName). The game reads the integers with %d and the rest with %f (0x4f2840); an unused path
+  (object 0) may carry anything in its integers. `wOrient` is the boxes' order (pitch, roll, heading).
+*/
+const PATH_INTS = new Set(["pointCount", "type", "direction", "cycles", "stopFlag", "collisionType", "object"]);
+const POINT_INTS = new Set(["segmentFlag", "orientFlag", "velFlag", "followTerrainFlag", "animationFlag", "lightFlag", "AIFlag"]);
+function parsePaths(lines: string[], start: number): EvoPath[] {
+  const paths: EvoPath[] = [];
+  let path: EvoPath | null = null;
+  let point: EvoPathPoint | null = null;
+  const int = (value: string) => { const n = Number.parseInt(value.trim(), 10); return Number.isFinite(n) ? n : 0; };
+  const real = (value: string) => { const n = Number.parseFloat(value.trim()); return Number.isFinite(n) ? n : 0; };
+  const wav = (value: string) => { const v = value.trim(); return /^NULL\.WAV$/i.test(v) ? "" : v; };
+  for (let i = start + 1; i < lines.length; i++) {
+    const label = evoLabel(lines[i]);
+    if (!label || label === "pathCount") { if (label === "pathCount") i++; continue; }
+    if (/^Path \d+ of \d+/.test(label)) {
+      path = { type: 0, direction: 0, cycles: 0, time: 0, pauseTimeElapsed: 0, t: 0, tension: 0, stopFlag: 0, collisionType: 0, object: 0, points: [] };
+      paths.push(path);
+      point = null;
+      continue;
+    }
+    if (/^Point \d+ of \d+/.test(label)) {
+      if (!path) continue;
+      point = {
+        position: [0, 0, 0], orient: [0, 0, 0], vel: 0, time: 0, pauseTime: 0, segmentFlag: 0, orientFlag: 0, velFlag: 0,
+        followTerrainFlag: 0, animationFlag: 0, lightFlag: 0, AIFlag: 0, pointWavName: "", continuousWavName: "",
+      };
+      path.points.push(point);
+      continue;
+    }
+    if (!path) continue;
+    const value = lines[i + 1] ?? "";
+    i++;
+    if (point) {
+      if (label === "wPos") point.position = triple(value);
+      else if (label === "wOrient") point.orient = triple(value);
+      else if (label === "vel" || label === "time" || label === "pauseTime") point[label] = real(value);
+      else if (POINT_INTS.has(label)) (point as unknown as Record<string, number>)[label] = int(value);
+      else if (label === "pointWavName" || label === "continuousWavName") point[label] = wav(value);
+    } else if (label === "pointCount") {
+      // The points follow; their count is the list's own.
+    } else if (PATH_INTS.has(label)) (path as unknown as Record<string, number>)[label] = int(value);
+    else if (label === "time" || label === "pauseTimeElapsed" || label === "t" || label === "tension") path[label] = real(value);
+  }
+  return paths;
 }
 
 /*

@@ -34,6 +34,8 @@ export * from "./truck/autopilot.ts";
 export * from "./truck/traffic.ts";
 export * from "./collide/box.ts";
 export { collideTruckBox, collideTruckImmovableBox, truckBoxSeparated } from "./collide/truck-box.ts";
+export { FACE_DEPTH_FT, collideTruckFace, createFace } from "./collide/truck-face.ts";
+export type { SimFace } from "./collide/truck-face.ts";
 export { stepBox, postStepBox, boxInertia } from "./collide/box-step.ts";
 export { stepMovingObject, groundBoxHeightAt } from "./collide/moving-object.ts";
 export { collideTruckRamp, createRamp, insideRamp, rampEdges, rampHeightAt, rampSlopeNormal } from "./collide/ramp.ts";

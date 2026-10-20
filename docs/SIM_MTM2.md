@@ -95,6 +95,9 @@ rules, `Mtm2Rules`: `MTM2_RULES` (the default everywhere), `MTM1_RULES`, and `si
 A ground carries its rules (`createTerrainGround(..., rules)`, `Mtm2Ground.rules`; a host that
 wraps a ground sets the field on its own), and `collideTrucks(a, b, dt, rules)` takes them.
 
+A road ground's per-truck view (`createRoadGround(...).below`) passes on the road ground's `rules`,
+else its base's.
+
 ## Summit Rumble
 
 `createRace(..., "summit")` always scores a Rumble (OpenMTM2 `docs/MONSTER_EXE_ANALYSIS.md` 6.3):
@@ -108,8 +111,21 @@ pass through the box would count as a lap.
 - `postStepTruck` must be given the same ground as that truck's `stepTruck`. Where a level has surfaces over the
   terrain (`createRoadGround(...).below(...)`, one view a truck), the wheels are measured against it there; given the
   terrain alone, a truck on a deck rests on its hull with its wheels hanging.
-- A smoothed ground box (`groundBoxesAround`'s `smoothFt`) whose bottom is over a truck's centre is a bridge to that
-  truck: it carries none of its wheels and its bottom is a ceiling.
+- `raceTick` runs the game's off-course re-pick (`offCourseRepick`, `0x486630`): a truck 160 ft off its segment's line
+  or 10% past its end goes to the arc whose centre is nearest it.
+- Ground boxes (`groundBoxesAround`) are the game's: every face solid, the face a point meets chosen by the ray from
+  where it was last step. A wheel lands on a top only when its hub was above it; a taller step is a wall.
+
+## Wall faces (the port's)
+
+`collide/truck-face.ts`. MTM2 meets only boxes; a host with walls that are not boxes (OpenMTM2's 4x4 Evolution rocks,
+whose steep faces are walls) gives each as a triangle: `createFace(a, b, c, outward)` and
+`collideTruckFace(s, p, face, dt)`, called where `collideTruckImmovableBox` is. A face is solid for `FACE_DEPTH_FT` (2 ft)
+behind it. A hull point or a tire contact point behind it, over the triangle, takes it as an immovable box's side
+would: its depth behind the face and the face's normal, which the post-step pushes the truck out along. A point that
+crossed the face's plane over the triangle since the last step counts however deep it is, so a fast truck cannot pass
+through. Nothing reaches past the triangle's edges, which a box laid on the face would: a box round a triangle is
+twice its area, and what of it stands past the rock's outline is a wall in the air. A wall carries no wheel.
 
 ## The world as a torus
 

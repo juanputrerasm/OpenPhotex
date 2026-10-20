@@ -79,8 +79,16 @@ function edgeCrossing(from: V, q: V, edgeFoot: V, u: V): { qx: number; x: V; fro
 }
 
 /** `inertia` is I1, I2, I3 (about z, x, y). */
+export interface HullFriction {
+  /** The friction limit's factor on the support (MTM2 0.5, `HULL_FRICTION_K`). */
+  factor: number;
+  /** The surface's friction coefficient by ground type. */
+  mu(type: number): number;
+}
+
 export function solveHullContacts(
   s: ContactBody, inertia: ArrayLike<number>, ground: Mtm2Ground, external: V, mass: number, weight: number, dt: number,
+  friction?: HullFriction,
 ): ContactResult {
   const out: ContactResult = { force: [0, 0, 0], moment: [0, 0, 0], count: 0 };
   if (s.contactCount === 0) return out;
@@ -195,7 +203,9 @@ export function solveHullContacts(
     const u = add(vt, v);
     // The game samples the surface at the truck position plus the unrotated body point.
     const type = surfaceType(ground.surface(pos[0] + c.body[0], pos[1] + c.body[1], pos[2] + c.body[2]));
-    let limit = N[i] * 0.5 * surfaceMu(type) * weather;
+    let limit = friction
+      ? N[i] * friction.factor * friction.mu(type) * weather
+      : N[i] * 0.5 * surfaceMu(type) * weather;
     if (limit < 0) limit = 0;
     const sp = len(u);
     let f: V;

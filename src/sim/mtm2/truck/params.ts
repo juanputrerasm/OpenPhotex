@@ -77,6 +77,15 @@ export interface Mtm2TruckParams {
   cpu: boolean;
   autoShift: boolean;
   difficulty: number;
+  /**
+   * Another vehicle model's own suspension and body (4x4 Evolution, `sim/evo`): per axle (front,
+   * rear) the bump travel and the articulation limit, the spring arm of each tire and the aero
+   * areas facing x, y, z. MTM2's constants apply when absent.
+   */
+  bumpTravelFt?: [number, number];
+  articulationLimit?: [number, number];
+  springArmFt?: number;
+  aeroArea?: Triplet;
 }
 
 const f32 = Math.fround;

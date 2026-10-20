@@ -99,7 +99,9 @@ export function createRoadGround(base: Mtm2Ground, road: RoadTriangles): RoadGro
     return t >= 0 && found >= base.height(x, z) ? t : -1;
   }
 
+  // A view asks the road ground (`outer`, which a host may give its rules) and then the base.
   const view = (limit: () => number): Mtm2Ground => ({
+    get rules() { return outer.rules ?? base.rules; },
     get waterLevelFt() { return base.waterLevelFt; },
     get weather() { return base.weather; },
     set weather(value: number) { base.weather = value; },
@@ -120,7 +122,7 @@ export function createRoadGround(base: Mtm2Ground, road: RoadTriangles): RoadGro
     },
   });
 
-  return {
+  const outer: RoadGround = {
     below: view,
     get waterLevelFt() { return base.waterLevelFt; },
     get weather() { return base.weather; },
@@ -142,4 +144,5 @@ export function createRoadGround(base: Mtm2Ground, road: RoadTriangles): RoadGro
       return t < 0 ? base.surface(x, y, z) : Number(road.surfaceValues[t] ?? 100);
     },
   };
+  return outer;
 }

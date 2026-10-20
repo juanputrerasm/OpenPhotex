@@ -9,8 +9,11 @@
 | `.WAT` | Evo 2 animated-water material | `parseEvoWat` |
 | `.TEX` | Terrain and shadow texture table | `parseEvoTex` |
 | `.VEG` | Evo 2 vegetation | `parseEvoVeg` |
+| `.RTD` | Shade map (1024 x 1024 bits) | `parseEvoRtd`, `evoShadeAt` |
+| `.SDW` | Shadow texture overlay (256 x 256 words) | `parseEvoSdw` |
 | `.SMF` | Static models ("C3DModel") | `parseSmf` |
 | `.TRK` | Vehicle manifest, v6 (Evo 1) and v7 (Evo 2) | `parseEvoTrk` |
+| `PARTS.TXT` | Evo 2's parts list (PARTS.POD): codes and their aero, brake, CG, tire CF, torque and weight modifiers | `parseEvoParts` (`evoSim.applyEvoParts` fits them) |
 | `.RAW` + `.ACT` + `.OPA` | Indexed textures with an opacity plane | see [RAW_ACT.md](RAW_ACT.md) |
 | `.TIF` | Evo 2 textures and normal maps | `decodeTiff` |
 
@@ -26,14 +29,28 @@ Every text file is CRLF-terminated 8-bit text. Label lines may carry a leading s
 - **v7 (Evo 2):** a class registry (the integer after each class is its serialized schema version, not a count), a name list, then `{ N ClassName ... }` instances. The instance number is what a child's `parent` field refers to (`instanceId`). Unknown fields are kept in `sourceFields`.
 - **Positions and headings:** `wPos` is (x, height, z) and `wOrient` is radians with the heading third. The starting grid proves that convention. Pushing each vehicle's heading through it gives a mean cosine against the nearest course segment of +1.00 on ASPEN, THEHILL and PEAK, and +0.96 on BAJBEACH and TRIBAJA.
 - **Race types:** 2 is CIRCUIT, 3 is RALLY and 6 is MISSION (`evoTrackTypeName`), established from the stock tracks and the Evo editor manual. Other values are reported as numbers.
+- **Object paths (`paths`):** a v7 `.SIT` ends with `#*** Paths ***`: `pathCount`, then per path `Path N of M` with `pointCount`, `type`, `direction`, `cycles`, `time`, `pauseTimeElapsed`, `t`, `tension`, `stopFlag`, `collisionType` and `object` (the moved box, counted from 1; 0 for an unused path), then per point `Point N of M` with `wPos`, `wOrient` (the boxes' order), `vel` (mph), `time`, `pauseTime`, seven flags (`segmentFlag`, `orientFlag`, `velFlag`, `followTerrainFlag`, `animationFlag`, `lightFlag`, `AIFlag`) and two sounds (`NULL.WAV` for none, read as ""). 4x42.exe reads the integers with `%d` and the rest with `%f` (`0x4f2840`); unused paths may carry anything in their integers. About 40 of the stock Evo 2 tracks move objects this way: PEAK's F-15s, ALASKA's helicopters, VULTURE's vultures, boats, animals and vehicles. How the game moves them is OpenMTM2's `docs/EVO2_EXE_ANALYSIS.md` 6.7.
 - **Consolidation:** JSTrackViewer's reader was a strict superset of JSMTM2Converter's, adding `instanceId`, `bvel` (a type 10 box's velocity, as on THEHILL's train) and the race type names. The converter's output is unchanged apart from those added fields.
+
+## Track scripts (.SC)
+
+`SCRIPTS\<track>.SC` (`parseEvoScript`) holds a track's rules, one per line: conditions, `->`, actions, or actions alone. Conditions are joined by `&&` or `&`, may be negated with `!`, and are calls (`objectsIntersect(trigger,vehicle1)`, against a CTriggerBox's `name`) or flags set by `raise(flag,forever)`. Actions are calls separated by `;`; quoted arguments lose their quotes, and `//` comments to the end of the line. The stock calls are `raise`, `objectsIntersect`, `Message`, `giveMoney`, `foundSecret`, `completedObjective`, `startPathObject`, `stopPathObject`, `unlockObjective`, `displayObjective`, `unlockMission`, `setWaterTidePeriod` and `setWaterTideHeight` (the game also reads `togglePathObject`, `0x450170`). The reader keeps whatever a line names.
 
 ## .LVL, .WAT, .TEX, .VEG
 
 These were identical in JSTrackViewer and JSMTM2Converter.
 
-- **`.TEX`:** holds `ordinaryCount + shadowCount` records exactly, in all four stock tracks. The `.CLR` grid indexes the ordinary group, and `.SDW` indexes the shadow group offset by `ordinaryCount`. The two per-record parameters are kept verbatim because their meaning is unknown.
-- **`.VEG`:** has exactly 256 `treeGrid` blocks, one per terrain row. Each tree's fourth value spans 0 to 255 and its meaning is unknown.
+- **`.TEX`:** holds `ordinaryCount + shadowCount` records exactly, in all four stock tracks. The `.CLR` grid indexes the ordinary group, and `.SDW` indexes the shadow group offset by `ordinaryCount`. The two numbers of a record are `surfaceValue` (MTM2's `type * 100 + depth`) and `vegClass` (0 none, 1 sparse, 2 medium, 3 dense), as 4x4 Evolution 2 reads them (`CTextureList::load`, 0x5cb530; OpenMTM2 `docs/EVO2_EXE_ANALYSIS.md` 4.1). The old names `param0` and `param1` stay as aliases.
+- **`.VEG`:** has exactly 256 `treeGrid` blocks, one per 512 ft sector of a 16 x 16 grid: block b is the sector at x `b % 16`, z `b / 16` (0x466af0; the earlier "one per terrain row" was wrong). Each tree carries its `sector` and its `index` in the block. The fourth value is the byte `rand()` gave the tree, and the game uses it as the yaw, `value * pi / 128` (`evoTreeYaw`); the model slot is `index & 3` (`evoTreeSlot`). Stored heights already sit `treeBiasY * (1 - r)` under the ground, and the game draws the model a further `treeBiasY` down.
+
+## Shade, shadows, grass and generated trees
+
+`src/evo/vegetation.ts`, from OpenMTM2 `docs/EVO2_EXE_ANALYSIS.md` 2 and 3:
+
+- **`.RTD`** is 131,072 bytes: one bit per 8 ft square, bit `x8 + z8 * 1024`, least significant bit first. Set means shade (terrain light 0.35, no sun shadow for a truck). Checked on ALASKA1: every one of its 13,660 trees stands on a set bit, against 12% of the map, which fixes the bit order.
+- **`.SDW`** is 256 x 256 words: a `.TEX` index in the shadow group, or 0x8000 for none (0x4000 is kept by the game, meaning not traced).
+- **Grass** (`evoGrassPattern`, `evoGrassCount`, `evoGrassIndex`): 2,048 tufts repeating every 8 x 8 cells; offsets from the Watcom `rand()` (`evoRand`, the ANSI generator) seeded with 873, slots and sizes redrawn from the `.VEG` sizes. A cell of class c draws `1 << c` tufts.
+- **Generated trees** (`evoGenerateTrees`): what Evo 2 does for a level without a `.VEG`. The game's `rand()` is unseeded there, so the caller gives the seed.
 
 ## World space and terrain
 
@@ -102,5 +119,5 @@ JSMTM2Converter's and JSTruckViewer's copies handled both forms. JSTrackViewer's
 ## Open questions
 
 - **Material scalars:** the meaning of `.SMF` material scalars 0 to 2. They are consistent with specular strength, specular level and a Phong exponent, but unconfirmed.
-- **Unnamed values:** the `.SMF` counts line's fourth field, the `.TEX` record parameters, and the `.VEG` per-tree value.
+- **Unnamed values:** the `.SMF` counts line's fourth field. (The `.TEX` record numbers and the `.VEG` per-tree value are now named, from the executable.)
 - **Paint decals:** whether any Evo vehicle ever uses a paint-scheme decal texture. Every stock one is `NULL`.

@@ -14,7 +14,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { buildCourse, isArc, type CourseStraight } from "../src/sim/mtm2/world/course.ts";
 import {
-  mtm2Sim, parseMtmLvl,
+  mtm2Sim, evoSim, parseMtmLvl,
   parseKlp, parseMtmAmbientSounds, parseMtmSun, parseLoc, parseCockpitLayout,
   parseBin,
   parseFlyScf,
@@ -694,3 +694,27 @@ test("every stock level file parses", { skip: existsSync(GAMES) ? false : `no ${
   if (existsSync(join(GAMES, "cpr"))) assert.equal(counts.trk, 17);
   assert.ok(counts.sit > 0 && counts.lvl > 0 && counts.def === counts.lvl && counts.nav > 0, JSON.stringify(counts));
 });
+
+// The 4x4 Evolution vehicle model (src/sim/evo): every stock manifest gives finite figures, and a
+// vehicle of each game set down on flat ground comes to rest on its wheels.
+for (const game of ["evo1", "evo2"] as const) {
+  const truckPod = stock(`${game}/TRUCK.POD`);
+  test(`every stock ${game} .TRK maps to the Evo model`, { skip: truckPod.skip }, () => {
+    const bytes = new Uint8Array(readFileSync(truckPod.path));
+    const pod = parsePod(bytes);
+    const rules = evoSim.evoRules(game);
+    let count = 0;
+    for (const entry of findPodEntriesByExtension(pod, ".TRK")) {
+      const data = readPodEntry(bytes, entry);
+      if (!isEvoTrk(data)) continue;
+      const spec = evoSim.evoSpecFromTrk(parseEvoTrk(data, entry.name));
+      const p = evoSim.createEvoParams(spec, rules, { tireRadiusFt: 1.5, tireWidthFt: 1 });
+      const figures = [p.weightLb, ...p.inertia, ...p.spring, ...p.damper, ...p.cgOffset, spec.finalDrive, spec.redline, ...spec.tireCF];
+      assert.ok(figures.every(Number.isFinite) && p.weightLb > 0, entry.name);
+      assert.ok(spec.torqueTable.length >= 2 && spec.gearRatios.length >= 4 && spec.maxGear >= 4, entry.name);
+      assert.ok(spec.torqueTable.length * 500 > spec.redline - 500, `${entry.name}: the table reaches the redline`);
+      count++;
+    }
+    assert.equal(count, game === "evo1" ? 121 : 150);
+  });
+}

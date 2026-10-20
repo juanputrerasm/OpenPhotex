@@ -103,3 +103,30 @@ test("a Rumble always scores: with one checkpoint it is the zone and there is no
   S.summitTick(out.summit!, [[0, 106, 0]], 1.01);
   assert.equal(out.summit!.trucks[0]!.state, 0);
 });
+
+test("the off-course re-pick (0x486630): 160 ft off the segment's line or 10% past its end puts a truck on the nearest arc", () => {
+  // A square loop 1000 ft a side round (1000, 1000)-(2000, 2000), straights inset from the corners.
+  const straight = (a: T3, b: T3) => ({ ctype: 1, cspeedType: 0, startFt: a, endFt: b, cdecPoint: 20, cspeed: 60, speedLimit: 0, trackWidthFt: 32 });
+  const course = S.buildCourse([
+    straight([1000, 100, 1100], [1000, 100, 1900]), straight([1100, 100, 2000], [1900, 100, 2000]),
+    straight([2000, 100, 1900], [2000, 100, 1100]), straight([1900, 100, 1000], [1100, 100, 1000]),
+  ], () => 100);
+  const make = (x: number, z: number) => {
+    const t = truckAt(x, z, 30);
+    const race = S.createRace([t], oneCheckpoint(), course, 3, 1);
+    return race.trucks[0]!;
+  };
+  // On its straight: kept.
+  const on = make(1010, 1500);
+  assert.equal(S.offCourseRepick(on, course, 1), false);
+  assert.equal(on.s.ap.segment, 0);
+  // 200 ft off the first straight's line, by the second corner: put on the course by the arc there.
+  const off = make(1800, 1700);
+  assert.equal(S.offCourseRepick(off, course, 1), true);
+  assert.ok([2, 3, 4].includes(off.s.ap.segment), `segment ${off.s.ap.segment}`);
+  // On the first straight's line but 15% past its end (z 1900 + 120): the first corner's arc or the straight after it.
+  const past = make(1000, 2020);
+  assert.equal(S.offCourseRepick(past, course, 1), true);
+  assert.ok([1, 2].includes(past.s.ap.segment), `segment ${past.s.ap.segment}`);
+  assert.equal(past.s.ap.segmentsPassed, past.s.ap.segment, "the segments moved by count as passed");
+});

@@ -21,16 +21,25 @@ export type { TiffImage } from "./texture/tiff.ts";
 export { splitEvoLines, evoLabel, evoNumbers, evoUnquote, evoFieldLine } from "./evo/text.ts";
 export { parseEvoLvl, parseEvoWat } from "./evo/lvl.ts";
 export type { EvoLvl, EvoWat } from "./evo/lvl.ts";
-export { parseEvoTex } from "./evo/tex.ts";
+export { parseEvoTex, EVO_VEG_CLASS } from "./evo/tex.ts";
 export type { EvoTex, EvoTexRecord } from "./evo/tex.ts";
-export { parseEvoVeg } from "./evo/veg.ts";
+export { parseEvoVeg, evoTreeYaw, evoTreeSlot, EVO_TREE_SECTORS, EVO_TREES_PER_SECTOR, EVO_TREE_SECTOR_FT } from "./evo/veg.ts";
+export {
+  parseEvoRtd, evoShadeAt, parseEvoSdw, evoRand, evoGrassPattern, evoGrassCount, evoGrassIndex, evoGenerateTrees,
+  EVO_RTD_SIZE, EVO_RTD_BYTES, EVO_RTD_CELL_FT, EVO_SHADE_LIGHT, EVO_SDW_NONE, EVO_SDW_KEEP, EVO_GRASS_SEED, EVO_GRASS_TUFTS,
+} from "./evo/vegetation.ts";
+export type { EvoGrassPattern, EvoTreeFieldInput } from "./evo/vegetation.ts";
 export type { EvoVeg, EvoTree } from "./evo/veg.ts";
 export { isEvoSit, evoGameForSitVersion, parseEvoSit, evoTrackTypeName } from "./evo/sit.ts";
-export type { EvoSit, EvoSitBox, EvoSitVehicle, EvoCourseSegment } from "./evo/sit.ts";
+export type { EvoSit, EvoSitBox, EvoSitVehicle, EvoCourseSegment, EvoPath, EvoPathPoint } from "./evo/sit.ts";
+export { parseEvoScript } from "./evo/script.ts";
+export type { EvoScript, EvoScriptRule, EvoScriptCondition, EvoScriptCall } from "./evo/script.ts";
 export { isSmfModel, parseSmf, smfTextureReference } from "./evo/smf.ts";
 export type { SmfModel, SmfGroup, SmfFrame, SmfMaterial } from "./evo/smf.ts";
 export { truckManifestLines, isEvoTrk, isEvoTrkLines, parseEvoTrk, parseEvoTrkLines, trkSpecValue, EVO_WHEEL_KEYS } from "./evo/trk.ts";
 export type { EvoTrk, EvoTrkLight, EvoTrkColor, EvoTrkSpec } from "./evo/trk.ts";
+export { parseEvoParts } from "./evo/parts.ts";
+export type { EvoPart } from "./evo/parts.ts";
 export type { Vec3 } from "./truck/common.ts";
 export { parseMtmTrkLines, MTM_WHEEL_KEYS } from "./truck/mtm-trk.ts";
 export type { MtmTrk, MtmTrkLight, MtmTrkDialect } from "./truck/mtm-trk.ts";
@@ -173,8 +182,9 @@ export type { LocMessage } from "./mtm/loc.ts";
 export { parseCockpitLayout, parseCockpitSections } from "./mtm/cockpit.ts";
 export type { MtmCockpitLayout, CockpitSection, CockpitGauge, CockpitMirror } from "./mtm/cockpit.ts";
 export * as mtm2Sim from "./sim/mtm2/index.ts";
+export * as evoSim from "./sim/evo/index.ts";
 export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 
 /** The library version, as published in package.json. */
-export const VERSION = "1.1.2";
+export const VERSION = "1.2.0";

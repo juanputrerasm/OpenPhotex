@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import {
   actPaletteDepth, decodeActPalette, decodeTiff, isEvoSit, isSmfModel, matchEvoAiLineName, parseAnimations, parseBin,
-  parseCprCmd, parseCprTrk, parseCprTtx, parseDef, parseEvoAiLine, parseEvoLvl, parseEvoSit, parseEvoTex, parseEvoVeg,
+  parseCprCmd, parseCprTrk, parseCprTtx, parseDef, parseEvoAiLine, parseEvoLvl, parseEvoSit, parseEvoTex, parseEvoVeg, parseEvoScript,
   parseEvoWat, parseHbBriefing, parseHbNavPoints, parseMtmLvl, parseMtmSit, parseNavPoints, parsePod, parsePowerups,
   parseSmf, parseTexList, readPodEntry, parseTruckManifest, parseTty, parseTunnelDefs, parseTvLvl, podPathTitle, rawTextureSide,
   parseFlyScf, parseFlySceneryObjects, parseFlyBsp, parseFlyAlt, parseFlyTex, parseFlyTyp, parseFlyRef, parseFlyAl2, findPodEntry,
@@ -55,6 +55,7 @@ const READERS: Record<string, { reader: string; read: (bytes: Uint8Array, name: 
   "trn": { reader: "parseTrn", read: (b) => parseTrn(b) },
   "mtm-cockpit": { reader: "parseCockpitLayout", read: (b) => parseCockpitLayout(b) },
   "evo-veg": { reader: "parseEvoVeg", read: (b, n) => parseEvoVeg(b, n) },
+  "evo-sc": { reader: "parseEvoScript", read: (b, n) => parseEvoScript(b, n) },
   "smf": { reader: "parseSmf", read: (b, n) => parseSmf(b, n) },
   "cpr-trk": { reader: "parseCprTrk", read: (b) => parseCprTrk(b) },
   "cpr-ttx": { reader: "parseCprTtx", read: (b) => parseCprTtx(b) },
@@ -153,6 +154,7 @@ function detect(name: string, bytes: Uint8Array, archive: PodArchive | null, arc
     case "TEX": return evoArchive ? "evo-tex" : archive?.format === "epd" ? "fly-tex" : "tex";
     case "TTY": return "tty";
     case "VEG": return "evo-veg";
+    case "SC": return "evo-sc";
     case "SMF": return isSmfModel(bytes) ? "smf" : "";
     case "TRK": return text().includes("CRaceTrack.trackCount") ? "cpr-trk" : "truck";
     case "CAR": return "truck";
