@@ -97,8 +97,10 @@ export interface Mtm2TruckState {
   hover: number;
   /** Impulse moment accumulated by collisions this step. */
   impulseMoment: number;
-  /** The last contact force magnitude (crash-damage input). */
+  /** This step's hull contact force magnitude, 0 without contact (crash-damage input). */
   impactForce: number;
+  /** The speed (ft/s) the bump stops took off the truck in the last post-step, 25% of each bottomed wheel's (§14.11.5). */
+  bottoming: number;
   /** Water was met fast enough to splash this step (§14.7.1). */
   splash: boolean;
   /** The autopilot's course state (§14.22, §14.23). */
@@ -182,6 +184,7 @@ export function createTruckState(
     hover: 0,
     impulseMoment: 0,
     impactForce: 0,
+    bottoming: 0,
     splash: false,
     ap: {
       segment: 0, integral: 0, gain: autopilotGain(params?.difficulty ?? 1), segmentsPassed: 0, target: 0,

@@ -192,4 +192,4 @@ export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 
 /** The library version, as published in package.json. */
-export const VERSION = "1.3.0";
+export const VERSION = "1.3.1";

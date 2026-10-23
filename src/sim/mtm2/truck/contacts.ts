@@ -91,6 +91,8 @@ export function solveHullContacts(
   friction?: HullFriction,
 ): ContactResult {
   const out: ContactResult = { force: [0, 0, 0], moment: [0, 0, 0], count: 0 };
+  // This step's contact force only: a step with no contact has none, not the last one met.
+  s.impactForce = 0;
   if (s.contactCount === 0) return out;
   const m = s.matrix;
   const toWorld = (v: V): V => [m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2], m[6] * v[0] + m[7] * v[1] + m[8] * v[2]];
