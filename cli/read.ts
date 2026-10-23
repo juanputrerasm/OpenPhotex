@@ -11,7 +11,7 @@
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import {
-  actPaletteDepth, decodeActPalette, decodeTiff, isEvoSit, isSmfModel, matchEvoAiLineName, parseAnimations, parseBin,
+  actPaletteDepth, decodeActPalette, decodeTiff, isEvoLite, isEvoSit, isSmfModel, parseEvoLte, matchEvoAiLineName, parseAnimations, parseBin,
   parseCprCmd, parseCprTrk, parseCprTtx, parseDef, parseEvoAiLine, parseEvoLvl, parseEvoSit, parseEvoTex, parseEvoVeg, parseEvoScript,
   parseEvoWat, parseHbBriefing, parseHbNavPoints, parseMtmLvl, parseMtmSit, parseNavPoints, parsePod, parsePowerups,
   parseSmf, parseTexList, readPodEntry, parseTruckManifest, parseTty, parseTunnelDefs, parseTvLvl, podPathTitle, rawTextureSide,
@@ -45,6 +45,7 @@ const READERS: Record<string, { reader: string; read: (bytes: Uint8Array, name: 
   "tv-lvl": { reader: "parseTvLvl", read: (b) => parseTvLvl(b) },
   "evo-lvl": { reader: "parseEvoLvl", read: (b, n) => parseEvoLvl(b, n) },
   "evo-wat": { reader: "parseEvoWat", read: (b, n) => parseEvoWat(b, n) },
+  "evo-lte": { reader: "parseEvoLte", read: (b, n) => parseEvoLte(b, n) },
   "tex": { reader: "parseTexList", read: (b) => parseTexList(b) },
   "evo-tex": { reader: "parseEvoTex", read: (b, n) => parseEvoTex(b, n) },
   "tty": { reader: "parseTty", read: (b) => parseTty(b) },
@@ -151,6 +152,8 @@ function detect(name: string, bytes: Uint8Array, archive: PodArchive | null, arc
       return "";
     }
     case "WAT": return "evo-wat";
+    // A 4x4 Evolution 1 Lite track; MTM2's light grid of the same extension has no reader.
+    case "LTE": return isEvoLite(bytes) ? "evo-lte" : "";
     case "TEX": return evoArchive ? "evo-tex" : archive?.format === "epd" ? "fly-tex" : "tex";
     case "TTY": return "tty";
     case "VEG": return "evo-veg";

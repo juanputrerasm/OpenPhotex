@@ -690,3 +690,28 @@ test("a face takes its side from `outward`, and one with no area is none", () =>
   assert.deepEqual(f.normal.map((v) => v + 0), [0, 0, -1]);
   assert.equal(S.createFace([0, 0, 0], [1, 0, 0], [2, 0, 0]), null);
 });
+
+test("a box's contact is reported only when the truck touches it, not when it lands hard beside it (0x428bc0)", () => {
+  // A fence 1 ft thick and 60 ft long, 10 ft high, its near face 4 ft beyond the truck's right side.
+  const fence = S.createBox([1000 + 3.67 + 2 + 4.5, 105, 1000], [1, 10, 60], 0);
+  const t = scene([1000, 116, 1000], [fence]);
+  t.state.bvel[1] = -40; // a hard landing beside it
+  let touches = 0;
+  for (let i = 0; i < 90; i++) {
+    S.stepTruck(t.state, t.params, { ground: t.ground, human: true, difficulty: S.DIFFICULTY.INTERMEDIATE, sonicTrack: false }, t.dt);
+    if (S.collideTruckImmovableBox(t.state, t.params, fence, t.dt)) touches++;
+    S.postStepTruck(t.state, t.params, t.ground, t.dt);
+  }
+  assert.equal(touches, 0, "the landing beside the fence is no contact with it");
+  // Now slide sideways into it.
+  let hardest = 0;
+  for (let i = 0; i < 120 && !hardest; i++) {
+    const right = t.state.matrix;
+    t.state.bvel[0] = 20 * right[0];
+    S.stepTruck(t.state, t.params, { ground: t.ground, human: true, difficulty: S.DIFFICULTY.INTERMEDIATE, sonicTrack: false }, t.dt);
+    const hit = S.collideTruckImmovableBox(t.state, t.params, fence, t.dt);
+    if (hit) hardest = Math.max(hardest, hit.speed + 1e-9);
+    S.postStepTruck(t.state, t.params, t.ground, t.dt);
+  }
+  assert.ok(hardest > 1, `the truck sliding into the fence touches it, closing at ${hardest} ft/s`);
+});

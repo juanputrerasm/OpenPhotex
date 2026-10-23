@@ -31,6 +31,8 @@ export {
 export type { EvoGrassPattern, EvoTreeFieldInput } from "./evo/vegetation.ts";
 export type { EvoVeg, EvoTree } from "./evo/veg.ts";
 export { isEvoSit, evoGameForSitVersion, parseEvoSit, evoTrackTypeName } from "./evo/sit.ts";
+export { decodeEvoLzw, isEvoLite, parseEvoLte, EVO_LITE_GRID, EVO_LITE_TERRAIN_BYTES, EVO_LITE_MAX_FILE, EVO_LZW_ENTRIES } from "./evo/lte.ts";
+export type { EvoLite } from "./evo/lte.ts";
 export type { EvoSit, EvoSitBox, EvoSitVehicle, EvoCourseSegment, EvoPath, EvoPathPoint } from "./evo/sit.ts";
 export { parseEvoScript } from "./evo/script.ts";
 export type { EvoScript, EvoScriptRule, EvoScriptCondition, EvoScriptCall } from "./evo/script.ts";
@@ -105,13 +107,13 @@ export type { HbUnderground } from "./terrain/hb-underground.ts";
 export {
   CPR_POINT_NAMES, CPR_SLOT_OFF_TRACK, CPR_SLOT_CURB, CPR_SLOT_ROAD, CPR_SLOT_NAMES, CPR_CROSS_SECTION_MIDPOINT,
   CPR_SURFACE_TYPES, CPR_WALL_TYPE_NAMES, CPR_TEXTURE_INDEX_MASK, CPR_TEXTURE_SLICE_COUNT, cprTextureIndex,
-  cprTextureSlice, cprTextureU, CPR_WALL_LAYERS, CPR_CATCH_FENCE_NAMES, parseCprTrk, parseCprTtx, isDegenerateSlot,
+  cprTextureSlice, cprTextureU, CPR_TREE_WALL, CPR_WALL_LAYERS, CPR_CATCH_FENCE_NAMES, parseCprTrk, parseCprTtx, isDegenerateSlot,
   cprTrackIsClosed, cprSegmentPairs, cprVisibleSlots, CPR_COURSE_PURPOSES, CPR_CHECKPOINT_ROLES, cprCheckpointRole,
   isCprPitCheckpoint,
 } from "./cpr/track.ts";
 export type { CprTrk, CprTrackSurface, CprTtxEntry, CprWallLayer, CprCheckpointRole } from "./cpr/track.ts";
-export { CPR_WALL_PART_HEIGHT_FT, buildCprRoad } from "./cpr/road.ts";
-export type { CprRoad, CprRoadQuad, CprRoadWall, CprRoadWallPanel } from "./cpr/road.ts";
+export { CPR_WALL_PART_HEIGHT_FT, buildCprRoad, cprCentreline } from "./cpr/road.ts";
+export type { CprLinePoint, CprRoad, CprRoadQuad, CprRoadWall, CprRoadWallPanel } from "./cpr/road.ts";
 export { BUNDLED_PALETTE_IDS, bundledPalette } from "./texture/bundled-palettes.ts";
 export type { BundledPaletteId } from "./texture/bundled-palettes.ts";
 export {
@@ -174,17 +176,20 @@ export type { MtmSun, SunFlareLayer } from "./mtm/sun.ts";
 export { parseLoc } from "./mtm/loc.ts";
 export { parseTrn, writeTrn, TRN_MAX_EVENTS, TRN_MAX_LAPS } from "./mtm/trn.ts";
 export type { MtmTrn, MtmTrnEvent } from "./mtm/trn.ts";
-export { parseMtmReplay, writeMtmReplay, REPLAY_RING_RECORDS, REPLAY_FRAME_TICKS, REPLAY_TICKS_PER_SECOND } from "./mtm/replay.ts";
-export type { MtmReplay, MtmReplayRecord, MtmReplayVehicle } from "./mtm/replay.ts";
-export { modChannels, parseMod, renderMod } from "./audio/mod.ts";
+export { parseMtmReplay, writeMtmReplay, REPLAY_RING_RECORDS, REPLAY_FRAME_TICKS, REPLAY_TICKS_PER_SECOND, REPLAY_SAMPLES_HEADING, REPLAY_SAMPLES_VERSION } from "./mtm/replay.ts";
+export type { MtmReplay, MtmReplayRecord, MtmReplaySample, MtmReplayVehicle } from "./mtm/replay.ts";
+export { MOD_MIX_GAIN, modChannels, parseMod, renderMod } from "./audio/mod.ts";
 export type { ModSample, ModSong, RenderedMod } from "./audio/mod.ts";
 export type { LocMessage } from "./mtm/loc.ts";
 export { parseCockpitLayout, parseCockpitSections } from "./mtm/cockpit.ts";
 export type { MtmCockpitLayout, CockpitSection, CockpitGauge, CockpitMirror } from "./mtm/cockpit.ts";
 export * as mtm2Sim from "./sim/mtm2/index.ts";
 export * as evoSim from "./sim/evo/index.ts";
+export * as cprSim from "./sim/cpr/index.ts";
+export { CPR_DEFAULT_SETUP, cloneCprSetup, parseCprGarage, writeCprGarage } from "./cpr/garage.ts";
+export type { CprPitStop, CprSetup } from "./cpr/garage.ts";
 export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 
 /** The library version, as published in package.json. */
-export const VERSION = "1.2.0";
+export const VERSION = "1.3.0";

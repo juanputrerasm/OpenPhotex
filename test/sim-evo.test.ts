@@ -198,3 +198,28 @@ test("an MTM truck translated to the Evo model keeps MTM2's figures", () => {
   assert.ok(Math.abs(E.evoTorqueAt(s.torqueTable, 4000) - 1700 * ((-2.367e-8 * 4000 + 9.467e-5) * 4000 + 0.905)) < 1e-6);
   assert.equal(s.rearSteer, true);
 });
+
+test("the garage's settings change the figures as the game's setters do (EVO2_PHYSICS.md 2.2)", () => {
+  const spec = E.evoSpecFromMtm2({});
+  const evo = { ...spec, game: 2 as const, cgOffset: null, cgModifier: [0, 0, 0] as [number, number, number], finalDrive: 4, tireCF: [2, 2, 2, 2] as [number, number, number, number], torquePct: [0.4, 0.6] as [number, number] };
+  assert.equal(E.applyEvoGarage(evo, null, 2), evo, "no garage, no change");
+  assert.deepEqual(E.applyEvoGarage(evo, { springs: null, axleRatio: null }, 2).springRate, evo.springRate, "an unset setting keeps the vehicle's own");
+  // Axle ratio: (1 - s) * 1.5 + 0.25 of the final drive; 0.5 is the vehicle's own.
+  assert.equal(E.applyEvoGarage(evo, { axleRatio: 0.5 }, 2).finalDrive, 4);
+  assert.equal(E.applyEvoGarage(evo, { axleRatio: 0 }, 2).finalDrive, 7);
+  assert.equal(E.applyEvoGarage(evo, { axleRatio: 1 }, 2).finalDrive, 1);
+  // Torque split: the rear's share; brake balance as given; handling the front tires' CF times 1 + 0.75 s.
+  assert.deepEqual(E.applyEvoGarage(evo, { torqueSplit: 0.75 }, 2).torquePct, [0.25, 0.75]);
+  assert.equal(E.applyEvoGarage(evo, { brakeBalance: 0.3 }, 2).brakeBalance, 0.3);
+  assert.deepEqual(E.applyEvoGarage(evo, { handling: 1 }, 2).tireCF, [3.5, 3.5, 2, 2]);
+  assert.deepEqual(evo.tireCF, [2, 2, 2, 2], "the vehicle's own figures are left as they were");
+  // Springs: sag = min(maxcompr) * (0.5 - 0.4 * (0.5 - s)); each axle carries its share of the sprung weight on two springs.
+  const springs = E.evoSprings(evo, 0.5, 2);
+  const sag = Math.min(...evo.maxCompr) * 0.5;
+  const sprung = evo.dryWeightLb + evo.axleWeightLb[0] + evo.axleWeightLb[1];
+  const zf = evo.wheelAnchors[0]![2], zr = evo.wheelAnchors[2]![2];
+  assert.ok(Math.abs(springs.springRate[0] - sprung * (2 - zr) / (zf - zr) * 0.5 / sag) < 1e-6);
+  assert.ok(Math.abs(springs.damping[1] - 3.5 * Math.sqrt(springs.springRate[1])) < 1e-9);
+  assert.ok(E.evoSprings(evo, 1, 2).springRate[0] < springs.springRate[0], "1 sags more: softer springs");
+  assert.ok(E.evoSprings(evo, 0, 2).springRate[0] > springs.springRate[0], "0 sags less: stiffer springs");
+});

@@ -33,7 +33,7 @@ export * from "./truck/damage.ts";
 export * from "./truck/autopilot.ts";
 export * from "./truck/traffic.ts";
 export * from "./collide/box.ts";
-export { collideTruckBox, collideTruckImmovableBox, truckBoxSeparated } from "./collide/truck-box.ts";
+export { collideTruckBox, collideTruckImmovableBox, truckBoxSeparated, type BoxTouch } from "./collide/truck-box.ts";
 export { FACE_DEPTH_FT, collideTruckFace, createFace } from "./collide/truck-face.ts";
 export type { SimFace } from "./collide/truck-face.ts";
 export { stepBox, postStepBox, boxInertia } from "./collide/box-step.ts";

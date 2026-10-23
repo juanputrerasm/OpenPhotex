@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseMod, renderMod } from "../src/index.ts";
+import { MOD_MIX_GAIN, parseMod, renderMod } from "../src/index.ts";
 
 /** A 4-channel module: one pattern of `rows` used rows, one square-wave sample, `notes` playing on channel 1. */
 function makeMod(cells: { row: number; channel: number; period: number; sample: number; effect?: number; param?: number }[], songLength = 1): Uint8Array {
@@ -59,4 +59,13 @@ test("a position jump back to the start ends the render at the loop point", () =
   const out = renderMod(looping, { sampleRate: 8000 });
   assert.equal(out.loopStartFrame, 0);
   assert.equal(out.left.length, 16 * 6 * 160);
+});
+
+test("the mix: a channel's level falls with the square root of the channel count, not the count", () => {
+  const one = parseMod(makeMod([{ row: 0, channel: 0, period: 428, sample: 1 }]))!;
+  const peak = (a: Float32Array) => a.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+  const four = renderMod(one, { sampleRate: 8000, separation: 0 });
+  // A full-volume note (samples of 100 / 128) alone in a four-channel song: MOD_MIX_GAIN / sqrt(4), half to each side at separation 0.
+  const level = peak(four.left);
+  assert.ok(level > 0 && Math.abs(level - (MOD_MIX_GAIN / 2) * 0.5 * (100 / 128)) < 0.02, `${level}`);
 });

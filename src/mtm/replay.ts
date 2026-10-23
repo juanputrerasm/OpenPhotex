@@ -8,7 +8,8 @@
     <truck>.TRK / <driver>            one pair per vehicle
     detailLevel / <n> / demoRecordPtr / <n> / demoRecordCount / <n>
     Original object locations / <count> / x,y,z,theta,phi,psi ...
-    type,time / <type>,<time>         type 0 a vehicle (9 fields), 1 an object (5 fields)
+    type,time / <type>,<time>         type 0 a vehicle (9 fields), 1 an object (5 fields), 2 a top-crush
+                                      object (an object's fields)
       ipos, bvel (body axes), theta,phi,psi, p,q,r, number,
       then for vehicles: fsteering_angle,rsteering_angle / four tire angles (FR, FL, RR, RL) /
       eng_throttle,faxle_brake_pct,raxle_brake_pct,ap_cnumber / damageCode,gear
@@ -16,6 +17,16 @@
   The game keeps 2240 records in a ring and writes the ring from the oldest record; `demoRecordPtr` is
   where the ring's next write would go. The writer here keeps the records in order and writes the
   count for both. Format notes: JSTrackViewer docs/MTM2_REPLAY_FORMAT.md.
+
+  Both MTM2 2.00.42 (0x565050) and Community Patch 3 read exactly `demoRecordCount` records and close
+  the file, so lines after them are never seen. OpenMTM2 puts its in-between samples there, in an
+  extension block that the games skip:
+
+    OpenMTM2 samples / 1 / <count>
+    time,number,x,y,z,theta,phi,psi,fsteering,rsteering,frtire,fltire,rrtire,rltire,throttle,speed   one line each
+
+  A sample is a vehicle's pose between two records (the recorder takes them at 16 Hz where the game
+  takes 4 Hz); the records stay as the games write them.
 */
 
 const decoder = new TextDecoder("latin1");
@@ -25,12 +36,29 @@ export const REPLAY_RING_RECORDS = 2240;
 /** The record interval, in the file's time unit (1/65536 s): 0.25 s. */
 export const REPLAY_FRAME_TICKS = 0x4000;
 export const REPLAY_TICKS_PER_SECOND = 65536;
+/** The heading of the extension block after the counted records (see the top of this file), and its version. */
+export const REPLAY_SAMPLES_HEADING = "OpenMTM2 samples";
+export const REPLAY_SAMPLES_VERSION = 1;
+
+/** A vehicle's pose between two records (the extension block). */
+export interface MtmReplaySample {
+  /** In 1/65536 s. */
+  time: number;
+  number: number;
+  ipos: [number, number, number];
+  angles: [number, number, number];
+  steering: [number, number];
+  tires: [number, number, number, number];
+  throttle: number;
+  /** ft/s. */
+  speed: number;
+}
 
 export interface MtmReplayVehicle { truck: string; driver: string }
 
 export interface MtmReplayRecord {
-  /** 0 a vehicle, 1 an object. */
-  type: 0 | 1;
+  /** 0 a vehicle, 1 a moving object, 2 a top-crush object (MONSTER_EXE_ANALYSIS.md, "Instant replay"). */
+  type: 0 | 1 | 2;
   /** In 1/65536 s. */
   time: number;
   ipos: [number, number, number];
@@ -61,6 +89,8 @@ export interface MtmReplay {
   /** Where each SIT object started: x, y, z, theta, phi, psi. */
   objects: [number, number, number, number, number, number][];
   records: MtmReplayRecord[];
+  /** The extension block's samples, oldest first (none in a file the game wrote). */
+  samples?: MtmReplaySample[];
 }
 
 const numbers = (line: string | undefined): number[] => (line ?? "").split(",").map((v) => v.trim()).filter((v) => v !== "").map(Number);
@@ -86,7 +116,9 @@ export function parseMtmReplay(input: Uint8Array | string): MtmReplay | null {
   const detailLevel = parseInt(lines[i++] ?? "0", 10) || 0;
   i += 2; // "demoRecordPtr", its value
   i++; // "demoRecordCount"
-  i++; // the count: the records are read to the end of the file
+  // As the games do, exactly this many records are read; a file without a usable count is read to its end.
+  const counted = parseInt(lines[i++] ?? "", 10);
+  const recordLimit = Number.isFinite(counted) && counted >= 0 ? counted : Infinity;
   i++; // "Original object locations"
   const objectCount = parseInt(lines[i++] ?? "0", 10) || 0;
   const objects: MtmReplay["objects"] = [];
@@ -95,13 +127,15 @@ export function parseMtmReplay(input: Uint8Array | string): MtmReplay | null {
     objects.push([n[0] ?? 0, n[1] ?? 0, n[2] ?? 0, n[3] ?? 0, n[4] ?? 0, n[5] ?? 0]);
   }
   const records: MtmReplayRecord[] = [];
-  while (i < lines.length) {
+  while (i < lines.length && records.length < recordLimit) {
+    if (lines[i] === REPLAY_SAMPLES_HEADING) break;
     if (lines[i] !== "type,time") { i++; continue; }
     const [type, time] = numbers(lines[i + 1]);
     i += 2;
-    const record = { type: type === 1 ? 1 : 0, time: time ?? 0 } as MtmReplayRecord;
+    // A top-crush object (2) is kept as one: read as a vehicle it would add a truck that was never in the race.
+    const record = { type: type === 1 || type === 2 ? type : 0, time: time ?? 0 } as MtmReplayRecord;
     // Fields run until the next record, so a record's length is never assumed.
-    while (i < lines.length && lines[i] !== "type,time") {
+    while (i < lines.length && lines[i] !== "type,time" && lines[i] !== REPLAY_SAMPLES_HEADING) {
       const label = lines[i]!, value = lines[i + 1];
       i += 2;
       switch (label) {
@@ -124,7 +158,25 @@ export function parseMtmReplay(input: Uint8Array | string): MtmReplay | null {
     record.ipos ??= [0, 0, 0]; record.bvel ??= [0, 0, 0]; record.angles ??= [0, 0, 0]; record.rates ??= [0, 0, 0]; record.number ??= 0;
     records.push(record);
   }
-  return { level, weather, detailLevel, vehicles, objects, records };
+  // The extension block, wherever it starts after the records.
+  const samples: MtmReplaySample[] = [];
+  while (i < lines.length && lines[i] !== REPLAY_SAMPLES_HEADING) i++;
+  if (i < lines.length) {
+    const version = parseInt(lines[i + 1] ?? "", 10);
+    const count = parseInt(lines[i + 2] ?? "", 10) || 0;
+    i += 3;
+    if (version === REPLAY_SAMPLES_VERSION) {
+      for (let n = 0; n < count && i < lines.length; n++, i++) {
+        const v = numbers(lines[i]);
+        if (v.length < 16) continue;
+        samples.push({
+          time: v[0]!, number: v[1]!, ipos: [v[2]!, v[3]!, v[4]!], angles: [v[5]!, v[6]!, v[7]!], steering: [v[8]!, v[9]!],
+          tires: [v[10]!, v[11]!, v[12]!, v[13]!], throttle: v[14]!, speed: v[15]!,
+        });
+      }
+    }
+  }
+  return { level, weather, detailLevel, vehicles, objects, records, ...(samples.length ? { samples } : {}) };
 }
 
 const f = (n: number) => (Number.isFinite(n) ? n : 0).toFixed(6);
@@ -148,6 +200,18 @@ export function writeMtmReplay(replay: MtmReplay): string {
         "eng_throttle,faxle_brake_pct,raxle_brake_pct,ap_cnumber", `${f(r.throttle ?? 0)},${f(r.brakeFront ?? 0)},${f(r.brakeRear ?? 0)},${Math.round(r.course ?? 0)}`,
         "damageCode,gear", `${Math.round(r.damageCode ?? 0)},${Math.round(r.gear ?? 0)}`,
       );
+    }
+  }
+  const samples = replay.samples ?? [];
+  if (samples.length) {
+    out.push(REPLAY_SAMPLES_HEADING, String(REPLAY_SAMPLES_VERSION), String(samples.length));
+    const g = (n: number, d: number) => (Number.isFinite(n) ? n : 0).toFixed(d);
+    for (const p of samples) {
+      out.push([
+        Math.round(p.time), Math.round(p.number), g(p.ipos[0], 3), g(p.ipos[1], 3), g(p.ipos[2], 3),
+        g(p.angles[0], 4), g(p.angles[1], 4), g(p.angles[2], 4), g(p.steering[0], 3), g(p.steering[1], 3),
+        g(p.tires[0], 3), g(p.tires[1], 3), g(p.tires[2], 3), g(p.tires[3], 3), g(p.throttle, 2), g(p.speed, 2),
+      ].join(","));
     }
   }
   return `${out.join("\r\n")}\r\n`;

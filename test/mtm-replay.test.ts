@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseMtmReplay, writeMtmReplay, REPLAY_FRAME_TICKS, type MtmReplay } from "../src/index.ts";
+import { parseMtmReplay, writeMtmReplay, REPLAY_FRAME_TICKS, REPLAY_SAMPLES_HEADING, type MtmReplay } from "../src/index.ts";
 
 const replay: MtmReplay = {
   level: "tpark.sit", weather: 4, detailLevel: 2,
@@ -49,4 +49,37 @@ test("a file that is not a replay is refused, and records of any length are read
   const odd = "demoLevel\ntpark.sit\nweather\n0\nvehicleCount\n0\ndetailLevel\n2\ndemoRecordPtr\n1\ndemoRecordCount\n1\nOriginal object locations\n0\ntype,time\n1,5\nipos\n1,2,3\nnumber\n7\n";
   const r = parseMtmReplay(odd)!;
   assert.deepEqual([r.records.length, r.records[0]!.number, r.records[0]!.ipos], [1, 7, [1, 2, 3]]);
+});
+
+test("a top-crush record (type 2) stays one, not a vehicle", () => {
+  const text = writeMtmReplay({ ...replay, records: [...replay.records, { type: 2, time: 16792, ipos: [5, 6, 7], bvel: [0, 0, 0], angles: [0, 0, 1], rates: [0, 0, 0], number: 12 }] });
+  const back = parseMtmReplay(text)!;
+  const crush = back.records.at(-1)!;
+  assert.equal(crush.type, 2);
+  assert.equal(crush.number, 12);
+  assert.equal(back.records.filter((r) => r.type === 0).length, 2);
+});
+
+const sample = (time: number, x: number) => ({
+  time, number: 0, ipos: [x, 174.6, 4049] as [number, number, number], angles: [0, 0, 1.58] as [number, number, number],
+  steering: [0.1, 0] as [number, number], tires: [0.5, 0.5, 0.25, 0.25] as [number, number, number, number], throttle: 1, speed: 12.5,
+});
+
+test("the in-between samples go after the counted records, where the games stop reading, and are read back", () => {
+  const withSamples: MtmReplay = { ...replay, samples: [sample(16792 + 0x1000, 1382.5), sample(16792 + 0x2000, 1382.75)] };
+  const text = writeMtmReplay(withSamples);
+  assert.ok(text.includes("demoRecordCount\r\n3\r\n"), "the count is the records' alone");
+  const tail = text.slice(text.lastIndexOf("damageCode,gear"));
+  assert.ok(tail.includes(`${REPLAY_SAMPLES_HEADING}\r\n1\r\n2\r\n`), "the block follows the last record");
+  // Read as the games do: `demoRecordCount` records, then nothing more.
+  const back = parseMtmReplay(text)!;
+  assert.equal(back.records.length, 3);
+  assert.equal(back.samples!.length, 2);
+  assert.deepEqual(back.samples![1], sample(16792 + 0x2000, 1382.75));
+  assert.equal(parseMtmReplay(writeMtmReplay(replay))!.samples, undefined, "none written, none read");
+});
+
+test("only `demoRecordCount` records are read, as MTM2 and Community Patch 3 read them", () => {
+  const text = writeMtmReplay(replay).replace("demoRecordCount\r\n3\r\n", "demoRecordCount\r\n2\r\n");
+  assert.equal(parseMtmReplay(text)!.records.length, 2);
 });

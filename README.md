@@ -107,6 +107,7 @@ Hellbender's cavern (`.RA2`, `.RA3`, `.CL1`) and the sky gradient are library fu
 | `.SIT` | Evo 1 and 2 | Scene: placements, courses, vehicles | `openphotex read PEAK.pod PEAK.SIT` |
 | `.LVL` | Evo 1 and 2 | Level settings, water, light | `openphotex read PEAK.pod PEAK.LVL` |
 | `.WAT` | Evo 2 | Animated water material | `openphotex read BAJBEACH.pod BAJBEACH.WAT` |
+| `.LTE` | Evo 1 | Lite track (compressed custom track) | `openphotex read Caverav.lte` |
 | `.TEX` | Evo 1 and 2 | Terrain texture records | `openphotex read PEAK.pod PEAK.TEX` |
 | `.VEG` | Evo 2 | Tree placements | `openphotex read BAJBEACH.pod BAJBEACH.VEG` |
 | AI line `.TXT` | Evo 1 and 2 | A recorded lap for a computer driver (community tracks) | `openphotex read TERRAMAR.pod 'AI\CLASS1\AI_11TERRAMAR.TXT'` |
@@ -196,6 +197,7 @@ The core is environment-neutral. It takes a `Uint8Array` or `ArrayBuffer` and re
 | `rawTextureSide(byteLength, family?)` | The side of a square texture of this size, or 0. |
 | `applyOpacityPlane(image, opa)` | Put a 4x4 Evolution `.OPA` into the alpha channel. |
 | `parseEvoSit`, `parseEvoLvl`, `parseEvoWat`, `parseEvoTex`, `parseEvoVeg` | 4x4 Evolution world files as plain objects; `isEvoSit` tells an Evo `.SIT` from an MTM one. |
+| `parseEvoLte`, `isEvoLite`, `decodeEvoLzw` | 4x4 Evolution 1 Lite tracks: the `.SIT` text, the base world and the terrain grids. |
 | `parseSmf(bytes, name)` | An `.SMF` model in Evo's own axes (Y up) and the file's winding: groups with every animation frame as `Float64Array`s, indexed faces, and verbatim material fields. `smfTextureReference` normalizes a texture field. |
 | `parseEvoTrk(bytes, name)` | A v6/v7 vehicle manifest: wheel anchors, scrape points, lights, paint schemes, counted lists and every other field (`specs`, `rawValues`, `fieldOrder`). `truckManifestLines` prepares any truck manifest's lines. |
 | `parseBin(bytes)` | A `.BIN` model as the file states it: raw vertex words, faces in file order with the texture, colour and material in force for each, decoded materials, or an animated model's frame names. `MRGL`, `MRGLMAT`, `MRGLMAT2`, `BIN_GEOMETRY_DIVISOR` and friends name the constants. |

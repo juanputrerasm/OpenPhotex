@@ -123,6 +123,9 @@ function waveValue(wave: number, pos: number): number {
   }
 }
 
+/** The mix level of one channel at full volume, before the square root of the channel count (see `renderMod`). */
+export const MOD_MIX_GAIN = 1.35;
+
 /**
  * Play a module into a stereo buffer. Stops where the song ends, or runs into a row it has
  * already played (the loop point), or after `maxSeconds`.
@@ -152,6 +155,9 @@ export function renderMod(song: ModSong, options: { sampleRate?: number; separat
   const visited = new Map<number, number>();
   let loopStartFrame = -1;
   const channelCount = chans.length;
+  // Channels add up as unrelated signals, not in step: dividing by their count left a 6-channel song some 12 dB under
+  // a WAV track. Their square root keeps a full song at about -16 dBFS RMS, as loud as MTM2's WAV music.
+  const mixGain = MOD_MIX_GAIN / Math.sqrt(Math.max(1, channelCount));
 
   const periodOfNote = (period: number, finetune: number) => finetuned(period, finetune);
   const noteIndexOf = (period: number, finetune: number) => {
@@ -311,7 +317,7 @@ export function renderMod(song: ModSong, options: { sampleRate?: number; separat
             const nextValue = (smp.data[Math.min(nextIndex, smp.data.length - 1)] ?? 0) / 128;
             value += (nextValue - value) * (ch.pos - i);
           }
-          const level = (value * volume) / 64 / channelCount * 1.6;
+          const level = (value * volume) / 64 * mixGain;
           l += level * (1 - pan[c]!); r += level * pan[c]!;
           ch.pos += step;
           if (looped) {

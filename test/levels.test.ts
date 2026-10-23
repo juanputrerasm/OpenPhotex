@@ -23,6 +23,9 @@ import {
   isDegenerateSlot,
   isNullAssetName,
   parseCprTrk,
+  buildCprRoad,
+  CPR_TREE_WALL,
+  CPR_WALL_PART_HEIGHT_FT,
   parseCprTtx,
   parseTvLvl,
   skyGradient,
@@ -212,4 +215,19 @@ test("Hellbender cavern: hollow cells, the grown mask and the split texture word
   assert.deepEqual([...cave.ceilingClr.subarray(10, 12)], [3, 4]);
   assert.equal(decodeHbUnderground(floor, floor, null, n), null);
   assert.equal(decodeHbUnderground(floor, null, null, n), null);
+});
+
+test("CPR walls (CART.EXE 0x4473b0, 0x44be30, 0x44a1a0): a tree point holds only a tree; a tree is a 60 ft card, never solid; a panel is 4 ft", () => {
+  // Twenty points: 2 and 17 are the tree points. Point 2 says Tall wall, point 17 Tree, point 0 Very tall.
+  const trk = parseCprTrk(trkText([trkRecord(0, 20, { 0: 4, 2: 2, 17: 7 }), trkRecord(40, 20, { 0: 4, 2: 2, 17: 7 })]))!;
+  assert.equal(trk.surfaces[0]!.wallTypes[2], 0, "the game clears a wall on a tree point");
+  assert.equal(trk.surfaces[0]!.wallTypes[17], CPR_TREE_WALL);
+  assert.equal(trk.surfaces[0]!.wallTypes[0], 4);
+  assert.equal(CPR_WALL_PART_HEIGHT_FT, 4);
+  const road = buildCprRoad(trk.surfaces);
+  const tree = road.walls.find((w) => w.point === 17)!, tall = road.walls.find((w) => w.point === 0)!;
+  assert.equal(tree.heightFt, 60);
+  assert.equal(tree.solid, false);
+  assert.equal(tall.heightFt, 16, "a Very tall wall: four 4 ft panels");
+  assert.equal(tall.solid, true);
 });

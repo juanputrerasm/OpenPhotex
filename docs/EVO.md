@@ -7,6 +7,7 @@
 | `.SIT` | Scene script: header, placements ("boxes"), starting grid, courses | `parseEvoSit` (`isEvoSit` tells it from the MTM `.SIT`) |
 | `.LVL` | Terrain manifest and environment | `parseEvoLvl` |
 | `.WAT` | Evo 2 animated-water material | `parseEvoWat` |
+| `.LTE` | Evo 1 Lite track: a compressed custom track on a stock world | `parseEvoLte`, `isEvoLite`, `decodeEvoLzw` |
 | `.TEX` | Terrain and shadow texture table | `parseEvoTex` |
 | `.VEG` | Evo 2 vegetation | `parseEvoVeg` |
 | `.RTD` | Shade map (1024 x 1024 bits) | `parseEvoRtd`, `evoShadeAt` |
@@ -42,6 +43,26 @@ These were identical in JSTrackViewer and JSMTM2Converter.
 
 - **`.TEX`:** holds `ordinaryCount + shadowCount` records exactly, in all four stock tracks. The `.CLR` grid indexes the ordinary group, and `.SDW` indexes the shadow group offset by `ordinaryCount`. The two numbers of a record are `surfaceValue` (MTM2's `type * 100 + depth`) and `vegClass` (0 none, 1 sparse, 2 medium, 3 dense), as 4x4 Evolution 2 reads them (`CTextureList::load`, 0x5cb530; OpenMTM2 `docs/EVO2_EXE_ANALYSIS.md` 4.1). The old names `param0` and `param1` stay as aliases.
 - **`.VEG`:** has exactly 256 `treeGrid` blocks, one per 512 ft sector of a 16 x 16 grid: block b is the sector at x `b % 16`, z `b / 16` (0x466af0; the earlier "one per terrain row" was wrong). Each tree carries its `sector` and its `index` in the block. The fourth value is the byte `rand()` gave the tree, and the game uses it as the yaw, `value * pi / 128` (`evoTreeYaw`); the model slot is `index & 3` (`evoTreeSlot`). Stored heights already sit `treeBiasY * (1 - r)` under the ground, and the game draws the model a further `treeBiasY` down.
+
+## Lite tracks (.LTE)
+
+Evo 1 only (`4x4LE.exe`; OpenMTM2 `docs/EVO2_EXE_ANALYSIS.md` 5b). Not a light file: MTM2's `.LTE` light grid only
+shares the extension. A Lite track is one compressed file (`customtracks\*.lte`, at most 0x18800 bytes) that holds
+a track's `.SIT` and terrain and borrows the level, the tile table, the art and the models of a stock world.
+
+- **Compression** (`decodeEvoLzw`): LZW with no header. Bits are read least significant first within each byte.
+  The dictionary starts with the 256 bytes and a width of 8; adding an entry when the count is a power of two widens
+  the code by one. A code is below the count `n`: from the width's top bit down, a bit where `n - 1` has a 0 is not
+  stored until a stored 0 is read where `n - 1` has a 1, and all lower bits are then stored. After each code the
+  previous string plus the current one's first byte is added (the code equal to `n` is the previous string plus its
+  own first byte). At 0x8000 entries the next add empties the dictionary instead, and the next code has no previous
+  string.
+- **Decoded** (`parseEvoLte`): `LTE 1`, the base world (`ZONA`), the Evo 1 `.SIT` text (`sitBytes`, for
+  `parseEvoSit`), then 196,616 bytes of terrain: `hMin` and `hMax` (int32 LE, `.RAW` units), 256 x 256 height bytes
+  (`hMin + trunc(b * (hMax - hMin) / 255)`, or `hMin - 1 + trunc(b / 255)` when the two are equal), and the tile
+  numbers as a plane of low bytes and a plane of high bytes (`(low + high * 256) & 0xFFF`, into `<base>.tex`).
+  `heights` and `tiles` come out as a stock track's `.RAW` and `.CLR` hold them.
+- **Telling it apart** (`isEvoLite`): the first bytes decode to `LTE <n>`.
 
 ## Shade, shadows, grass and generated trees
 

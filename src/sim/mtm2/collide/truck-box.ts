@@ -50,11 +50,30 @@ function truckMass(p: Mtm2TruckParams): number {
 }
 
 /**
+ * A contact of the truck with the box, as MONSTER.EXE plays the box's sound for one (`0x428bc0`, MONSTER_EXE_ANALYSIS.md
+ * "Object sounds"): a hull point that goes deeper into it, a wheel or tire contact point inside it, or one of its
+ * corners against a wheel. `speed` is the hardest closing speed of those contacts, ft/s (0 when none closes).
+ */
+export interface BoxTouch { speed: number }
+type Touch = { hit: BoxTouch | null };
+
+/** Records a contact along `normalWorld` (outward from the box), at the truck's speed against the box. */
+function touched(touch: Touch, s: Mtm2TruckState, box: SimBox, normalWorld: ArrayLike<number>): void {
+  const iv = toWorld(s.matrix, s.bvel[0], s.bvel[1], s.bvel[2]);
+  const closing = -((iv[0] - box.vel[0]) * normalWorld[0] + (iv[1] - box.vel[1]) * normalWorld[1] + (iv[2] - box.vel[2]) * normalWorld[2]);
+  const speed = closing > 0 ? closing : 0;
+  if (!touch.hit) touch.hit = { speed };
+  else if (speed > touch.hit.speed) touch.hit.speed = speed;
+}
+
+/**
  * How the pair works (§14.17): pushable when the box has a mass below the truck's (the box's mass
  * is then the effective mass), else immovable with the truck's mass.
  */
 interface Pair {
   pushable: boolean;
+  /** The contact this pair test found, for the object's sound (null: none). */
+  touch: Touch;
   mEff: number;
   /**
    * The pair's force and moment on the box (box axes) and on the truck (body axes). Every
@@ -71,16 +90,16 @@ interface Pair {
  * `s.extForce` / `s.extMoment` (truck body axes) and `box.force` / `box.moment` (box axes).
  * `s.prevPos` and `s.prevMatrix` are the truck's pose before this step's move.
  */
-export function collideTruckBox(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, dt: number): void {
-  if (truckBoxSeparated(s, p, box, dt)) return;
+export function collideTruckBox(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, dt: number): BoxTouch | null {
+  if (truckBoxSeparated(s, p, box, dt)) return null;
   const mt = truckMass(p);
   const pushable = box.mass !== 0 && box.mass < mt;
-  const pair: Pair = { pushable, mEff: pushable ? box.mass : mt, box: null, truck: null };
+  const pair: Pair = { pushable, touch: { hit: null }, mEff: pushable ? box.mass : mt, box: null, truck: null };
   hullPoints(s, box, pair, dt);
   // Wheels, tires 13 to 16 (FR, FL, RR, RL), sides -1, +1, -1, +1.
   for (let i = 0; i < 4; i++) {
     const side = i % 2 === 0 ? -1 : 1;
-    wheelSuspension(s, p, box, i, side);
+    wheelSuspension(s, p, box, i, side, pair.touch);
     tireContactPoint(s, p, box, i, pair, dt);
   }
   if (box.mass > 0 && !truckBoxSeparated(s, p, box, dt)) {
@@ -92,17 +111,20 @@ export function collideTruckBox(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimB
   if (pair.truck) {
     for (let k = 0; k < 3; k++) { s.extForce[k] += pair.truck.f[k]; s.extMoment[k] += pair.truck.m[k]; }
   }
+  return pair.touch.hit;
 }
 
-/** The immovable case only, whatever the box's mass (ground boxes have none). */
-export function collideTruckImmovableBox(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, dt: number): void {
-  if (truckBoxSeparated(s, p, box, dt)) return;
-  hullPoints(s, box, { pushable: false, mEff: truckMass(p), box: null, truck: null }, dt);
+/** The immovable case only, whatever the box's mass (ground boxes have none). Returns the contact, as `collideTruckBox`. */
+export function collideTruckImmovableBox(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, dt: number): BoxTouch | null {
+  if (truckBoxSeparated(s, p, box, dt)) return null;
+  const touch: Touch = { hit: null };
+  hullPoints(s, box, { pushable: false, touch, mEff: truckMass(p), box: null, truck: null }, dt);
   for (let i = 0; i < 4; i++) {
     const side = i % 2 === 0 ? -1 : 1;
-    wheelSuspension(s, p, box, i, side);
-    tireContactPoint(s, p, box, i, { pushable: false, mEff: 0, box: null, truck: null }, dt);
+    wheelSuspension(s, p, box, i, side, touch);
+    tireContactPoint(s, p, box, i, { pushable: false, touch, mEff: 0, box: null, truck: null }, dt);
   }
+  return touch.hit;
 }
 
 /** Hull points 1 to 12: rays from last step's reference point through each point now. */
@@ -129,6 +151,8 @@ function hullPoints(s: Mtm2TruckState, box: SimBox, pair: Pair, dt: number): voi
     const depth = depthInside(half, cur, face);
     if (depth <= s.depths[j]) continue;
     const n = faceNormal(face);
+    // A hull point deeper inside the box than its last contact (`0x4aad00`).
+    if (depth > 0) touched(pair.touch, s, box, toWorld(bm, n[0], n[1], n[2]));
     if (!pair.pushable) {
       s.depths[j] = depth;
       s.normals.set(toWorld(bm, n[0], n[1], n[2]), j * 3);
@@ -191,7 +215,7 @@ function lastHub(s: Mtm2TruckState, i: number): V3 {
 }
 
 /** The wheel's suspension against the box: driving on its top (§14.14 step 3). */
-function wheelSuspension(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, i: number, side: number): void {
+function wheelSuspension(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, i: number, side: number, touch: Touch): void {
   const m = s.matrix, bm = box.matrix, half = box.half;
   const t = s.tires[i];
   const [ax, ay, az] = p.hubs[i];
@@ -224,6 +248,7 @@ function wheelSuspension(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, i: 
   if (pen > 0) {
     t.normal = outWorld;
     t.onGround = true;
+    touched(touch, s, box, outWorld); // `0x4a5da0`
   }
   t.penetration = pen;
   t.lever = Math.hypot(r, px);
@@ -262,6 +287,7 @@ function tireContactPoint(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, i:
   const depth = depthInside(half, pb, face);
   const j = 12 + i;
   if (!(s.depths[j] < depth)) return;
+  if (depth > 0) touched(pair.touch, s, box, outWorld); // `0x4a7fc0`
   if (pair.pushable) {
     if (depth > 0) pushPoint(s, box, point, pb, out, depth, pair, dt);
     return;
@@ -337,6 +363,8 @@ function cornerAgainstWheel(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, 
   const ml = Math.hypot(move[0], move[1], move[2]);
   const nw: V3 = ml === 0 ? [0, 1, 0] : [move[0] / ml, move[1] / ml, move[2] / ml];
   const n = toBody(bm, nw[0], nw[1], nw[2]);
+  // A corner against a wheel (`0x49f920`): the box was pushed along `nw`, so its face looks the other way.
+  touched(pair.touch, s, box, [-nw[0], -nw[1], -nw[2]]);
 
   // The hub's velocity against the corner's, box axes.
   const [pr, qr, rr] = s.rates;
