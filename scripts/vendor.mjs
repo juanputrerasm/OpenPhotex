@@ -5,18 +5,22 @@
   where import maps do not apply).
 
     npm run build && npm run vendor -- ../JSTrackViewer/src/vendor/openphotex
+    npm run build && npm run vendor -- ../JSTraxx/src/vendor/openphotex --types
 
   Copies dist/**\/*.js except the CLI, plus LICENSE and a VERSION stamp naming the package
-  version and the OpenPhotex commit it was built from. The target folder is replaced.
+  version and the OpenPhotex commit it was built from. With --types it also copies the .d.ts
+  declarations, for a TypeScript consumer. The target folder is replaced.
 */
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
-const target = process.argv[2];
+const args = process.argv.slice(2);
+const withTypes = args.includes("--types");
+const target = args.find((arg) => !arg.startsWith("--"));
 if (!target) {
-  process.stderr.write("usage: npm run vendor -- <target-directory>\n");
+  process.stderr.write("usage: npm run vendor -- <target-directory> [--types]\n");
   process.exit(1);
 }
 const dist = join(root, "dist");
@@ -42,7 +46,8 @@ function walk(dir) {
     return statSync(path).isDirectory() ? walk(path) : [path];
   });
 }
-const files = walk(dist).filter((path) => path.endsWith(".js") && !relative(dist, path).startsWith("cli"));
+const wanted = (path) => path.endsWith(".js") || (withTypes && path.endsWith(".d.ts"));
+const files = walk(dist).filter((path) => wanted(path) && !relative(dist, path).startsWith("cli"));
 for (const file of files) {
   const dest = join(out, relative(dist, file));
   mkdirSync(dirname(dest), { recursive: true });

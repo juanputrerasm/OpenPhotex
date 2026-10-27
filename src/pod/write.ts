@@ -163,7 +163,8 @@ function encodeNameField(entry: Pod1DirectoryEntry, index: number): Uint8Array {
   return field;
 }
 
-function encodeText(text: string, what: string, index: number | null = null): Uint8Array {
+/** windows-1252 bytes of `text`, or PodWriteError BAD_TEXT. Shared with the POD2 writer. */
+export function encodeText(text: string, what: string, index: number | null = null): Uint8Array {
   const encoded = encodeWindows1252(text);
   if (typeof encoded === "number") {
     throw new PodWriteError("BAD_TEXT", `${what} contains ${JSON.stringify(text[encoded])}, which the archive's 8-bit text cannot store.`, index);

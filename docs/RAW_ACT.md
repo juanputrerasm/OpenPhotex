@@ -69,6 +69,8 @@ This consolidates JSPod's picker and JSTrackViewer's resolver, and JSTruckViewer
 
 `encodeRawTexture(rgba, width, height)` is the inverse of `decodeRawTexture`: a square image becomes a `.RAW` index plane and its own 256-colour `.ACT`, the way Evo's art and MTM2's stock art each carry a palette per texture. The palette is a median cut over the image's exact colours (`sampleForPalette`, `medianCutPalette`), so art with 256 colours or fewer comes back unchanged. An image with any texel under alpha 128 gives index 0 to the colour key (see below), leaves it black, and quantises into the other 255.
 
+`quantizeToPalette(rgba, width, height, act)` maps an image onto an existing `.ACT` instead, for art that must share a palette already in an archive. Each opaque texel takes the nearest palette colour by squared RGB distance. If any texel is under alpha 128, those texels take index 0 (the colour key) and index 0 is left out of the search for the rest; otherwise all 256 entries are candidates. It accepts any size, so a caller writing classic `.RAW` art checks that the image is square.
+
 `mtm2LevelPalette` builds an MTM2 level palette: the Windows system colours in 0-9, the system and UI band from 230, white at 229 (`FOG\VGA.LTE`'s brightest shade row maps everything there), and the authored band 10-228 median-cut from the track's art. `buildFogMap` builds its `FOG\<track>.MAP`, the 32,768-byte RGB555 lookup the indexed-art loader uses: the nearest authored colour or white for the centre of each RGB555 cell, and 0 in byte zero, which every stock map holds.
 
 ## The classic color key

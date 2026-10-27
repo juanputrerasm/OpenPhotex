@@ -37,6 +37,8 @@ export interface SitBox {
   checkpointSequence: number;
   /** Velocity in ft/s as written, when the record carries one. */
   bvel?: [number, number, number];
+  /** The record's `p,q,r` line as written, when it has one. */
+  rates?: [number, number, number];
   /** The game loader's view (MONSTER.EXE 0x5495e0): feet, negative x and z wrapped by +8192. */
   positionFt?: [number, number, number];
   /** Full length, width and height in feet as written, unrounded (a model's extents replace them in game). */
@@ -58,6 +60,11 @@ export interface SitBox {
    * defaults when a type 12 box has none. Absent on every other box.
    */
   light?: SitLight;
+  /**
+   * The `L` block's data line as written, field by field, on any box that carries one (an editor
+   * keeps what the author typed; `light` is the engine's reading of it, for type 12 only).
+   */
+  lightFields?: number[];
   /** Top-crush parts: which record they came from, and which part they are. */
   crushGroup?: number;
   crushRole?: "body" | "cab";
@@ -120,6 +127,8 @@ export interface SitCourse {
   segments: SitCourseSegment[];
   /** course_direction from the `c1Count,course_direction` line. */
   direction: number;
+  /** Extended courses: which of the four `[Course N]` slots (0..3) this one is. */
+  slot?: number;
 }
 
 export interface SitTruck {
@@ -132,6 +141,8 @@ export interface SitTruck {
   playerSlot?: boolean;
   /** The game loader's view of ipos: feet, negative x and z wrapped by +8192. */
   positionFt?: [number, number, number];
+  /** `!ap.courseToFollow`: the course this vehicle drives, 0 the primary and 1..4 the extended ones. */
+  courseToFollow?: number;
 }
 
 export interface SitArena {
@@ -140,6 +151,8 @@ export interface SitArena {
   y: number;
   sx: number;
   sy: number;
+  /** The MTM2 `!stadiumFlag,x,z,sx,sz` form; false for the older `stadiumFlag,stadiumModelName`, which places nothing. */
+  placed: boolean;
 }
 
 /**
@@ -216,6 +229,13 @@ export interface MtmSit {
   /** Null when the file has no *** Backdrop *** section. */
   backdropModelNames: string[] | null;
   trucks: SitTruck[];
+  /**
+   * `*** Cylinders ***`: the declared count and the section's lines as written. No engine draws
+   * or collides with cylinders, so they are kept as text for a writer to carry over.
+   */
+  cylinders: { count: number; lines: string[] } | null;
+  /** The "Track Longtitude, Latitude" value as written. */
+  longitudeLatitude: string | null;
   /** What does not add up, such as a section declaring more records than it holds. */
   warnings: string[];
 }
@@ -342,6 +362,8 @@ export function parseMtmSit(input: Uint8Array | string, sitTitle = ""): MtmSit {
     arena: parseArena(lines),
     backdropModelNames: parseBackdrop(lines),
     trucks: parseTrucks(lines),
+    cylinders: parseCylinders(lines),
+    longitudeLatitude: valueAfter("Track Longtitude, Latitude")?.trim() ?? null,
     warnings: [],
   };
   const trackType = valueAfter("Track Race Type");
@@ -454,11 +476,13 @@ function parseBoxBlock(lines: string[], blockStart: number, isRamp: boolean): Si
     box.loopSound = name(lines[soundIdx + 2]);
   }
 
-  if (box.type === BOX_LIGHT) {
-    // The header line starts with the block's letter, "Llight rad,hgt,..."; the values are the line after it.
-    const lightIdx = indexOfLinePrefix(lines, "Llight", blockStart, endIndex);
-    box.light = parseSitLight(lightIdx >= 0 ? lines[lightIdx + 1] : null);
-  }
+  // The header line starts with the block's letter, "Llight rad,hgt,..."; the values are the line after it.
+  const lightIdx = indexOfLinePrefix(lines, "Llight", blockStart, endIndex);
+  if (lightIdx >= 0 && lightIdx + 1 < endIndex) box.lightFields = lines[lightIdx + 1].split(",").map((v) => parseLeadingFloat(v));
+  if (box.type === BOX_LIGHT) box.light = parseSitLight(lightIdx >= 0 ? lines[lightIdx + 1] : null);
+
+  const ratesIdx = indexOfLinePrefix(lines, "p,q,r", blockStart, endIndex);
+  if (ratesIdx >= 0 && ratesIdx + 1 < endIndex) box.rates = parseFloatTriplet(lines[ratesIdx + 1]);
 
   // Type 10 objects ("moving - use bvel" in Traxx's notes) travel along it: TPARK's train. Type 13 (Community Patch 3) too.
   const bvelIdx = indexOfLinePrefix(lines, "bvel", blockStart, endIndex);
@@ -548,6 +572,7 @@ function parseCourses(lines: string[], sit: MtmSit): void {
         direction: c + 1 < lines.length ? parseLeadingInt(lines[c + 1].split(",")[1]) : 0,
       };
       const segCount = c + 1 < lines.length ? parseLeadingInt(lines[c + 1]) : 0;
+      course.slot = i;
       c = parseCourseBlocks(lines, c + 2, segCount, course);
       if (course.segments.length) sit.extendedCourses.push(course);
     }
@@ -615,6 +640,14 @@ function parseCourseBlocks(lines: string[], startCursor: number, count: number, 
   return cursor;
 }
 
+function parseCylinders(lines: string[]): { count: number; lines: string[] } | null {
+  const section = indexOfLine(lines, "*** Cylinders ***");
+  if (section < 0 || section + 1 >= lines.length) return null;
+  let end = section + 2;
+  while (end < lines.length && !lines[end].startsWith("*** ")) end++;
+  return { count: parseLeadingInt(lines[section + 1]), lines: lines.slice(section + 2, end) };
+}
+
 /*
   *** Stadium *** - the arena. An arena track carries its model here rather than in the Backdrop
   block, and the writer then emits backdropCount 0 (TrackPODFile.cpp:5288-5318). Two line
@@ -636,13 +669,13 @@ function parseArena(lines: string[]): SitArena | null {
     if (fields.length < 6) return null;
     const modelName = normalizePodPath(fields[5]);
     if (!modelName) return null;
-    return { modelName, x: parseLeadingInt(fields[1]), y: parseLeadingInt(fields[2]), sx: parseLeadingInt(fields[3]), sy: parseLeadingInt(fields[4]) };
+    return { modelName, x: parseLeadingInt(fields[1]), y: parseLeadingInt(fields[2]), sx: parseLeadingInt(fields[3]), sy: parseLeadingInt(fields[4]), placed: true };
   }
   if (header.startsWith("stadiumFlag")) {
     if (fields.length < 2) return null;
     const modelName = normalizePodPath(fields[1]);
     if (!modelName) return null;
-    return { modelName, x: 0, y: 0, sx: 0, sy: 0 };
+    return { modelName, x: 0, y: 0, sx: 0, sy: 0, placed: false };
   }
   return null;
 }
@@ -696,6 +729,11 @@ function parseTruckBlock(lines: string[], startIdx: number): SitTruck {
     const a = parseFloatTriplet(lines[anglesIdx + 1]);
     truck.theta = a[0]; truck.phi = a[1]; truck.psi = a[2];
   }
+  // Within this record: the next one starts at a delimiter or a section header.
+  let end = startIdx;
+  while (end < lines.length && !lines[end].startsWith("****")) end++;
+  const followIdx = indexOfLinePrefix(lines, "!ap.courseToFollow", startIdx, end);
+  if (followIdx >= 0 && followIdx + 1 < lines.length) truck.courseToFollow = parseLeadingInt(lines[followIdx + 1]);
   return truck;
 }
 
@@ -707,6 +745,8 @@ export interface MtmLvl {
    * checkpoint models drawn. Every stock MTM2 level has 0.
    */
   levelType: number;
+  /** Line 1: the track text file (DATA\\<stem>.TXT), as written; null when absent. */
+  textName: string | null;
   /** Line 2: the heightfield .RAW. */
   rawName: string;
   /** Line 3: the colour (texture index) grid .CLR. */
@@ -715,12 +755,22 @@ export interface MtmLvl {
   actName: string;
   /** Line 5: the terrain texture list .TEX; its type table is the same stem with .TTY. */
   texName: string;
+  /** Lines 6 to 9: the blank-height .RAW, .PUP, .ANI and .TDF names, as written; null when absent. */
+  zeroRawName: string | null;
+  pupName: string | null;
+  aniName: string | null;
+  tdfName: string | null;
   /** Line 10: the sky .RAW, when the line is a .RAW that is not NULL. */
   skyRawName: string | null;
   /** Line 11: the sky's .ACT. */
   skyActName: string | null;
+  /** Lines 12 and 13: the .DEF and .NAV names, as written; null when absent. */
+  defName: string | null;
+  navName: string | null;
   /** Line 14: the music file as written (null when absent). */
   musicName: string | null;
+  /** Line 15: the fog table (FOG\\<stem>.FOG, 4096 bytes), as written; null when absent. */
+  fogName: string | null;
   /** Line 16: the lighting map .LTE. */
   lteName: string | null;
   /** Lines 17-21. */
@@ -742,13 +792,21 @@ export function parseMtmLvl(input: Uint8Array | string): MtmLvl | null {
   const lvl: MtmLvl = {
     lineCount: lines.length,
     levelType: parseLeadingInt(lines[0]),
+    textName: at(1),
     rawName: normalizePodPath(lines[2]),
     clrName: normalizePodPath(lines[3]),
     actName: normalizePodPath(lines[4]),
     texName: normalizePodPath(lines[5]),
+    zeroRawName: at(6),
+    pupName: at(7),
+    aniName: at(8),
+    tdfName: at(9),
     skyRawName: skyRaw && !skyRaw.startsWith("NULL") && skyRaw.endsWith(".RAW") ? skyRaw : null,
     skyActName: lines.length > 11 ? normalizePodPath(lines[11]) : null,
+    defName: at(12),
+    navName: at(13),
     musicName: at(14),
+    fogName: at(15),
     lteName: lines.length > 16 ? normalizePodPath(lines[16]) : null,
     sunVector: lines.length > 17 ? parseIntTriplet(lines[17]) : null,
     shadowIntensity: lines.length > 18 ? parseLeadingInt(lines[18]) : null,

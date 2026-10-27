@@ -53,6 +53,76 @@ test("writeMtm2Sit reads back as an MTM2 SIT with its trucks, boxes and courses"
   assert.equal(sit.extendedCourses.length, 1);
 });
 
+test("writeMtm2Sit writes ramps, box details, cylinders, top crush, courses, stadium and backdrop that read back", () => {
+  const bytes = writeMtm2Sit({
+    lvlName: "TEST.lvl", trackName: "T", localeName: "L", longitudeLatitude: "1,2", pictureBmp: "TESTS.BMP", iconBmp: "TESTL.BMP",
+    descriptionTxt: "0,0", raceTimes: "0.000000,0.000000,0.000000",
+    yourTruck: truck(100, 0), vehicles: [truck(1, 3)],
+    ramps: [{ position: [1, 2, 3], orient: [0, 0, 0], extents: [40, 20, 10], rates: [0.5, 0, 0] }],
+    boxes: [{
+      position: [10, 20, 30], orient: [0, 0, 0], modelName: "LAMP.BIN", type: 12, priority: 2, bvel: [1, 3, 2], rates: [0, 0.25, 0],
+      hitSound: "HIT.WAV", loopSound: "LOOP.WAV", light: ["80.000000", "10.000000", 1, 0.5, 0.25, "2", 6, 125, 10, 3.5, 1.25, 4],
+    }],
+    cylinders: { count: 1, lines: ["*********************************************", "ipos", "1,2,3"] },
+    topCrush: [{ position: [300, 30, 400], position2: [300, 34, 400], orient: [0, 0, 0], modelName: "CPCRUB2.BIN", cabModelName: "CPCRUB1.BIN" }],
+    course: [{ start: [0, 0, 0], end: [100, 0, 0], types: "1,0", speeds: "12,70.5,1" }], courseDirection: 1,
+    extendedCourses: [null, [{ start: [1, 1, 1], end: [2, 2, 2] }]], extendedCourseDirections: [0, 1],
+    stadium: { flag: 1, x: 120, z: 100, sx: 14, sz: 14, modelName: "ARENA.BIN" },
+    backdrop: { modelNames: ["BACK.BIN"] },
+  });
+  const text = new TextDecoder().decode(bytes);
+  assert.ok(text.endsWith("backdropModelName\r\nBACK.BIN\r\n"), "every line ends CRLF");
+  assert.ok(text.includes("Llight rad,hgt,r,g,b,glow,glowRad,coneLen,coneRim,coneBase,bright,aimOff\r\n80.000000,10.000000,1.00,0.50,0.25,2,"));
+  const sit = parseMtmSit(bytes, "TEST.SIT");
+  assert.equal(sit.longitudeLatitude, "1,2");
+  assert.equal(sit.trucks[1].courseToFollow, 3);
+  const [ramp, lamp, body, cab] = sit.boxes;
+  assert.equal(ramp.type, 99);
+  assert.deepEqual(ramp.rates, [0.5, 0, 0]);
+  assert.equal(lamp.priority, 2);
+  assert.deepEqual(lamp.bvel, [1, 3, 2]);
+  assert.deepEqual(lamp.rates, [0, 0.25, 0]);
+  assert.equal(lamp.hitSound, "HIT.WAV");
+  assert.equal(lamp.loopSound, "LOOP.WAV");
+  assert.deepEqual(lamp.lightFields, [80, 10, 1, 0.5, 0.25, 2, 6, 125, 10, 3.5, 1.25, 4]);
+  assert.equal(lamp.light?.bright, 1.25);
+  assert.deepEqual([body.crushRole, cab.crushRole], ["body", "cab"]);
+  assert.equal(sit.topCrush[0].cabModelName, "CPCRUB1.BIN");
+  assert.deepEqual(sit.cylinders, { count: 1, lines: ["*********************************************", "ipos", "1,2,3"] });
+  assert.equal(sit.primaryCourse?.direction, 1);
+  assert.deepEqual([sit.primaryCourse?.segments[0].cdecPoint, sit.primaryCourse?.segments[0].cspeed, sit.primaryCourse?.segments[0].lastEntry], [12, 70.5, 1]);
+  assert.equal(sit.extendedCourses.length, 1);
+  assert.equal(sit.extendedCourses[0].slot, 1);
+  assert.equal(sit.extendedCourses[0].direction, 1);
+  assert.deepEqual(sit.arena, { modelName: "ARENA.BIN", x: 120, y: 100, sx: 14, sy: 14, placed: true });
+  assert.deepEqual(sit.backdropModelNames, ["BACK.BIN"]);
+});
+
+test("writeMtm2Sit without the ambient line reads back as MTM1, with the older stadium form", () => {
+  const bytes = writeMtm2Sit({
+    lvlName: "OLD.lvl", trackName: "T", localeName: "L", pictureBmp: "A.BMP", iconBmp: "B.BMP", descriptionTxt: "0,0",
+    ambientLine: false, yourTruck: truck(0), vehicles: [], boxes: [], course: [], extendedCourses: [],
+    stadium: { placed: false, flag: 1, modelName: "OLDARENA.BIN" },
+  });
+  const sit = parseMtmSit(bytes, "OLD.SIT");
+  assert.equal(sit.origin, "MTM1");
+  assert.equal(sit.ambientSound, null);
+  assert.deepEqual(sit.arena, { modelName: "OLDARENA.BIN", x: 0, y: 0, sx: 0, sy: 0, placed: false });
+  assert.deepEqual(sit.backdropModelNames, []);
+});
+
+test("the SIT is written one byte per character, in windows-1252, and refuses what that cannot hold", () => {
+  const base = {
+    lvlName: "T.lvl", localeName: "L", pictureBmp: "A.BMP", iconBmp: "B.BMP", descriptionTxt: "0,0",
+    yourTruck: truck(0), vehicles: [], boxes: [], course: [], extendedCourses: [],
+  };
+  const bytes = writeMtm2Sit({ ...base, trackName: "Champs-\u00c9lys\u00e9es \u20ac" });
+  const sit = parseMtmSit(bytes, "T.SIT");
+  assert.equal(sit.trackName, "Champs-\u00c9lys\u00e9es \u20ac");
+  assert.ok(bytes.includes(0xc9) && bytes.includes(0x80), "\u00c9 and \u20ac as single bytes");
+  assert.throws(() => writeMtm2Sit({ ...base, trackName: "\u4e2d" }), RangeError);
+});
+
 test("writeMtm2Lvl, writeTexList and the empty side files read back", () => {
   const lvl = parseMtmLvl(writeMtm2Lvl({
     descriptionTxt: "T.TXT", rawName: "T.RAW", clrName: "T.CLR", actName: "T.ACT", texName: "T.TEX", pupName: "T.PUP",
@@ -67,6 +137,8 @@ test("writeMtm2Lvl, writeTexList and the empty side files read back", () => {
   assert.deepEqual(lvl.sunVector, [46333, -46333, 0]);
   assert.equal(lvl.shadowIntensity, 40960);
   assert.equal(lvl.waterHeight, 77);
+  assert.deepEqual([lvl.textName, lvl.zeroRawName, lvl.pupName, lvl.aniName, lvl.tdfName, lvl.defName, lvl.navName, lvl.fogName],
+    ["T.TXT", "ZERO.RAW", "T.PUP", "T.ANI", "T.TDF", "T.DEF", "T.NAV", "T.FOG"]);
   assert.deepEqual(parseTexList(writeTexList(["GRASS.RAW", "ROAD.RAW"])), ["GRASS.RAW", "ROAD.RAW"]);
   assert.equal(new TextDecoder().decode(writeEmptyList()), "0\r\n");
 });

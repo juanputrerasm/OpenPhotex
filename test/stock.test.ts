@@ -14,7 +14,8 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { buildCourse, isArc, type CourseStraight } from "../src/sim/mtm2/world/course.ts";
 import {
-  mtm2Sim, evoSim, parseMtmLvl,
+  mtm2Sim, evoSim, parseMtmLvl, decodeClrGrid, encodeClrGrid, decodeGroundBoxes, encodeGroundBoxes,
+  parseTty, writeTty, parseAnimations, writeAnimations,
   parseKlp, parseMtmAmbientSounds, parseMtmSun, parseLoc, parseCockpitLayout,
   parseBin,
   parseFlyScf,
@@ -47,7 +48,7 @@ import {
   pod1DirectoryEntries,
   rawTextureSide,
   readPod2AuditTrail,
-  readPodEntry,
+  readPodEntry, writePod2, POD2_AUDIT_RECORD_SIZE,
   verifyPodChecksums,
   cprTrackIsClosed,
   findPodEntryByTitle,
@@ -135,6 +136,45 @@ test("MTM2 stock courses are straights, three courses per track", { skip: mtm2Fo
   assert.deepEqual(seen, expected);
   // The Fly-By line reads "Sonic" on exactly the two hard tracks (MONSTER_EXE_ANALYSIS.md section 4).
   assert.deepEqual(sonic.sort(), ["CRAZY98.SIT", "WAR.SIT"]);
+});
+
+/*
+  The encoders against every MTM2 level in the folder: a .CLR grid comes back byte for byte; a
+  ground-box layer, a .TTY and a .ANI read back the same after writing.
+*/
+test("MTM2 CLR grids, ground boxes, TTY and ANI files write back what they read", { skip: mtm2Folder.skip }, () => {
+  const counts = { clr: 0, boxes: 0, tty: 0, ani: 0 };
+  for (const name of readdirSync(mtm2Folder.path).filter((n) => /\.pod$/i.test(n))) {
+    const bytes = new Uint8Array(readFileSync(join(mtm2Folder.path, name)));
+    let pod;
+    try { pod = parsePod(bytes); } catch { continue; }
+    const byName = new Map(pod.entries.map((e) => [e.name.toUpperCase(), e]));
+    const read = (entryName: string) => { const e = byName.get(entryName); return e ? readPodEntry(bytes, e) : null; };
+    for (const entry of pod.entries) {
+      const upper = entry.name.toUpperCase();
+      const data = readPodEntry(bytes, entry);
+      if (upper.endsWith(".CLR") && data.length === 131072) {
+        assert.deepEqual(encodeClrGrid(decodeClrGrid(data)!), data, entry.name);
+        counts.clr++;
+      } else if (upper.endsWith(".RA1") && data.length === 65536) {
+        const ra0 = read(upper.replace(/\.RA1$/, ".RA0")), cl0 = read(upper.replace(/\.RA1$/, ".CL0"));
+        if (!ra0 || !cl0 || ra0.length !== 65536 || cl0.length !== 786432) continue;
+        const boxes = decodeGroundBoxes(ra0, data, cl0, 256);
+        const grids = encodeGroundBoxes(boxes, 256);
+        assert.deepEqual(decodeGroundBoxes(grids.ra0, grids.ra1, grids.cl0, 256), boxes, entry.name);
+        counts.boxes++;
+      } else if (upper.endsWith(".TTY")) {
+        const entries = parseTty(data);
+        assert.deepEqual(parseTty(writeTty(entries)), entries, entry.name);
+        counts.tty++;
+      } else if (upper.endsWith(".ANI")) {
+        const animations = parseAnimations(data);
+        assert.deepEqual(parseAnimations(writeAnimations(animations)), animations, entry.name);
+        counts.ani++;
+      }
+    }
+  }
+  assert.ok(counts.clr >= 15 && counts.boxes >= 15 && counts.tty >= 15 && counts.ani >= 15, JSON.stringify(counts));
 });
 
 test("MTM2 terrain rows follow z: stock objects sit closer to the ground that way", { skip: mtm2Folder.skip }, () => {
@@ -514,6 +554,28 @@ test("every stock POD2 verifies and has a decodable audit trail", { skip: exists
     }
   }
   assert.ok(checked > 0);
+});
+
+/*
+  The POD2 writer's regression guard: every stock Evo archive is rebuilt byte for byte from its
+  parsed entries, raw comment field and raw audit trail, archive CRC included.
+*/
+test("every stock POD2 rebuilds byte for byte", { skip: existsSync(GAMES) ? false : `no ${GAMES}` }, () => {
+  let rebuilt = 0;
+  for (const game of ["evo1", "evo2"]) {
+    const folder = join(GAMES, game);
+    if (!existsSync(folder)) continue;
+    for (const name of readdirSync(folder).filter((n) => /\.pod$/i.test(n))) {
+      const bytes = new Uint8Array(readFileSync(join(folder, name)));
+      const pod = parsePod(bytes);
+      const trail = bytes.subarray(bytes.length - pod.auditCount! * POD2_AUDIT_RECORD_SIZE);
+      const entries = pod.entries.map((e) => ({ name: e.name, data: readPodEntry(bytes, e), timestamp: e.timestamp! }));
+      const out = writePod2(bytes.subarray(8, 88), entries, trail);
+      assert.ok(out.length === bytes.length && Buffer.compare(out, bytes) === 0, `${game}/${name}`);
+      rebuilt++;
+    }
+  }
+  assert.ok(rebuilt > 0);
 });
 
 /*

@@ -149,8 +149,10 @@ The writers are library functions; the command line does not write game files. E
 | Writes | Function |
 |---|---|
 | POD1 archives | `writePod1`, `buildPod1Directory` |
+| POD2 archives, CRCs and audit trail | `writePod2`, `buildPod2Directory`, `encodePod2AuditRecord`, `crc32Mpeg2Update` |
 | `.BIN` models | `writeBin` |
 | `.RAW` with its own `.ACT` | `encodeRawTexture` |
+| `.RAW` on an existing `.ACT` | `quantizeToPalette` |
 | MTM2 `.SIT`, `.LVL`, `.TEX`, empty side files | `writeMtm2Sit`, `writeMtm2Lvl`, `writeTexList`, `writeEmptyList` |
 | MTM2 `.LTE` light grid and ground-box grids | `buildMtm2Lte`, `emptyGroundBoxGrids` |
 | MTM2 level palette and `FOG\<track>.MAP` | `mtm2LevelPalette`, `buildFogMap` |
@@ -191,7 +193,11 @@ The core is environment-neutral. It takes a `Uint8Array` or `ArrayBuffer` and re
 | `writePod1(comment, entries)` | A complete POD1 from `{ name, data, paletteName? }` entries. |
 | `pod1DirectoryEntries(entries)` | A parsed archive's entries in the form the writer takes. Rebuilding a stock POD1 from it reproduces the original directory byte for byte. |
 | `verifyPodChecksums(bytes, pod)` | POD2: compare the stored archive and entry CRCs with the data. `crc32Mpeg2` is the checksum itself. |
-| `readPod2AuditTrail(bytes, pod)` | POD2: the packer's edit history, one `add`, `remove` or `change` record per edit. |
+| `readPod2AuditTrail(bytes, pod)` | POD2: the packer's edit history, one `add`, `remove` or `change` record per edit. `readPod2AuditRecords(trail, baseOffset)` decodes the trail's bytes alone, sliced out of a large file. |
+| `buildPod2Directory(comment, entries, auditCount)` | Encode a POD2 header, records and name table for `{ name, length, timestamp, crc }` entries, with 0 in the archive CRC slot. `comment` may be the raw 80-byte field. Throws `PodWriteError`. |
+| `writePod2(comment, entries, audit?)` | A complete POD2 from `{ name, data, timestamp? }` entries, with every CRC. `audit` is records to encode (`encodePod2AuditRecord`) or an existing trail's raw bytes. Rebuilding a stock Evo archive reproduces it byte for byte. |
+| `crc32Mpeg2Update(crc, bytes)` | Continue a CRC-32/MPEG-2 from `CRC32_MPEG2_INIT` over the next chunk, for writers that stream. `setPod2Checksum` patches an in-memory archive. |
+| `encodeWindows1252(text)` | The archive text encoding: bytes, or the index of the first character it cannot store. |
 | `decodeActPalette(bytes)` | An `.ACT` as 768 bytes of 8-bit RGB, scaling a 6-bit VGA table (see [RAW_ACT.md](docs/RAW_ACT.md)). `actPaletteDepth` reports which reading applies. |
 | `decodeRawTexture(raw, palette, { family?, cutout? })` | A `.RAW` texture as `{ width, height, rgba, hasAlpha }`. `family` is `classic` or `evo`. `cutout` applies the classic color key. |
 | `rawTextureSide(byteLength, family?)` | The side of a square texture of this size, or 0. |

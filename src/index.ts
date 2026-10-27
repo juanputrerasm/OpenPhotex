@@ -5,12 +5,18 @@
   in browsers, Web Workers and Node.js. Reading files is the caller's job.
 */
 export { parsePod, podDirectoryEnd } from "./pod/parse.ts";
+export { encodeWindows1252 } from "./text.ts";
 export type { ParsePodOptions } from "./pod/parse.ts";
 export { findPodEntry, findPodEntryByTitle, findPodEntriesByExtension, readPodEntry } from "./pod/lookup.ts";
 export { normalizePodPath, podPathTitle } from "./pod/paths.ts";
 export { buildPod1Directory, writePod1, pod1DirectoryEntries, PodWriteError } from "./pod/write.ts";
 export type { Pod1DirectoryEntry, PodWriteErrorCode } from "./pod/write.ts";
-export { crc32Mpeg2, verifyPodChecksums, readPod2AuditTrail } from "./pod/pod2.ts";
+export { crc32Mpeg2, crc32Mpeg2Update, CRC32_MPEG2_INIT, verifyPodChecksums, readPod2AuditTrail, readPod2AuditRecords } from "./pod/pod2.ts";
+export {
+  buildPod2Directory, writePod2, pod2DirectoryEntries, encodePod2AuditRecord, setPod2Checksum,
+  POD2_AUDIT_RECORD_SIZE, POD2_CHECKSUM_OFFSET, POD2_CHECKSUM_START,
+} from "./pod/write-pod2.ts";
+export type { Pod2DirectoryEntry, Pod2AuditInput } from "./pod/write-pod2.ts";
 export type { PodChecksumReport, Pod2AuditRecord, Pod2AuditAction } from "./pod/pod2.ts";
 export type { PodArchive, PodEntry, PodFormat } from "./pod/types.ts";
 export { ACT_PALETTE_SIZE, decodeActPalette, actPaletteDepth } from "./texture/act.ts";
@@ -81,7 +87,7 @@ export { parsePowerups } from "./tv/pup.ts";
 export type { Powerup } from "./tv/pup.ts";
 export { TUNNEL_LOGIC_NAMES, parseTunnelDefs } from "./tv/tdf.ts";
 export type { TunnelDef } from "./tv/tdf.ts";
-export { ANIMATION_BASE_FPS, parseAnimations } from "./tv/ani.ts";
+export { ANIMATION_BASE_FPS, parseAnimations, writeAnimations } from "./tv/ani.ts";
 export type { TextureAnimation } from "./tv/ani.ts";
 export { parseHbBriefing } from "./tv/hb-briefing.ts";
 export type { HbBriefing } from "./tv/hb-briefing.ts";
@@ -100,8 +106,8 @@ export type { TvLvl, TvLvlOrigin } from "./tv/lvl.ts";
 export { parseDef, defPlacementToEditor, TR_ANGLE_TO_RAD } from "./tv/def.ts";
 export type { DefFile, DefDefinition, DefPlacement } from "./tv/def.ts";
 export { SKY_PALETTE_FIRST_SLOT, SKY_ACT_FIRST_COLOUR, SKY_GRADIENT_COLOURS, skyGradient, skyHorizon } from "./texture/sky.ts";
-export { decodeClrWord, decodeGroundBoxes } from "./terrain/ground-boxes.ts";
-export type { GroundBox } from "./terrain/ground-boxes.ts";
+export { decodeClrWord, encodeClrWord, decodeClrGrid, encodeClrGrid, decodeGroundBoxes, encodeGroundBoxes } from "./terrain/ground-boxes.ts";
+export type { GroundBox, GroundBoxCell } from "./terrain/ground-boxes.ts";
 export { HB_UNDERGROUND_BIAS, decodeHbUnderground } from "./terrain/hb-underground.ts";
 export type { HbUnderground } from "./terrain/hb-underground.ts";
 export {
@@ -125,16 +131,19 @@ export {
 } from "./evo/coords.ts";
 export { parseEvoAiLine, matchEvoAiLineName, lapRuns } from "./evo/ai-line.ts";
 export type { EvoAiLine } from "./evo/ai-line.ts";
-export { sampleForPalette, medianCutPalette, colourCube, encodeRawTexture } from "./texture/encode.ts";
+export { sampleForPalette, medianCutPalette, colourCube, encodeRawTexture, quantizeToPalette } from "./texture/encode.ts";
 export type { ColourHistogram } from "./texture/encode.ts";
 export {
   MTM2_PALETTE_WHITE_INDEX, MTM2_PALETTE_FIRST_AUTHORED, MTM2_PALETTE_AUTHORED_COUNT, mtm2LevelPalette, buildFogMap,
 } from "./mtm/level-palette.ts";
 export {
-  writeMtm2Sit, writeMtm2Lvl, writeTexList, writeEmptyList, emptyGroundBoxGrids, buildMtm2Lte, writeMtm2Trk,
+  writeMtm2Sit, writeMtm2Lvl, writeTexList, writeTty, writeEmptyList, emptyGroundBoxGrids, buildMtm2Lte, writeMtm2Trk,
 } from "./mtm/write.ts";
+export { parseTxv, txvValue, writeTxv } from "./mtm/txv.ts";
+export type { TxvLine } from "./mtm/txv.ts";
 export type {
-  SitValue, SitTriple, Mtm2Sit, Mtm2SitTruck, Mtm2SitBox, Mtm2SitCourseSegment, Mtm2Lvl, Mtm2Trk, Mtm2TrkLight,
+  SitValue, SitTriple, Mtm2Sit, Mtm2SitTruck, Mtm2SitBox, Mtm2SitRamp, Mtm2SitTopCrush, Mtm2SitStadium, Mtm2SitCourseSegment,
+  Mtm2Lvl, Mtm2Trk, Mtm2TrkLight,
 } from "./mtm/write.ts";
 export { parseFlyTagged, flyTag, flyTags, parseFlyAngle } from "./fly/tagged.ts";
 export type { FlyTag } from "./fly/tagged.ts";
@@ -169,7 +178,7 @@ export { parseNocturneThm, NOCTURNE_THM_WIDTH, NOCTURNE_THM_HEIGHT, NOCTURNE_THM
 export type { NocturneThm, NocturneThumbnail } from "./nocturne/thm.ts";
 export { parseNocturneZth, NOCTURNE_ZTH_WIDTH, NOCTURNE_ZTH_HEIGHT, NOCTURNE_ZTH_MAP_BYTES } from "./nocturne/zth.ts";
 export type { NocturneZth } from "./nocturne/zth.ts";
-export { parseKlp, parseMtmAmbientSounds, weatherMaskIncludes } from "./mtm/sound.ts";
+export { parseKlp, writeKlp, parseMtmAmbientSounds, weatherMaskIncludes } from "./mtm/sound.ts";
 export type { MtmKlp, KlpLoop, MtmAmbientSounds, MtmOneShotSound, MtmLoopedSound } from "./mtm/sound.ts";
 export { parseMtmSun } from "./mtm/sun.ts";
 export type { MtmSun, SunFlareLayer } from "./mtm/sun.ts";
@@ -192,4 +201,4 @@ export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 
 /** The library version, as published in package.json. */
-export const VERSION = "1.3.1";
+export const VERSION = "1.4.0";

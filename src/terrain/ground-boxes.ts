@@ -22,6 +22,33 @@ export function decodeClrWord(word: number): { texture: number; mirror: number; 
   return { texture: word & 0x0fff, mirror: (word >> 12) & 3, rotation: (word >> 14) & 3 };
 }
 
+/** The inverse of decodeClrWord. A negative texture (a face with no texture) is written as 0. */
+export function encodeClrWord(texture: number, mirror = 0, rotation = 0): number {
+  return (Math.max(0, texture) & 0x0fff) | ((mirror & 3) << 12) | ((rotation & 3) << 14);
+}
+
+/**
+ * A .CLR texture grid: one little-endian word per cell, row by row. Returns null when the file
+ * is shorter than the grid.
+ */
+export function decodeClrGrid(bytes: Uint8Array, gridSize = 256): Uint16Array | null {
+  const cells = gridSize * gridSize;
+  if (bytes.length < cells * 2) return null;
+  const words = new Uint16Array(cells);
+  for (let i = 0; i < cells; i++) words[i] = bytes[2 * i] | (bytes[2 * i + 1] << 8);
+  return words;
+}
+
+/** The bytes of a .CLR texture grid. */
+export function encodeClrGrid(words: ArrayLike<number>): Uint8Array {
+  const bytes = new Uint8Array(words.length * 2);
+  for (let i = 0; i < words.length; i++) {
+    bytes[2 * i] = words[i] & 0xff;
+    bytes[2 * i + 1] = (words[i] >> 8) & 0xff;
+  }
+  return bytes;
+}
+
 /** One box, in cell coordinates and legacy height steps; `mid*` in editor units (64 per cell). */
 export interface GroundBox {
   x: number;
@@ -82,4 +109,34 @@ export function decodeGroundBoxes(
     }
   }
   return boxes;
+}
+
+/** What encodeGroundBoxes needs of a box: its cell, heights and six faces, as decodeGroundBoxes gives them. */
+export type GroundBoxCell = Pick<GroundBox, "x" | "y" | "lower" | "upper" | "faceTexture" | "faceRotation" | "faceMirror">;
+
+/**
+ * The inverse of decodeGroundBoxes: the .RA0, .RA1 and .CL0 grids of a layer. Cells without a
+ * box are zero; a later box in the same cell replaces an earlier one. `heightOffset` is the one
+ * decodeGroundBoxes was given, taken back off the heights. A box outside the grid, or one whose
+ * heights do not fit a byte (upper 1..255), throws a RangeError, as the grids cannot hold it.
+ */
+export function encodeGroundBoxes(
+  boxes: readonly GroundBoxCell[], gridSize: number, heightOffset = 0,
+): { ra0: Uint8Array; ra1: Uint8Array; cl0: Uint8Array } {
+  const cells = gridSize * gridSize;
+  const ra0 = new Uint8Array(cells), ra1 = new Uint8Array(cells), cl0 = new Uint8Array(cells * 12);
+  for (const box of boxes) {
+    if (box.x < 0 || box.y < 0 || box.x >= gridSize || box.y >= gridSize) throw new RangeError(`ground box at ${box.x},${box.y} is outside the ${gridSize} grid`);
+    const lower = box.lower - heightOffset, upper = box.upper - heightOffset;
+    if (!(lower >= 0 && lower <= 255 && upper >= 1 && upper <= 255)) throw new RangeError(`ground box at ${box.x},${box.y}: heights ${lower}..${upper} do not fit the grids`);
+    const idx = box.x + box.y * gridSize;
+    ra0[idx] = lower;
+    ra1[idx] = upper;
+    for (let face = 0; face < 6; face++) {
+      const word = encodeClrWord(box.faceTexture[face] ?? 0, box.faceMirror[face] ?? 0, box.faceRotation[face] ?? 0);
+      cl0[idx * 12 + face * 2] = word & 0xff;
+      cl0[idx * 12 + face * 2 + 1] = word >> 8;
+    }
+  }
+  return { ra0, ra1, cl0 };
 }

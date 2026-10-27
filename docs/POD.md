@@ -1,11 +1,11 @@
 # POD archives
 
-POD is the container Terminal Reality games ship their data in: one file holding a flat directory of named entries followed by their payloads. There is no compression. OpenPhotex reads three members of the family and writes POD1.
+POD is the container Terminal Reality games ship their data in: one file holding a flat directory of named entries followed by their payloads. There is no compression. OpenPhotex reads three members of the family and writes POD1 and POD2.
 
 | Format id | Games | Identified by | Read | Write |
 |---|---|---|---|---|
 | `pod1` | Monster Truck Madness 1 and 2, CART Precision Racing, Terminal Velocity, Fury3, Hellbender | No signature; a directory that validates | yes | yes |
-| `pod2` | 4x4 Evolution 1 and 2 (also Nocturne, per upstream references) | `"POD2"` at offset 0 | yes | no |
+| `pod2` | 4x4 Evolution 1 and 2 (also Nocturne, per upstream references) | `"POD2"` at offset 0 | yes | yes |
 | `epd` | Fly! | `"dtxe"` at offset 0 | yes | no |
 
 Conventions shared by all three:
@@ -15,7 +15,7 @@ Conventions shared by all three:
 - OpenPhotex decodes text as windows-1252: the WHATWG `latin1` label maps to windows-1252, so byte `0x80` becomes `€`. It encodes with the exact inverse when writing. No shipped archive uses a byte above `0x7E` in a name.
 - Names are trimmed of code points `U+0000` to `U+0020` at both ends.
 
-This document records what the implementation relies on and the evidence for it. The companion specification is JPod's [`docs/POD_FORMAT.md`](https://github.com/juanputrerasm/JPod/blob/main/docs/POD_FORMAT.md), a survey of 67 archives that includes the engine-derived POD1 hand-over. The code is `src/pod/parse.ts` and `src/pod/write.ts`, and the tests in `test/` pin every rule below.
+This document records what the implementation relies on and the evidence for it. The companion specification is JPod's [`docs/POD_FORMAT.md`](https://github.com/juanputrerasm/JPod/blob/main/docs/POD_FORMAT.md), a survey of 67 archives that includes the engine-derived POD1 hand-over. The code is `src/pod/parse.ts`, `src/pod/write.ts` and `src/pod/write-pod2.ts`, and the tests in `test/` pin every rule below.
 
 ## Format dispatch
 
@@ -131,7 +131,7 @@ Entries may share name-table strings.
 Parsing returns the stored CRCs (`checksum`, `crc`) but never checks them. A reader that refused a track because one byte of a `.WAV` it never plays went bad would be worse than one that draws the track. Checking is a separate, explicit step: `verifyPodChecksums`, or `openphotex pod verify`.
 
 - **CRC:** the algorithm is CRC-32/MPEG-2: polynomial `0x04C11DB7`, initial value `0xFFFFFFFF`, not reflected, no final XOR. Its check value for `"123456789"` is `0x0376E6E7`. The archive CRC covers `0x08..EOF`, which includes the audit trail. Each entry CRC covers only that entry's payload.
-- **Audit trail:** `auditCount` 312-byte records fill the last bytes of the file, directly after the payloads. Decode them with `readPod2AuditTrail` or `openphotex pod audit`:
+- **Audit trail:** `auditCount` 312-byte records fill the last bytes of the file, directly after the payloads. Decode them with `readPod2AuditTrail` or `openphotex pod audit`, or slice the trail out of a large file and decode just those bytes with `readPod2AuditRecords(trail, baseOffset)`:
 
 ```
 +0x000  32   user, NUL-terminated
@@ -152,6 +152,27 @@ JPod's specification described both layouts but had no POD2 archive to check the
 - The first record in `ASPEN.POD` reads `david`, 2000-08-31, add `ART\AS1DROP.ACT`, 768 bytes.
 
 `test/stock.test.ts` repeats this check whenever the games are present.
+
+### Writing POD2
+
+`buildPod2Directory(comment, entries, auditCount)` encodes the header, records and name table, with 0 in the archive CRC slot. `writePod2(comment, entries, audit)` appends the payloads and the audit trail and fills in every CRC. `encodePod2AuditRecord` is the inverse of `readPod2AuditTrail`.
+
+Every Evo 1 and Evo 2 archive in the local install (59 of them) is laid out the same way, and the writer follows that layout:
+
+- The paths are stored in directory order, each NUL-terminated, none shared.
+- There is no padding between the name table and the first payload.
+- The payloads are contiguous, in directory order.
+- The audit trail follows the last payload directly.
+
+The rules:
+
+- **Names:** the same rules as POD1 (no control characters, no `:`, no leading or trailing whitespace, no duplicates ignoring case and separators), but no 31-byte limit and no palette record. A path may be up to 255 bytes, the width of the audit record's path field.
+- **Comment:** text of up to 79 bytes, or the raw 80-byte field. Passing the raw field keeps bytes the reader trims, such as the trailing space in Evo 2's `con2.pod`.
+- **Audit trail:** records to encode, or an existing trail's raw bytes, copied as they are. The user field holds 31 bytes and the path 255.
+- **Entries:** 1 to 65,536. Timestamps are Unix seconds; the stock packers stored each source file's modification time.
+- **CRCs:** each entry CRC is `crc32Mpeg2` of its payload. The archive CRC covers 0x08 to EOF, audit trail included. A writer that streams the archive starts from `CRC32_MPEG2_INIT`, feeds every chunk after 0x08 to `crc32Mpeg2Update`, and patches the result at `POD2_CHECKSUM_OFFSET`. `setPod2Checksum` does the same for an archive held in memory.
+
+**Round trip:** all 59 archives rebuild byte for byte from their parsed entries, raw comment field and raw audit trail, archive CRC included. `test/stock.test.ts` checks this whenever the games are present.
 
 ## EPD
 

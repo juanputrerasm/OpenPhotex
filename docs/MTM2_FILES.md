@@ -25,6 +25,8 @@ Stock: 32 files. 26 are type 1 (most `1 0 0`, a whole-sample loop; engine idles 
 `IDLE2M1.KLP` at 86339); six are type 3 with 4 to 9 loops (engine acceleration, helicopter,
 jungle, rain, train).
 
+
+`writeKlp` is the inverse: the same tokens, space-separated, ending CRLF. An open loop end is written 0, so a one-loop type 1 over the whole sample is `1 0 0`.
 ## `SOUNDnnn.TXT`: a level's ambient sounds (`parseMtmAmbientSounds`, 0x42a1a0)
 
 `DATA\SOUNDnnn.TXT` in SOUND.POD, where `nnn` is the SIT's ambient sound number (the first value

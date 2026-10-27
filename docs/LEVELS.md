@@ -31,9 +31,11 @@ The MTM2 line after `!ambient sound,track length,weather mask` comes back as `am
 
 **Top-crush cars.** Besides their two parts in `boxes` (body and cab, `crushRole`), `topCrush` lists each car as MONSTER.EXE reads it (`0x551660`): the record is positional (label and value lines after the delimiter): `ipos`, `ipos2` (feet), the angles, then either `modelName` and `cabModelName` (when that label reads exactly `modelName`) or the body and cab `length, width, height` (`sizeFt`, `size2Ft`), then `mass`, `bvel` and `p,q,r`. No stock SIT has one. OpenMTM2's `docs/MTM2_PHYSICS.md` 14.27 describes how the game uses them.
 
+**What an editor carries over.** A few fields no engine reading needs are kept so a writer can put them back: each box's `rates` (`p,q,r`) and `lightFields` (the `L` block's data line as written, on any box that has one, where `light` is the engine's clamped reading for type 12 only), each vehicle's `courseToFollow`, each extended course's `slot` (0..3, since empty slots are not listed), `longitudeLatitude`, and `cylinders`: the `*** Cylinders ***` count and its lines verbatim, as no engine draws or collides with cylinders. `arena.placed` tells the MTM2 `!stadiumFlag,x,z,sx,sz` form from the older `stadiumFlag,stadiumModelName`, which has no placement.
+
 Neither the `.SIT` nor its `.LVL` names its game. **`detectSitOrigin(lines, title)`** decides between MTM1, MTM2 and CPR from what the file contains, and `sitTrackTypeName` names the track type code for that game.
 
-**`parseMtmLvl(bytes)`** reads the positional `.LVL`. **`parseTexList`** reads a `.TEX` texture list and **`parseTty`** its `.TTY` type table.
+**`parseMtmLvl(bytes)`** reads the positional `.LVL`: every named file by line (`textName`, `rawName`, `clrName`, `actName`, `texName`, `zeroRawName`, `pupName`, `aniName`, `tdfName`, the sky pair, `defName`, `navName`, `musicName`, `fogName`, `lteName`), then the sun lines and `!waterHeight`. **`parseTexList`** reads a `.TEX` texture list and **`parseTty`** its `.TTY` type table.
 
 ### CPR's road layer
 
@@ -63,11 +65,16 @@ The writers lay a file out the way the stock ones are, with the stock value in e
 
 | Writer | File | Notes |
 |---|---|---|
-| `writeMtm2Sit` | `.SIT` | Header, the "Your Truck" slot and the grid, boxes (a model, or a checkpoint's extents), the primary course and the four extended courses. Ramps, cylinders and top crush are written empty. A number is written with two decimals; a string as given. Mass zero means "cannot be moved". |
+| `writeMtm2Sit` | `.SIT` | Header, the "Your Truck" slot and the grid, ramps, boxes (a model, or a checkpoint's extents; motion, priority, sounds and the optional `L` light block), cylinders as given lines, top crush (model form), the primary course and the four extended courses (with each segment's `ctype,cspeed_type` and `cdec_point,cspeed,lastentry` and each course's direction), the stadium in either form and the backdrop. Whatever the caller leaves out takes the stock value: no ramps, cylinders or top crush, stadium off, no backdrop. `ambientLine: false` leaves out the MTM2 ambient line, as an MTM1 SIT has none. A number is written with two decimals and a string as given, so a caller with its own number format passes strings. Every line ends CRLF, and the text is windows-1252, one byte per character, as the readers decode it. Mass zero means "cannot be moved". |
 | `writeMtm2Lvl` | `.LVL` | The positional header, with the sun on line 17 as 16.16 (east, up, north) and the value after `!waterHeight`. Lines 18-21 default to the values all fifteen stock MTM2 levels share. |
 | `writeTexList`, `writeEmptyList` | `.TEX`; `.TTY`, `.PUP`, `.ANI`, `.TDF`, `.DEF`, `.NAV` | A count, then one name per line; `0` for a list with nothing in it. |
 | `buildMtm2Lte` | `.LTE` | The baked light grid, seven bytes a cell, ground first: Traxx's BuildLte from the heightfield and the sun's horizontal direction, in the 160-255 range stock levels use. |
 | `emptyGroundBoxGrids` | `.RA0`-`.RA5`, `.CL0`-`.CL2` | MTM2 reads all nine for every level. The stock "no boxes" values: zeros, and 0xFF in `.RA2`/`.RA3` for solid rock. |
+| `writeTty` | `.TTY` | The count, then `name,value` per typed texture (type * 100 + depth). |
+| `writeAnimations` | `.ANI` | The count, then each animation's base texture, `frameCount,rate` and frames: the TV layout, which MTM2 levels share (`parseAnimations` reads both). |
+| `encodeClrGrid`, `encodeClrWord` | `.CLR` | One little-endian word per cell, row by row: bits 0-11 the texture, 12-13 mirror, 14-15 quarter turns. `decodeClrGrid` reads it. |
+| `encodeGroundBoxes` | `.RA0`, `.RA1`, `.CL0` | The inverse of `decodeGroundBoxes`: lower and upper height per cell (upper 0 is no box) and six face words per cell, zero where there is no box. |
+| `writeTxv` | `.TXV` | The Community Patch 3 track version record: `key=value` lines and `#` comments, CRLF. `parseTxv` keeps every line in order, unknown keys included, since keeping them is how the record stays forward compatible; `txvValue` looks a key up without case. |
 
 What goes into the fields (where an object stands, which box type it gets, which course the field follows) is the caller's. JSMTM2Converter's placement rules stay in the converter.
 

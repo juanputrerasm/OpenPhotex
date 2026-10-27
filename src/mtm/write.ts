@@ -12,6 +12,7 @@
 */
 import type { Vec3 } from "../truck/common.ts";
 import { MTM_WHEEL_KEYS } from "../truck/mtm-trk.ts";
+import { encodeWindows1252 } from "../text.ts";
 
 const CRLF = "\r\n";
 
@@ -34,19 +35,48 @@ export interface Mtm2SitTruck {
   courseToFollow?: number;
 }
 
-/** A *** Boxes *** record: a model, or a checkpoint's extents. */
-export interface Mtm2SitBox {
+/** A *** Ramps *** record: a model, or a wedge's length, width and height. */
+export interface Mtm2SitRamp {
   position: SitTriple;
   orient: SitTriple;
-  /** The model, for a placed object. */
   modelName?: string;
-  /** length, width, height, for a box drawn without a model (a checkpoint gate). */
   extents?: SitTriple;
-  /** Zero, the default, is MTM2's "cannot be moved". A number is written with six decimals. */
+  /** A number is written with six decimals. */
   mass?: SitValue;
+  /** Default "0,0,0". */
+  bvel?: SitTriple;
+  /** p, q, r. Default "0,0,0". */
+  rates?: SitTriple;
+}
+
+/** A *** Boxes *** record: a model, or a checkpoint's extents. */
+export interface Mtm2SitBox extends Mtm2SitRamp {
   /** 0 normal, 6 checkpoint, 7 drive thru, 8 always face. */
   type: number;
   flags?: number;
+  /** Default 0. */
+  priority?: number;
+  /** The "@sound effect entries": the sound when something hits the box, then its own loop. Default "NULL.WAV". */
+  hitSound?: string;
+  loopSound?: string;
+  /**
+   * The `L` block's twelve fields (rad, hgt, r, g, b, glow, glowRad, coneLen, coneRim, coneBase,
+   * bright, aimOff), written after the sounds when given. Community Patch 3 reads it on type 12.
+   */
+  light?: readonly SitValue[];
+}
+
+/** A *** Top Crush *** record: the base model at `position`, the keyframed cab at `position2`. */
+export interface Mtm2SitTopCrush {
+  position: SitTriple;
+  position2: SitTriple;
+  orient: SitTriple;
+  /** Written "NULL" when absent. */
+  modelName?: string;
+  cabModelName?: string;
+  mass?: SitValue;
+  bvel?: SitTriple;
+  rates?: SitTriple;
 }
 
 export interface Mtm2SitCourseSegment {
@@ -54,6 +84,23 @@ export interface Mtm2SitCourseSegment {
   end: SitTriple;
   speedLimit?: SitValue;
   trackWidth?: SitValue;
+  /** The `ctype,cspeed_type` value. Default "1,0", a straight. */
+  types?: string;
+  /** The `cdec_point,cspeed,lastentry` value. Default "30,0,0". */
+  speeds?: string;
+}
+
+/** The *** Stadium *** record. */
+export interface Mtm2SitStadium {
+  /** The MTM2 form `!stadiumFlag,x,z,sx,sz,stadiumModelName`; false writes `stadiumFlag,stadiumModelName`. Default true. */
+  placed?: boolean;
+  /** 1 for an arena. */
+  flag: number;
+  x?: number;
+  z?: number;
+  sx?: number;
+  sz?: number;
+  modelName: string;
 }
 
 export interface Mtm2Sit {
@@ -64,6 +111,13 @@ export interface Mtm2Sit {
   localeName: string;
   /** Default "7947984,7947988". */
   longitudeLatitude?: string;
+  /** Write the MTM2 "!ambient sound,track length,weather mask" lines. Default true; MTM1 has none. */
+  ambientLine?: boolean;
+  /** The saved race-state values, as written. Defaults "0,16384,-16383,24832,98304", "0,0,0", "0,1,0,0,0" and "0,0". */
+  viewState?: string;
+  raceTimes?: string;
+  controlFlags?: string;
+  stageFlags?: string;
   /** The track PICTURE (257x210): "Track Logo" holds it in every stock level, despite the name. */
   pictureBmp: string;
   /** The 32x24 list ICON, in the slot named "Track Map". */
@@ -82,16 +136,30 @@ export interface Mtm2Sit {
   yourTruck: Mtm2SitTruck;
   /** The grid; stock levels have 8. */
   vehicles: Mtm2SitTruck[];
+  /** Default none. */
+  ramps?: Mtm2SitRamp[];
   boxes: Mtm2SitBox[];
+  /** The *** Cylinders *** count and its lines, written as given. Default none. */
+  cylinders?: { count: number; lines: readonly string[] };
+  /** Default none. */
+  topCrush?: Mtm2SitTopCrush[];
   course: Mtm2SitCourseSegment[];
+  /** Default 0. */
+  courseDirection?: number;
   /** The four extended courses; a null or missing slot is written empty ("0,0"). */
   extendedCourses: (Mtm2SitCourseSegment[] | null)[];
+  /** Default 0 for each slot. */
+  extendedCourseDirections?: readonly number[];
+  /** Default off: "stadiumFlag,stadiumModelName" / "0,none". */
+  stadium?: Mtm2SitStadium;
+  /** Default type 0 and no models. */
+  backdrop?: { type?: number; modelNames: readonly string[] };
 }
 
 /*
-  An MTM2 .SIT. Ramps, cylinders and top-crush parts are written empty, the stadium off and the
-  backdrop empty; the truck records carry a zeroed race state and 20 empty laps of 20
-  checkpoint times each, as the stock files do.
+  An MTM2 .SIT. Unless the caller gives them, ramps, cylinders and top-crush parts are written
+  empty, the stadium off and the backdrop empty; the truck records carry a zeroed race state and
+  20 empty laps of 20 checkpoint times each, as the stock files do. Every line ends CRLF.
 */
 export function writeMtm2Sit(sit: Mtm2Sit): Uint8Array {
   const out = [
@@ -99,33 +167,65 @@ export function writeMtm2Sit(sit: Mtm2Sit): Uint8Array {
     "Track Longtitude, Latitude", sit.longitudeLatitude ?? "7947984,7947988", "Track Logo .BMP file", sit.pictureBmp,
     "Track Map .BMP file", sit.iconBmp, "Track Fly-By .AVI file", sit.flyByAvi ?? "Sonic", "Track Announcer .WAV file", sit.announcerWav ?? "Track",
     "Track Description .TXT file", sit.descriptionTxt, "Track Race Type", String(sit.raceType ?? 0), "@Redbook Audio Track", String(sit.redbookTrack ?? 2),
-    "!ambient sound,track length,weather mask", `${sit.ambientSound ?? 0},${num(sit.trackLength)},${sit.weatherMask ?? 0}`,
-    "viewmode,spotd,spotp,spoth,zoom", "0,16384,-16383,24832,98304", "$racetime, raceStartTime, dragDebugTimer", "0,0,0",
-    "controlflag, autoShift, autoStage, bothStaged, bothStagedPrev", "0,1,0,0,0", "stageComFlag, bonusLapFlag", "0,0",
   ];
+  if (sit.ambientLine ?? true) {
+    out.push("!ambient sound,track length,weather mask", `${sit.ambientSound ?? 0},${num(sit.trackLength)},${sit.weatherMask ?? 0}`);
+  }
+  out.push("viewmode,spotd,spotp,spoth,zoom", sit.viewState ?? "0,16384,-16383,24832,98304",
+    "$racetime, raceStartTime, dragDebugTimer", sit.raceTimes ?? "0,0,0",
+    "controlflag, autoShift, autoStage, bothStaged, bothStagedPrev", sit.controlFlags ?? "0,1,0,0,0",
+    "stageComFlag, bonusLapFlag", sit.stageFlags ?? "0,0");
   out.push("*** Your Truck (Not used anymore) ***", "*********************************************");
   truck(out, sit.yourTruck);
   out.push("*** Vehicles ***", String(sit.vehicles.length));
   for (const vehicle of sit.vehicles) { out.push("*********************************************"); truck(out, vehicle); }
-  out.push("*** Ramps ***", "0", "*** Boxes ***", String(sit.boxes.length));
+  const ramps = sit.ramps ?? [];
+  out.push("*** Ramps ***", String(ramps.length));
+  for (const ramp of ramps) record(out, ramp);
+  out.push("*** Boxes ***", String(sit.boxes.length));
   for (const box of sit.boxes) {
-    out.push("*********************************************", "ipos", triple(box.position), "theta,phi,psi", triple(box.orient));
-    if (box.extents) out.push("length,width,height", triple(box.extents));
-    else out.push("model", box.modelName ?? "");
-    out.push("mass", typeof box.mass === "string" ? box.mass : (box.mass ?? 0).toFixed(6), "bvel", "0,0,0", "p,q,r", "0,0,0",
-      "!type,flags", `${box.type},${box.flags ?? 0}`, "priority", "0", "@sound effect entries", "NULL.WAV", "NULL.WAV", "0,0");
+    record(out, box);
+    out.push("!type,flags", `${box.type},${box.flags ?? 0}`, "priority", String(box.priority ?? 0),
+      "@sound effect entries", box.hitSound ?? "NULL.WAV", box.loopSound ?? "NULL.WAV", "0,0");
+    if (box.light) out.push("Llight rad,hgt,r,g,b,glow,glowRad,coneLen,coneRim,coneBase,bright,aimOff", box.light.map(num).join(","));
   }
-  out.push("*** Cylinders ***", "0", "*** Top Crush ***", "0", "*** Course ***", "c1Count,course_direction");
-  course(out, sit.course);
+  out.push("*** Cylinders ***", String(sit.cylinders?.count ?? 0), ...(sit.cylinders?.lines ?? []));
+  const crushes = sit.topCrush ?? [];
+  out.push("*** Top Crush ***", String(crushes.length));
+  for (const car of crushes) {
+    out.push("*********************************************", "ipos", triple(car.position), "ipos2", triple(car.position2),
+      "theta,phi,psi", triple(car.orient), "modelName", car.modelName || "NULL", "cabModelName", car.cabModelName || "NULL",
+      "mass", mass(car.mass), "bvel", car.bvel ? triple(car.bvel) : "0,0,0", "p,q,r", car.rates ? triple(car.rates) : "0,0,0");
+  }
+  out.push("*** Course ***", "c1Count,course_direction");
+  course(out, sit.course, sit.courseDirection ?? 0);
   out.push("@*********** Extended Course Definitions *************", "4");
   for (let i = 0; i < 4; i++) {
     out.push(`[Course ${i + 1}] c1Count,course_direction`);
-    const segments = sit.extendedCourses[i];
-    if (!segments) { out.push("0,0"); continue; }
-    course(out, segments);
+    course(out, sit.extendedCourses[i] ?? [], sit.extendedCourseDirections?.[i] ?? 0);
   }
-  out.push("*** Stadium ***", "stadiumFlag,stadiumModelName", "0,none", "*** Backdrop ***", "backdropType,backdropCount", "0,0", "backdropModelName", "");
-  return text(out.join("\n"));
+  const stadium = sit.stadium;
+  if (!stadium) out.push("*** Stadium ***", "stadiumFlag,stadiumModelName", "0,none");
+  else if (stadium.placed ?? true) {
+    out.push("*** Stadium ***", "!stadiumFlag,x,z,sx,sz,stadiumModelName",
+      `${stadium.flag},${stadium.x ?? 0},${stadium.z ?? 0},${stadium.sx ?? 0},${stadium.sz ?? 0},${stadium.modelName}`);
+  } else out.push("*** Stadium ***", "stadiumFlag,stadiumModelName", `${stadium.flag},${stadium.modelName}`);
+  const backdrops = sit.backdrop?.modelNames ?? [];
+  out.push("*** Backdrop ***", "backdropType,backdropCount", `${sit.backdrop?.type ?? 0},${backdrops.length}`, "backdropModelName",
+    ...(backdrops.length ? backdrops : [""]));
+  return text(out.map((line) => `${line}\n`).join(""));
+}
+
+/** The lines a ramp and a box share: placement, model or size, mass and motion. */
+function record(out: string[], box: Mtm2SitRamp): void {
+  out.push("*********************************************", "ipos", triple(box.position), "theta,phi,psi", triple(box.orient));
+  if (box.extents) out.push("length,width,height", triple(box.extents));
+  else out.push("model", box.modelName ?? "");
+  out.push("mass", mass(box.mass), "bvel", box.bvel ? triple(box.bvel) : "0,0,0", "p,q,r", box.rates ? triple(box.rates) : "0,0,0");
+}
+
+function mass(value: SitValue | undefined): string {
+  return typeof value === "string" ? value : (value ?? 0).toFixed(6);
 }
 
 function truck(out: string[], vehicle: Mtm2SitTruck): void {
@@ -137,12 +237,12 @@ function truck(out: string[], vehicle: Mtm2SitTruck): void {
   for (let lap = 0; lap < 20; lap++) out.push("***Lap time***", "0", "*****Checkpoint times*****", ...Array<string>(20).fill("0"));
 }
 
-function course(out: string[], segments: readonly Mtm2SitCourseSegment[]): void {
-  out.push(`${segments.length},0`);
-  segments.forEach((segment, i) => out.push(`********************************************* ${2 * i + 1}`, "ctype,cspeed_type", "1,0",
+function course(out: string[], segments: readonly Mtm2SitCourseSegment[], direction: number): void {
+  out.push(`${segments.length},${direction}`);
+  segments.forEach((segment, i) => out.push(`********************************************* ${2 * i + 1}`, "ctype,cspeed_type", segment.types ?? "1,0",
     "cstart", triple(segment.start), "cend", triple(segment.end),
     // Stock levels record 0 here (WAR's arena is the one exception at 16).
-    "cdec_point,cspeed,lastentry", "30,0,0", "&cSpeedLimit,cTrackWidth", `${num(segment.speedLimit)},${num(segment.trackWidth)}`));
+    "cdec_point,cspeed,lastentry", segment.speeds ?? "30,0,0", "&cSpeedLimit,cTrackWidth", `${num(segment.speedLimit)},${num(segment.trackWidth)}`));
 }
 
 /** An MTM2 .LVL. Every name is written as given; the side files share the level's stem in stock levels. */
@@ -195,6 +295,14 @@ export function writeMtm2Lvl(lvl: Mtm2Lvl): Uint8Array {
 /** A .TEX texture list: the count, then one name per line. */
 export function writeTexList(names: readonly string[]): Uint8Array {
   return text(`${names.length}\n${names.join("\n")}\n`);
+}
+
+/**
+ * A .TTY texture type table: the count, then `name,value` per typed texture, where the value is
+ * the surface type * 100 + its depth (see parseTty). An empty list writes "0".
+ */
+export function writeTty(entries: readonly { name: string; value: number }[]): Uint8Array {
+  return text(`${entries.length}\n${entries.map((e) => `${e.name},${Math.trunc(e.value)}\n`).join("")}`);
 }
 
 /** A count-prefixed side file with no records (.TTY, .PUP, .ANI, .TDF, .DEF, .NAV). */
@@ -356,7 +464,7 @@ export function writeMtm2Trk(truck: Mtm2Trk): Uint8Array {
     const { frontAxleY, rearAxleY, middleY } = truck.superiorAxlebarOffset;
     pair("superiorAxlebarOffset", `${six(frontAxleY)},${six(rearAxleY)},${six(middleY)}`);
   }
-  return new TextEncoder().encode(lines.join(CRLF) + CRLF);
+  return singleByte(lines.join(CRLF) + CRLF);
 }
 
 function filled(label: string, value: string | number | null | undefined): string {
@@ -384,5 +492,15 @@ function clean(value: string): string {
 }
 
 function text(value: string): Uint8Array {
-  return new TextEncoder().encode(value.replace(/\r?\n/g, CRLF));
+  return singleByte(value.replace(/\r?\n/g, CRLF));
+}
+
+/*
+  The games' text files are single-byte windows-1252, as the readers decode them ("latin1" is
+  windows-1252 to a TextDecoder): a name such as "Champs-Élysées" has to be one byte per letter.
+*/
+function singleByte(value: string): Uint8Array {
+  const bytes = encodeWindows1252(value);
+  if (typeof bytes === "number") throw new RangeError(`"${value[bytes]}" cannot be written in a windows-1252 text file.`);
+  return bytes;
 }

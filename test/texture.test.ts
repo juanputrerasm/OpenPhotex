@@ -118,3 +118,25 @@ test("decodeIndexedImage: any size; missing texels transparent, extra indices ig
   assert.equal(decodeIndexedImage(new Uint8Array(10), act, 2, 2).rgba.length, 16);
   assert.throws(() => decodeIndexedImage(new Uint8Array(4), act, 0, 4), RangeError);
 });
+
+test("quantizeToPalette maps art onto an existing palette, keying alpha on index 0", async () => {
+  const { quantizeToPalette, decodeIndexedImage } = await import("../src/index.ts");
+  const act = new Uint8Array(768).fill(255); // unused slots white
+  act.set([0, 0, 0], 0);       // 0: the colour key
+  act.set([250, 0, 0], 3);     // 1: red
+  act.set([0, 250, 0], 6);     // 2: green
+  act.set([10, 10, 10], 9);    // 3: near black
+  const rgba = new Uint8Array([
+    255, 0, 0, 255,   0, 240, 0, 255,
+    0, 0, 0, 255,     9, 9, 9, 0,
+  ]);
+  // With a transparent texel, index 0 is reserved: black maps to 3, the transparent texel to 0.
+  assert.deepEqual([...quantizeToPalette(rgba, 2, 2, act)], [1, 2, 3, 0]);
+  // Without alpha all 256 entries are candidates, so black takes index 0.
+  const opaque = rgba.slice();
+  opaque[15] = 255;
+  const raw = quantizeToPalette(opaque, 2, 2, act);
+  assert.equal(raw[2], 0);
+  assert.equal(decodeIndexedImage(raw, act, 2, 2).width, 2);
+  assert.throws(() => quantizeToPalette(rgba, 2, 2, new Uint8Array(10)), RangeError);
+});
