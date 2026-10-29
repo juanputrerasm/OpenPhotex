@@ -60,6 +60,10 @@ import {
   parseMtmSit,
   parseNavPoints,
   parseTvLvl,
+  parseTvTunnel,
+  tunnelSegmentGeometry,
+  parseHbQuakes,
+  parsePowerups,
   podPathTitle,
   CPR_SURFACE_TYPES,
   parseDfm, parseSkl, parseKfm, parseCth, parseNocturneGeo, parseNocturneFog, parseNocturneSet,
@@ -780,3 +784,61 @@ for (const game of ["evo1", "evo2"] as const) {
     assert.equal(count, game === "evo1" ? 121 : 150);
   });
 }
+
+/*
+  Terminal Velocity's tunnels and Hellbender's moving terrain. Every TV, Fury3 and F!Zone .TNL
+  reads to its end (148 files when all three games are present), and every Hellbender .QKE
+  reads every entry it declares. The archives are searched below each game folder, since Fury3
+  and Hellbender keep theirs in a subfolder.
+*/
+function podsBelow(folder: string): string[] {
+  if (!existsSync(folder)) return [];
+  const out: string[] = [];
+  for (const item of readdirSync(folder, { withFileTypes: true })) {
+    const path = join(folder, item.name);
+    if (item.isDirectory()) out.push(...podsBelow(path));
+    else if (/\.pod$/i.test(item.name)) out.push(path);
+  }
+  return out;
+}
+
+test("every stock .TNL and Hellbender .QKE reads to its end", { skip: existsSync(GAMES) ? false : `no ${GAMES}` }, () => {
+  let tunnelFiles = 0;
+  let quakes = 0;
+  for (const game of ["tv", "tf", "hb"]) {
+    for (const path of podsBelow(join(GAMES, game))) {
+      const bytes = new Uint8Array(readFileSync(path));
+      const pod = parsePod(bytes);
+      for (const entry of pod.entries) {
+        const where = `${path}:${entry.name}`;
+        if (entry.title.endsWith(".TNL")) {
+          const tnl = parseTvTunnel(readPodEntry(bytes, entry));
+          assert.ok(tnl && tnl.complete && tnl.segments.length > 0, where);
+          for (const segment of tnl.segments) {
+            assert.ok([4, 5, 6, 8].includes(segment.sides), where);
+            const geometry = tunnelSegmentGeometry(segment);
+            assert.equal(geometry.ringA.length, segment.sides, where);
+            assert.ok(geometry.ringA.flat().every(Number.isFinite), where);
+          }
+          tunnelFiles++;
+        }
+        if (game === "hb" && entry.title.endsWith(".QKE")) {
+          const qke = parseHbQuakes(readPodEntry(bytes, entry));
+          assert.ok(qke && qke.complete, where);
+          for (const q of [...qke.groundQuakes, ...qke.boxQuakes]) {
+            assert.ok(q.sounds.length === 5 && [q.upper, q.lower, q.riseTime, q.fallTime].every(Number.isFinite), where);
+          }
+          for (const q of qke.groundQuakes) assert.ok([1, 2, 3].includes(q.layer) || q.mode === 0, where);
+          quakes++;
+        }
+        if (game === "hb" && entry.title.endsWith(".PUP")) {
+          for (const pickup of parsePowerups(readPodEntry(bytes, entry), 128, "HB")) {
+            assert.ok(pickup.name !== "" && pickup.modelName.endsWith(".BIN"), where);
+          }
+        }
+      }
+    }
+  }
+  assert.ok(tunnelFiles > 0 || !existsSync(join(GAMES, "tv")), "no tunnels found");
+  if (existsSync(join(GAMES, "hb"))) assert.equal(quakes, 26);
+});

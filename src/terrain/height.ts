@@ -116,3 +116,61 @@ export function heightAtCell(terrain: HeightGrid | null | undefined, raw: Uint8A
   return decodeHeightSample(raw, (x + z * gridSize) * bytesPerCell, bytesPerCell,
                             terrain?.heightDivisor ?? null, terrain?.heightUnitScale ?? 1);
 }
+
+/*
+  Height inside a cell, on the cell's two triangles.
+
+  A heightfield cell is drawn as two triangles, and a point's height is the plane of the one it
+  falls in, not a bilinear blend of the four corners. Which diagonal splits the cell is part of
+  the format:
+
+    "fixed"         every cell from (cx, cz) to (cx + 1, cz + 1);
+    "checkerboard"  that diagonal where cx + cz is even, and (cx + 1, cz) to (cx, cz + 1) where it
+                    is odd. CPR draws its terrain this way, and so do Terminal Velocity, Fury3
+                    and Hellbender: their one height sampler (TV GAME.EXE 0x3c940, Fury3 TF.EXE
+                    0x43e940, Hellbender 0x41adf0 for the surface and 0x41bda0 for the cavern
+                    floor) takes the same diagonal when cx and cz have the same parity. Over every
+                    TV surface placement, the stored Y matches this sampler within 2 world units
+                    for 72.6% of objects against 49.1% for bilinear.
+
+  Coordinates are in file cells: x along the row, z down the rows (index cx + cz * gridSize).
+*/
+
+/** Which diagonal splits each terrain cell. */
+export type CellSplit = "fixed" | "checkerboard";
+
+/**
+ * The height at fractions (fx, fz) in [0, 1] of a cell with corner heights h00 (cx, cz),
+ * h10 (cx + 1, cz), h11 (cx + 1, cz + 1) and h01 (cx, cz + 1), on its triangle. `otherDiagonal`
+ * is true for a cell split from (cx + 1, cz) to (cx, cz + 1).
+ */
+export function cellTriangleHeight(h00: number, h10: number, h11: number, h01: number, fx: number, fz: number, otherDiagonal: boolean): number {
+  if (!otherDiagonal) {
+    return fx >= fz
+      ? h00 + fx * (h10 - h00) + fz * (h11 - h10)
+      : h00 + fz * (h01 - h00) + fx * (h11 - h01);
+  }
+  return fx + fz <= 1
+    ? h00 + fx * (h10 - h00) + fz * (h01 - h00)
+    : h11 + (1 - fx) * (h01 - h11) + (1 - fz) * (h10 - h11);
+}
+
+/** True when cell (cx, cz) is split along (cx + 1, cz) to (cx, cz + 1) under `split`. */
+export function cellUsesOtherDiagonal(cx: number, cz: number, split: CellSplit): boolean {
+  return split === "checkerboard" && ((cx + cz) & 1) === 1;
+}
+
+/**
+ * The legacy height at a point (x, z) in cells, on the triangles of its cell. Corners are
+ * clamped to the grid, as heightAtCell does.
+ */
+export function heightAtPoint(terrain: HeightGrid | null | undefined, raw: Uint8Array | null | undefined, x: number, z: number, split: CellSplit = "fixed"): number {
+  if (!raw) return 0;
+  const cx = Math.floor(x);
+  const cz = Math.floor(z);
+  const h00 = heightAtCell(terrain, raw, cx, cz);
+  const h10 = heightAtCell(terrain, raw, cx + 1, cz);
+  const h11 = heightAtCell(terrain, raw, cx + 1, cz + 1);
+  const h01 = heightAtCell(terrain, raw, cx, cz + 1);
+  return cellTriangleHeight(h00, h10, h11, h01, x - cx, z - cz, cellUsesOtherDiagonal(cx, cz, split));
+}

@@ -18,7 +18,7 @@ Line counts in the table are the number of changed lines between copies (`diff -
 | CPR CMD, CAR (car models) | CMD (adapter ready) | **OpenPhotex** | | | |
 | BIN (MTM/TV/F3/HB models) | **OpenPhotex** (+ rendering) | **OpenPhotex** | **OpenPhotex** (writer) | **OpenPhotex** | |
 | BinaryReader | removed | removed | | removed | |
-| MTM/CPR SIT, TV/F3/HB LVL, DEF, NAV, PUP, TDF, ANI, CPR TRK/TTX, terrain | | | | **OpenPhotex** | |
+| MTM/CPR SIT, TV/F3/HB LVL, DEF, NAV, PUP, TDF, TNL, QKE, ANI, CPR TRK/TTX, terrain | | | | **OpenPhotex** | |
 | Palette choice (which .ACT), bundled palettes | **OpenPhotex** | **OpenPhotex** | | **OpenPhotex** | |
 | Writers: BIN, RAW/ACT, MTM2 SIT/LVL/TEX/LTE/TRK, level palette, fog map | | | **OpenPhotex** | | |
 | Nocturne DFM, SKL, KFM, CTH, SET, GEO, FOG, THM, ZTH | **OpenPhotex** (+ DFM/KFM rendering) | | | | New native readers |

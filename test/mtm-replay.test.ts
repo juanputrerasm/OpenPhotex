@@ -83,3 +83,15 @@ test("only `demoRecordCount` records are read, as MTM2 and Community Patch 3 rea
   const text = writeMtmReplay(replay).replace("demoRecordCount\r\n3\r\n", "demoRecordCount\r\n2\r\n");
   assert.equal(parseMtmReplay(text)!.records.length, 2);
 });
+
+test("the crush block carries each top-crush car's share, after the records where the games never read", () => {
+  const withCrush: MtmReplay = { ...replay, crush: [{ time: 16792, car: 0, share: 0.25 }, { time: 16792 + REPLAY_FRAME_TICKS, car: 2, share: 1 }] };
+  const text = writeMtmReplay(withCrush);
+  const counted = text.indexOf("damageCode,gear\r\n0,5\r\n");
+  assert.ok(text.indexOf("OpenMTM2 crush\r\n1\r\n2\r\n16792,0,0.2500\r\n") > counted);
+  const back = parseMtmReplay(text)!;
+  assert.equal(back.records.length, 3);
+  assert.deepEqual(back.crush, withCrush.crush);
+  // A file without the block has none.
+  assert.equal(parseMtmReplay(writeMtmReplay(replay))!.crush, undefined);
+});

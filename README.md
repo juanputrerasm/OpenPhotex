@@ -79,8 +79,12 @@ Heightfields (8-bit, and CPR's 10.6 fixed point) and ground boxes (`.RA0`, `.RA1
 | `SOUNDnnn.TXT` | MTM2 | A level's ambient sounds, checkpoint and lap sounds | `openphotex read SOUND.POD SOUND002.TXT` |
 | `SUN.TXT` | MTM2 | Sun position and lens-flare layers | `openphotex read STARTUP.POD SUN.TXT` |
 | `.LOC` | MTM2 | TRI Message System replacements (joke and Pig Latin wordings) | `openphotex read UI.POD MTM2-PIG.LOC` |
+| `.SMK` | MTM1, MTM2 | Smacker films: header and audio tracks; `openSmk` decodes frames and sound ([docs/SMK.md](docs/SMK.md)) | `openphotex read VIDEOS/TRI.SMK` |
 | `.TRN` | MTM1, MTM2 | Tournaments: name, description file, drag flag, events with laps; `writeTrn` writes them | `openphotex read STARTUP.POD DOUG.TRN` |
+| `player.pro` | MTM2 | The drivers' file: name, truck, track and settings per driver; `writeMtmPlayerPro` writes it | library: `parseMtmPlayerPro` |
+| `MTM2 High Scores` | MTM2 | The Hall of Fame, enciphered; `writeMtmHighScores` writes it | library: `parseMtmHighScores` |
 | `.MOD` | MTM2 | ProTracker modules (`parseMod`, and `renderMod` plays one into stereo PCM) | library only |
+| `.WAV`, `.OGG`, `.MP3` | any | Sound files told apart by their first bytes, with the rate they were made at (`detectAudioFormat`, `audioSampleRate`); no decoding | library only |
 | `POWERBIG.200`/`.400`/`.480` | MTM2 | Cockpit layout per screen height | `openphotex read COCKPIT.POD POWERBIG.480` |
 
 Details: [docs/MTM2_FILES.md](docs/MTM2_FILES.md). The game's own simulation rules are in the library as `mtm2Sim` ([docs/SIM_MTM2.md](docs/SIM_MTM2.md)).
@@ -95,6 +99,8 @@ Details: [docs/MTM2_FILES.md](docs/MTM2_FILES.md). The game's own simulation rul
 | `.NAV` | Hellbender | Navigation points, Hellbender's record | `openphotex read GAME.POD FLOAT.NAV` |
 | `.PUP` | TV, Fury3, Hellbender | Powerup placements | `openphotex read CDROM.POD ALIEN-T1.PUP` |
 | `.TDF` | TV, Fury3, Hellbender | Tunnel definitions | `openphotex read CDROM.POD ALIEN-T1.TDF` |
+| `.TNL` | TV, Fury3 | Tunnel geometry: segments, rings, side textures | `openphotex read CDROM.POD ALIEN-T1.TNL` |
+| `.QKE` | Hellbender | Moving terrain: ground and box quakes | `openphotex read GAME.POD JURASIC.QKE` |
 | `.ANI` | TV, Fury3 | Animated textures | `openphotex read CDROM.POD ALIEN-T1.ANI` |
 | `.TXT` briefing | Hellbender | Mission briefing labels | `openphotex read GAME.POD FLOAT.TXT --as hb-briefing` |
 
@@ -213,7 +219,8 @@ The core is environment-neutral. It takes a `Uint8Array` or `ArrayBuffer` and re
 | `parseNocturneSet`, `parseNocturneGeo`, `parseNocturneFog` | Nocturne pre-rendered scene manifests, collision grids and per-camera fog data. |
 | `parseNocturneThm`, `parseNocturneZth` | Nocturne location thumbnails and per-camera depth thumbnails. |
 | `parseMtmSit`, `parseMtmLvl`, `parseTexList`, `parseTty` | MTM1, MTM2 and CPR scene scripts and level files; `detectSitOrigin` tells the three apart. |
-| `parseKlp`, `parseMtmAmbientSounds`, `parseMtmSun`, `parseLoc`, `parseCockpitLayout`, `parseMod`, `renderMod` | MTM2 loop points, ambient sounds, sun and flare, message replacements and cockpit layouts. |
+| `parseKlp`, `parseMtmAmbientSounds`, `parseMtmSun`, `parseLoc`, `parseCockpitLayout`, `parseMod`, `renderMod`, `detectAudioFormat`, `audioSampleRate` | MTM2 loop points, ambient sounds, sun and flare, message replacements and cockpit layouts. |
+| `openSmk`, `smkInfo` | Smacker films (`.SMK`): the header, then each frame's 8-bit picture, palette and sound in order. |
 | `mtm2Sim` | The MTM2 simulation: terrain, surfaces, water, courses, checkpoints, truck parameters, controls and drivetrain ([docs/SIM_MTM2.md](docs/SIM_MTM2.md)). |
 | `evoSim` | The 4x4 Evolution 1 and 2 vehicle model on the MTM2 world: rules, surface and tread tables, `.TRK` figures, driveline and step ([docs/SIM_EVO.md](docs/SIM_EVO.md)). |
 | `parseCprTrk`, `parseCprTtx` | CPR's road layer and its texture list, with the cross-section schema (`CPR_POINT_NAMES`, `CPR_WALL_LAYERS`, `cprVisibleSlots`, `cprTrackIsClosed`). |

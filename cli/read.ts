@@ -14,10 +14,10 @@ import {
   actPaletteDepth, decodeActPalette, decodeTiff, isEvoLite, isEvoSit, isSmfModel, parseEvoLte, matchEvoAiLineName, parseAnimations, parseBin,
   parseCprCmd, parseCprTrk, parseCprTtx, parseDef, parseEvoAiLine, parseEvoLvl, parseEvoSit, parseEvoTex, parseEvoVeg, parseEvoScript,
   parseEvoWat, parseHbBriefing, parseHbNavPoints, parseMtmLvl, parseMtmSit, parseNavPoints, parsePod, parsePowerups,
-  parseSmf, parseTexList, readPodEntry, parseTruckManifest, parseTty, parseTunnelDefs, parseTvLvl, podPathTitle, rawTextureSide,
+  parseSmf, parseTexList, readPodEntry, parseTruckManifest, parseTty, parseTunnelDefs, parseTvLvl, parseTvTunnel, parseHbQuakes, podPathTitle, rawTextureSide,
   parseFlyScf, parseFlySceneryObjects, parseFlyBsp, parseFlyAlt, parseFlyTex, parseFlyTyp, parseFlyRef, parseFlyAl2, findPodEntry,
   parseDfm, parseSkl, parseKfm, parseCth, parseNocturneGeo, parseNocturneFog, parseNocturneSet,
-  parseNocturneThm, parseNocturneZth, parseKlp, parseMtmAmbientSounds, parseMtmSun, parseLoc, parseTrn, parseCockpitLayout,
+  parseNocturneThm, parseNocturneZth, parseKlp, parseMtmAmbientSounds, parseMtmSun, parseLoc, parseTrn, parseCockpitLayout, smkInfo,
   type PodArchive, type PodEntry,
 } from "openphotex";
 import { CliError, EXIT, printJson, usageError } from "./output.ts";
@@ -53,6 +53,7 @@ const READERS: Record<string, { reader: string; read: (bytes: Uint8Array, name: 
   "mtm-sounds": { reader: "parseMtmAmbientSounds", read: (b) => parseMtmAmbientSounds(b) },
   "mtm-sun": { reader: "parseMtmSun", read: (b) => parseMtmSun(b) },
   "loc": { reader: "parseLoc", read: (b) => parseLoc(b) },
+  "smk": { reader: "smkInfo", read: (b) => smkInfo(b) },
   "trn": { reader: "parseTrn", read: (b) => parseTrn(b) },
   "mtm-cockpit": { reader: "parseCockpitLayout", read: (b) => parseCockpitLayout(b) },
   "evo-veg": { reader: "parseEvoVeg", read: (b, n) => parseEvoVeg(b, n) },
@@ -69,6 +70,8 @@ const READERS: Record<string, { reader: string; read: (bytes: Uint8Array, name: 
   "hb-pup": { reader: "parsePowerups", read: (b) => parsePowerups(b, 128, "HB") },
   "tv-tdf": { reader: "parseTunnelDefs", read: (b) => parseTunnelDefs(b, 256, "TV/F3") },
   "hb-tdf": { reader: "parseTunnelDefs", read: (b) => parseTunnelDefs(b, 128, "HB") },
+  "tv-tnl": { reader: "parseTvTunnel", read: (b) => parseTvTunnel(b) },
+  "hb-qke": { reader: "parseHbQuakes", read: (b) => parseHbQuakes(b) },
   "ani": { reader: "parseAnimations", read: (b) => parseAnimations(b) },
   "hb-briefing": { reader: "parseHbBriefing", read: (b) => parseHbBriefing(b) },
   "evo-ai-line": { reader: "parseEvoAiLine", read: (b) => parseEvoAiLine(b) },
@@ -167,9 +170,13 @@ function detect(name: string, bytes: Uint8Array, archive: PodArchive | null, arc
     case "NAV": return text().includes("!priority,time") ? "hb-nav" : "tv-nav";
     case "PUP": return isHellbender(archive, archiveBytes) ? "hb-pup" : "tv-pup";
     case "TDF": return isHellbender(archive, archiveBytes) ? "hb-tdf" : "tv-tdf";
+    case "TNL": return "tv-tnl";
+    // Terminal Velocity's .QKE is a different table with no reader; Hellbender's is labelled.
+    case "QKE": return text().includes("Ground Quake Count") ? "hb-qke" : "";
     case "ANI": return "ani";
     case "KLP": return "klp";
     case "LOC": return "loc";
+    case "SMK": return "smk";
     case "TRN": return "trn";
     case "200": case "400": case "480": return title.startsWith("POWERBIG.") ? "mtm-cockpit" : "";
     case "TXT":

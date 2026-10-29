@@ -44,6 +44,8 @@ export const HBNAV_START_POINT      = 6;
 export const HBNAV_SYNC_POINT       = 7;
 export const HBNAV_RESCUE_BEACON    = 8;
 export const HBNAV_END_OF_NAVS      = 9;
+export const HBNAV_ORIENTATION      = 10;
+export const HBNAV_RANDOM           = 11;
 export const HBNAV_ESCORT           = 12;
 export const HBNAV_RETRIEVE         = 13;
 export const HBNAV_PURSUE           = 14;
@@ -61,6 +63,9 @@ export const HBNAV_PURSUE           = 14;
         can be done in any order from the ones that come after them.
     8   two entries, both "Locate the prison and drop a Rescue Beacon".
     9   the last entry of all 26 files, text "End of Navs", no payload. A terminator.
+    10  no shipped level uses it. HELLBEND.EXE's loader (0x470bd0) reads a pitch, bank and
+        heading triple plus one more value for it.
+    11  no shipped level uses it either; the loader reads one value, used as a random range.
     12  three entries, all "Escort ... to the Jump Zone". One placement index.
     13  one entry, "Retrieve the Message Pod". One placement index.
     14  one entry, "It's Nyx again! ... take him down". One placement index, and the only
@@ -77,6 +82,8 @@ export const HBNAV_TYPE_NAMES: Record<number, string> = {
   [HBNAV_SYNC_POINT]:      "Sync point",
   [HBNAV_RESCUE_BEACON]:   "Rescue beacon",
   [HBNAV_END_OF_NAVS]:     "End of navs",
+  [HBNAV_ORIENTATION]:     "Orientation (unused)",
+  [HBNAV_RANDOM]:          "Random (unused)",
   [HBNAV_ESCORT]:          "Escort",
   [HBNAV_RETRIEVE]:        "Retrieve",
   [HBNAV_PURSUE]:          "Pursue",
@@ -133,6 +140,13 @@ export interface HbNavPoint {
   musicName: string | null;
   heading: number;
   positionIsPlaceholder: boolean;
+  /**
+   * A sync point the game inserted rather than the author: HELLBEND.EXE's loader (0x470bd0)
+   * adds a type 7 after every tunnel exit and before every tunnel entrance, jump zone and tunnel
+   * exit that lacks one, labelled "Sync point: auto added", and the editor saves them with that
+   * label. True for type 7 entries carrying it.
+   */
+  autoAdded: boolean;
 }
 
 export function parseHbNavPoints(bytes: Uint8Array | null | undefined, gridSize: number): HbNavPoint[] {
@@ -200,6 +214,7 @@ export function parseHbNavPoints(bytes: Uint8Array | null | undefined, gridSize:
       musicName: null,
       heading: 0,
       positionIsPlaceholder: false,
+      autoAdded: type === HBNAV_SYNC_POINT && /auto added/i.test(description),
     };
 
     if (type === HBNAV_TARGET_LIST) {

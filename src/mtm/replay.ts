@@ -27,6 +27,14 @@
 
   A sample is a vehicle's pose between two records (the recorder takes them at 16 Hz where the game
   takes 4 Hz); the records stay as the games write them.
+
+  A second block holds how far each top-crush car is crushed, which no record carries (the game's
+  kind 2 record has the car's place and angles only, so the games replay every car as crushed as it
+  is when the replay plays):
+
+    OpenMTM2 crush / 1 / <count>
+    time,car,share                    one line each time a car's share changes: the SIT's top-crush car
+                                      number (0 the first) and the share of its crush, 0 intact to 1 flat
 */
 
 const decoder = new TextDecoder("latin1");
@@ -39,6 +47,19 @@ export const REPLAY_TICKS_PER_SECOND = 65536;
 /** The heading of the extension block after the counted records (see the top of this file), and its version. */
 export const REPLAY_SAMPLES_HEADING = "OpenMTM2 samples";
 export const REPLAY_SAMPLES_VERSION = 1;
+/** The heading of the crush block after the counted records, and its version. */
+export const REPLAY_CRUSH_HEADING = "OpenMTM2 crush";
+export const REPLAY_CRUSH_VERSION = 1;
+
+/** A top-crush car's crush from a moment on (the crush block). */
+export interface MtmReplayCrush {
+  /** In 1/65536 s. */
+  time: number;
+  /** The SIT's top-crush car, 0 the first. */
+  car: number;
+  /** 0 intact to 1 flat. */
+  share: number;
+}
 
 /** A vehicle's pose between two records (the extension block). */
 export interface MtmReplaySample {
@@ -91,6 +112,8 @@ export interface MtmReplay {
   records: MtmReplayRecord[];
   /** The extension block's samples, oldest first (none in a file the game wrote). */
   samples?: MtmReplaySample[];
+  /** The crush block's changes, oldest first (none in a file the game wrote). */
+  crush?: MtmReplayCrush[];
 }
 
 const numbers = (line: string | undefined): number[] => (line ?? "").split(",").map((v) => v.trim()).filter((v) => v !== "").map(Number);
@@ -128,14 +151,14 @@ export function parseMtmReplay(input: Uint8Array | string): MtmReplay | null {
   }
   const records: MtmReplayRecord[] = [];
   while (i < lines.length && records.length < recordLimit) {
-    if (lines[i] === REPLAY_SAMPLES_HEADING) break;
+    if (lines[i] === REPLAY_SAMPLES_HEADING || lines[i] === REPLAY_CRUSH_HEADING) break;
     if (lines[i] !== "type,time") { i++; continue; }
     const [type, time] = numbers(lines[i + 1]);
     i += 2;
     // A top-crush object (2) is kept as one: read as a vehicle it would add a truck that was never in the race.
     const record = { type: type === 1 || type === 2 ? type : 0, time: time ?? 0 } as MtmReplayRecord;
     // Fields run until the next record, so a record's length is never assumed.
-    while (i < lines.length && lines[i] !== "type,time" && lines[i] !== REPLAY_SAMPLES_HEADING) {
+    while (i < lines.length && lines[i] !== "type,time" && lines[i] !== REPLAY_SAMPLES_HEADING && lines[i] !== REPLAY_CRUSH_HEADING) {
       const label = lines[i]!, value = lines[i + 1];
       i += 2;
       switch (label) {
@@ -158,14 +181,16 @@ export function parseMtmReplay(input: Uint8Array | string): MtmReplay | null {
     record.ipos ??= [0, 0, 0]; record.bvel ??= [0, 0, 0]; record.angles ??= [0, 0, 0]; record.rates ??= [0, 0, 0]; record.number ??= 0;
     records.push(record);
   }
-  // The extension block, wherever it starts after the records.
+  // The extension blocks, wherever they start after the records, in any order.
   const samples: MtmReplaySample[] = [];
-  while (i < lines.length && lines[i] !== REPLAY_SAMPLES_HEADING) i++;
-  if (i < lines.length) {
+  const crush: MtmReplayCrush[] = [];
+  while (i < lines.length) {
+    const heading = lines[i];
+    if (heading !== REPLAY_SAMPLES_HEADING && heading !== REPLAY_CRUSH_HEADING) { i++; continue; }
     const version = parseInt(lines[i + 1] ?? "", 10);
     const count = parseInt(lines[i + 2] ?? "", 10) || 0;
     i += 3;
-    if (version === REPLAY_SAMPLES_VERSION) {
+    if (heading === REPLAY_SAMPLES_HEADING && version === REPLAY_SAMPLES_VERSION) {
       for (let n = 0; n < count && i < lines.length; n++, i++) {
         const v = numbers(lines[i]);
         if (v.length < 16) continue;
@@ -174,9 +199,15 @@ export function parseMtmReplay(input: Uint8Array | string): MtmReplay | null {
           tires: [v[10]!, v[11]!, v[12]!, v[13]!], throttle: v[14]!, speed: v[15]!,
         });
       }
+    } else if (heading === REPLAY_CRUSH_HEADING && version === REPLAY_CRUSH_VERSION) {
+      for (let n = 0; n < count && i < lines.length; n++, i++) {
+        const v = numbers(lines[i]);
+        if (v.length < 3 || !v.every(Number.isFinite)) continue;
+        crush.push({ time: v[0]!, car: v[1]!, share: Math.max(0, Math.min(1, v[2]!)) });
+      }
     }
   }
-  return { level, weather, detailLevel, vehicles, objects, records, ...(samples.length ? { samples } : {}) };
+  return { level, weather, detailLevel, vehicles, objects, records, ...(samples.length ? { samples } : {}), ...(crush.length ? { crush } : {}) };
 }
 
 const f = (n: number) => (Number.isFinite(n) ? n : 0).toFixed(6);
@@ -213,6 +244,11 @@ export function writeMtmReplay(replay: MtmReplay): string {
         g(p.tires[0], 3), g(p.tires[1], 3), g(p.tires[2], 3), g(p.tires[3], 3), g(p.throttle, 2), g(p.speed, 2),
       ].join(","));
     }
+  }
+  const crush = replay.crush ?? [];
+  if (crush.length) {
+    out.push(REPLAY_CRUSH_HEADING, String(REPLAY_CRUSH_VERSION), String(crush.length));
+    for (const c of crush) out.push(`${Math.round(c.time)},${Math.round(c.car)},${(Number.isFinite(c.share) ? c.share : 0).toFixed(4)}`);
   }
   return `${out.join("\r\n")}\r\n`;
 }

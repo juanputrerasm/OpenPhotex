@@ -86,13 +86,25 @@ What goes into the fields (where an object stands, which box type it gets, which
 |---|---|---|
 | `parseDef` | `.DEF` object definitions and placements | TV and Fury3 use a 14-line definition record; Hellbender extends the same record to 25 lines. `defPlacementToEditor` places a placement using its definition's Y offset. |
 | `parseNavPoints`, `findStartPoint` | TV and Fury3 `.NAV` | Seven entry types, the F!Zone editor's own menu. All 69 stock files read to EOF. |
-| `parseHbNavPoints` | Hellbender `.NAV` | Same header slot, different record. All 26 stock files read exactly to EOF, and all 786 placement indices resolve. |
-| `parsePowerups` | `.PUP` pickups | Type names from TVCAD.INI (`TV_POWERUPS`). |
+| `parseHbNavPoints` | Hellbender `.NAV` | Same header slot, different record. All 26 stock files read exactly to EOF, and all 786 placement indices resolve. Types 10 and 11 exist in the game's loader but in no shipped level. `autoAdded` marks the sync points the game inserted itself (29 of the 69 shipped). |
+| `parsePowerups` | `.PUP` pickups | TV and Fury3 type names from TVCAD.INI (`TV_POWERUPS`); Hellbender's 31 types from HELLBEND.EXE (`HB_POWERUPS`). |
 | `parseTunnelDefs` | `.TDF` tunnels | The complete tunnel list, including the hidden ones `.NAV` leaves out. |
+| `parseTvTunnel`, `tunnelSegmentGeometry` | TV and Fury3 `.TNL` tunnel geometry | Segments of two elliptical rings, one terrain cell long each; see below. All 148 stock files read to their end. |
+| `parseHbQuakes` | Hellbender `.QKE` | Ground and box quakes: cells and ground boxes that move between two heights. See below. |
 | `parseAnimations` | `.ANI` animated textures | The rate is 16.16 fixed point relative to `ANIMATION_BASE_FPS`. |
 | `parseHbBriefing` | Hellbender briefing `.TXT` | The two labelled lines Hellbender has instead of a track name. |
 
-`TV_LOGIC_NAMES`, `TV_WEAPON_NAMES` and `TV_POWERUPS` name the codes in these files.
+`TV_LOGIC_NAMES`, `TV_WEAPON_NAMES`, `TV_POWERUPS` and `HB_POWERUPS` name the codes in these files.
+
+A definition's `hitRadius` is the editor's copy: all three games recompute it at load as the radius of the simple model's bounding-box corner. `groundOffsetX`, `groundOffsetY` and `groundOffsetZ` are the header's placement offsets (slots 3 to 5). Where a game then puts a placement (TV and Fury3 replace a surface placement's Y with the terrain height and add the offsets; Hellbender keeps Y and lifts it onto the floor) is engine behaviour and is left to consumers; JSTrackViewer's `docs/TV_GAME_EXE_ANALYSIS.md` and `docs/HELLBENDER_EXE_ANALYSIS.md` record it.
+
+### Tunnels (`.TNL`)
+
+A tunnel level names a `.TNL` where a surface level names its heightfield. The file is a segment count (at most 90) and then 13 + N lines per segment, in the order Terminal Velocity's loader (GAME.EXE `0x34770`) scans them: the two ring centres and the side count N; ring A's start and end angle; its radii; ring B's angles; its radii; a door timer; an unnamed value; how many sides are left open; the segment type; the tunnel texture list index; N side textures; three trailing values. Angles are 65536 per turn, centres and radii are in units of 256 world units, and a segment is `0x1000` of those long, 2^20 world units, which is one terrain cell. `tunnelSegmentGeometry` builds the rings as the engine's builder (`0x33f00`) does: `N - open` vertices on each ellipse, and, for an open ring, the remaining vertices on the tube's centre line.
+
+### Moving terrain (Hellbender `.QKE`)
+
+Hellbender's `.QKE` is a labelled script, written by the game's own editor code (HELLBEND.EXE `0x410260`): ground quakes, each a rectangle of cells on one layer (1 surface, 2 cavern floor, 3 cavern ceiling), and box quakes, each one ground box, optionally a switch. Every entry moves between two height limits stored at 128 per height step (cavern limits carry the cavern bias), with rise, wait and fall times, an end mode (loop, run once) and five sound names. Terminal Velocity and Fury3 ship a `.QKE` too, but it is a different, unlabelled table, a single 0 in 181 of their 190 files, and has no reader.
 
 ### Coordinates
 
@@ -100,11 +112,11 @@ TV and Fury3 place things at 2^20 units per terrain cell and 2^15 per height ste
 
 ## Terrain
 
-**`decodeHeightSample`** turns one heightfield sample into a legacy height step. MTM, TV, Fury3 and Hellbender store one byte per cell. CPR stores uint16 10.6 fixed point (`CPR_HEIGHT_DIVISOR` 64), and one CPR step is two MTM steps (`CPR_HEIGHT_UNIT_SCALE`). Evo also stores uint16, but 11.5, so the cell width cannot tell the two apart and the caller says which it has. `heightAtCell` samples a grid.
+**`decodeHeightSample`** turns one heightfield sample into a legacy height step. MTM, TV, Fury3 and Hellbender store one byte per cell. CPR stores uint16 10.6 fixed point (`CPR_HEIGHT_DIVISOR` 64), and one CPR step is two MTM steps (`CPR_HEIGHT_UNIT_SCALE`). Evo also stores uint16, but 11.5, so the cell width cannot tell the two apart and the caller says which it has. `heightAtCell` samples a grid corner. `heightAtPoint` samples between corners the way the games do, on the plane of the cell's triangle rather than a bilinear blend; `cellTriangleHeight` is the same for four given corners. The split is `"fixed"` (every cell along `(cx, cz)` to `(cx + 1, cz + 1)`) or `"checkerboard"` (that diagonal where `cx + cz` is even, the other where it is odd), which is how CPR, Terminal Velocity, Fury3 and Hellbender split their cells.
 
-**`decodeGroundBoxes(ra0, ra1, cl0, gridSize, heightOffset)`** decodes the solid blocks a level stands on the grid: lower and upper heights from `.RA0`/`.RA1`, six face textures per cell from `.CL0`. Each face is a `.CLR` texture word (`decodeClrWord`): bits 0-11 texture, 12-13 mirror, 14-15 rotation.
+**`decodeGroundBoxes(ra0, ra1, cl0, gridSize, heightOffset)`** decodes the solid blocks a level stands on the grid: lower and upper heights from `.RA0`/`.RA1`, six face textures per cell from `.CL0`. Each face is a `.CLR` texture word (`decodeClrWord`): bits 0-11 texture, 12-13 mirror, 14-15 rotation. Hellbender's loader also accepts a narrow form, chosen by file size, with one byte per `.CLR` cell, `.CL0` face or `.CL1` word (a bare texture index); `decodeClrGrid`, `decodeGroundBoxes` and `decodeHbUnderground` read it, though no shipped level uses it.
 
-**`decodeHbUnderground(ra2, ra3, cl1, gridSize)`** decodes Hellbender's cavern: a floor and a ceiling heightfield biased down by a full byte (`HB_UNDERGROUND_BIAS`, -256, which puts 97% of Hellbender's negative-altitude placements between floor and ceiling), a mask of the hollow cells grown by one so the cavern closes itself, and the floor and ceiling texture words split out of `.CL1`. The cavern's own ground boxes are `.RA4`/`.RA5`/`.CL2`, decoded by `decodeGroundBoxes` with the bias as the height offset.
+**`decodeHbUnderground(ra2, ra3, cl1, gridSize)`** decodes Hellbender's cavern: a floor and a ceiling heightfield biased so that byte 255 is altitude 0 (`HB_UNDERGROUND_BIAS`, -255: the game's loader stores each cavern byte as `(byte - 255) << 7`; an earlier, measured value of -256 was one step off), a mask of the hollow cells grown by one so the cavern closes itself, and the floor (first) and ceiling (second) texture words split out of `.CL1`, an order the game's floor and ceiling renderers confirm. The cavern's own ground boxes are `.RA4`/`.RA5`/`.CL2`, decoded by `decodeGroundBoxes` with the bias as the height offset.
 
 ## Sky
 

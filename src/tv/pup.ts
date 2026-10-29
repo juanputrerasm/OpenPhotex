@@ -1,5 +1,5 @@
 import { placementToEditor, toDataLines } from "./coords.ts";
-import { tvPowerup } from "./tables.ts";
+import { hbPowerup, tvPowerup } from "./tables.ts";
 
 /*
   .PUP powerup placements (Terminal Velocity / Fury3 / F!Zone).
@@ -18,8 +18,8 @@ import { tvPowerup } from "./tables.ts";
   Type names are not recorded anywhere in the level data, but both period editors carry the
   table: TVCAD.INI lists the twelve names in type order, and FuryEdit.exe holds the matching
   POWER*.BIN pickup models and Fury3 names in two parallel pointer tables (see tv-tables.js).
-  They are attached for Terminal Velocity and Fury3 only; Hellbender ships the same pickup
-  models, but nothing yet confirms that its type indices mean the same thing.
+  Hellbender has its own 31-type table (HB_POWERUPS, from HELLBEND.EXE), whose first twelve
+  types keep Fury3's order; its names are attached from that table, with no Fury3 name.
 
   Most levels place few loose powerups: the manual says authors preferred to hide them inside
   destructible bunkers, which are ordinary .DEF objects with a spawn probability, so a sparse
@@ -58,13 +58,13 @@ export function parsePowerups(bytes: Uint8Array | null | undefined, gridSize: nu
     if (parts.length < 4) break;
     const values = parts.slice(0, 4).map((v) => parseInt(v.trim(), 10));
     if (values.some((v) => !Number.isFinite(v))) break;
-    const known = origin === "HB" ? null : tvPowerup(values[3]);
+    const known = origin === "HB" ? hbPowerup(values[3]) : tvPowerup(values[3]);
     powerups.push({
       index: n,
       position: placementToEditor(values[0], values[1], values[2], gridSize, origin),
       type: values[3],
       name: known?.name ?? "",
-      furyName: known?.furyName ?? "",
+      furyName: origin === "HB" ? "" : (tvPowerup(values[3])?.furyName ?? ""),
       modelName: known?.model ?? "",
     });
   }

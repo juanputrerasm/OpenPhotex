@@ -83,6 +83,29 @@ four tire angles, throttle and brakes and course segment, damage code and gear),
 (the same up to the number). The game's ring holds 2240 records. See JSTrackViewer's
 `docs/MTM2_REPLAY_FORMAT.md` for measurements made from replays.
 
+After the counted records come two blocks of OpenMTM2's that the games never read: `OpenMTM2 samples` (version
+1, a count, then `time,number,x,y,z,theta,phi,psi,fsteering,rsteering,` four tire angles, `throttle,speed`: the
+trucks between records, 16 Hz) and `OpenMTM2 crush` (version 1, a count, then `time,car,share`: a top-crush car's
+crushed share, 0 to 1, from that time on, which no record holds). There is no separate demo format: the game's
+debug "Load demo" and "Save demo" read and write these files, and `DEMO\DEMO1.DMO` in `STARTUP.POD` is empty.
+
+## `player.pro`: the drivers (`parseMtmPlayerPro`, `writeMtmPlayerPro`, 0x4ca1d0, 0x4dae90, 0x4da480)
+
+Text in the game folder, one value a line, CR LF: the version (103), the number of drivers, the selected driver
+(1-based), then each driver. Version 103's driver: the name, an integer, an integer kept as a byte, seven text
+lines, a count of text and integer pairs and the pairs, three integers, a truck, a track and four integers
+(default 1, 1, 600, 1; read as the Garage's tire cut, suspension and transfer, then one more). Versions 100 to 102
+lack the parts from the second line, from the first two lines, or from the pairs on (see the module's comment).
+
+## `MTM2 High Scores`: the Hall of Fame (`parseMtmHighScores`, `writeMtmHighScores`)
+
+The file has no extension. Its text is enciphered in 8-byte blocks by a TEA-like cipher with a fixed key, 64
+rounds and a sum that depends on the block's place (the module's comment has the algorithm; a file ends with one
+block past the text). Plain, it lists the number of tracks; per track its name and its number of entries; per
+entry the date, the driver, the truck's name, the time in seconds, the points, the skill level and `1` for a
+Summit Rumble or `0` for a race, each on its own line. `highscor.mtr`, which the exe can also read and write,
+is dead code in 2.00.42.
+
 ## `.TRN`: Monster Truck Madness tournaments (`parseTrn`, `writeTrn`)
 
 `TOURNEY\*.TRN` in `STARTUP.POD` of MTM1 and MTM2 (`TRI.TRN`, `DOUG.TRN`, `WHIRL.TRN`), each with a

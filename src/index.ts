@@ -70,8 +70,8 @@ export {
   TV_UNITS_PER_CELL, TV_UNITS_PER_HEIGHT_STEP, tvPlacementToEditor, tvHeightToAltitude, parseIntTriple, toDataLines,
   hbPlacementToEditor, placementToEditor,
 } from "./tv/coords.ts";
-export { TV_POWERUPS, tvPowerup, TV_LOGIC_NAMES, TV_WEAPON_NAMES, tvLogicName, tvWeaponName } from "./tv/tables.ts";
-export type { TvPowerup } from "./tv/tables.ts";
+export { TV_POWERUPS, tvPowerup, HB_POWERUPS, hbPowerup, TV_LOGIC_NAMES, TV_WEAPON_NAMES, tvLogicName, tvWeaponName } from "./tv/tables.ts";
+export type { TvPowerup, HbPowerup } from "./tv/tables.ts";
 export {
   NAV_TARGET_LIST, NAV_TUNNEL_ENTRANCE, NAV_CHECKPOINT, NAV_JUMP_ZONE, NAV_TUNNEL_EXIT, NAV_BOSS, NAV_START_POINT,
   NAV_TYPE_NAMES, parseNavPoints, findStartPoint,
@@ -79,7 +79,7 @@ export {
 export type { NavPoint } from "./tv/nav.ts";
 export {
   HBNAV_TARGET_LIST, HBNAV_TUNNEL_ENTRANCE, HBNAV_CHECKPOINT, HBNAV_JUMP_ZONE, HBNAV_TUNNEL_EXIT, HBNAV_BOSS,
-  HBNAV_START_POINT, HBNAV_SYNC_POINT, HBNAV_RESCUE_BEACON, HBNAV_END_OF_NAVS, HBNAV_ESCORT, HBNAV_RETRIEVE,
+  HBNAV_START_POINT, HBNAV_SYNC_POINT, HBNAV_RESCUE_BEACON, HBNAV_END_OF_NAVS, HBNAV_ORIENTATION, HBNAV_RANDOM, HBNAV_ESCORT, HBNAV_RETRIEVE,
   HBNAV_PURSUE, HBNAV_TYPE_NAMES, parseHbNavPoints,
 } from "./tv/hb-nav.ts";
 export type { HbNavPoint } from "./tv/hb-nav.ts";
@@ -87,15 +87,19 @@ export { parsePowerups } from "./tv/pup.ts";
 export type { Powerup } from "./tv/pup.ts";
 export { TUNNEL_LOGIC_NAMES, parseTunnelDefs } from "./tv/tdf.ts";
 export type { TunnelDef } from "./tv/tdf.ts";
+export { parseTvTunnel, tunnelSegmentGeometry, TUNNEL_MAX_SEGMENTS, TUNNEL_SEGMENT_LENGTH, TUNNEL_UNIT } from "./tv/tnl.ts";
+export type { TvTunnel, TunnelSegment, TunnelRing, TunnelSegmentGeometry } from "./tv/tnl.ts";
+export { parseHbQuakes, HB_QUAKE_HEIGHT_UNIT } from "./tv/hb-qke.ts";
+export type { HbQuakes, HbQuakeBase, HbGroundQuake, HbBoxQuake } from "./tv/hb-qke.ts";
 export { ANIMATION_BASE_FPS, parseAnimations, writeAnimations } from "./tv/ani.ts";
 export type { TextureAnimation } from "./tv/ani.ts";
 export { parseHbBriefing } from "./tv/hb-briefing.ts";
 export type { HbBriefing } from "./tv/hb-briefing.ts";
 export {
   CPR_HEIGHT_DIVISOR, CPR_ALTITUDE_DIVISOR, CPR_HEIGHT_UNIT_SCALE, LEGACY_ALTITUDE_DIVISOR, decodeHeightSample,
-  legacyWholeHeight16, heightAtCell,
+  legacyWholeHeight16, heightAtCell, cellTriangleHeight, cellUsesOtherDiagonal, heightAtPoint,
 } from "./terrain/height.ts";
-export type { HeightGrid } from "./terrain/height.ts";
+export type { HeightGrid, CellSplit } from "./terrain/height.ts";
 export {
   parseMtmSit, parseMtmLvl, parseTexList, parseTty, detectSitOrigin, sitTrackTypeName, sitWorldTriplet, sitFeetTriplet,
   BOX_LIGHT, BOX_MOVING, parseSitLight,
@@ -183,12 +187,16 @@ export type { MtmKlp, KlpLoop, MtmAmbientSounds, MtmOneShotSound, MtmLoopedSound
 export { parseMtmSun } from "./mtm/sun.ts";
 export type { MtmSun, SunFlareLayer } from "./mtm/sun.ts";
 export { parseLoc } from "./mtm/loc.ts";
+export { SmkError, openSmk, smkInfo } from "./video/smk.ts";
+export type { SmkAudioTrack, SmkFrame, SmkInfo } from "./video/smk.ts";
 export { parseTrn, writeTrn, TRN_MAX_EVENTS, TRN_MAX_LAPS } from "./mtm/trn.ts";
 export type { MtmTrn, MtmTrnEvent } from "./mtm/trn.ts";
-export { parseMtmReplay, writeMtmReplay, REPLAY_RING_RECORDS, REPLAY_FRAME_TICKS, REPLAY_TICKS_PER_SECOND, REPLAY_SAMPLES_HEADING, REPLAY_SAMPLES_VERSION } from "./mtm/replay.ts";
-export type { MtmReplay, MtmReplayRecord, MtmReplaySample, MtmReplayVehicle } from "./mtm/replay.ts";
+export { parseMtmReplay, writeMtmReplay, REPLAY_RING_RECORDS, REPLAY_FRAME_TICKS, REPLAY_TICKS_PER_SECOND, REPLAY_SAMPLES_HEADING, REPLAY_SAMPLES_VERSION, REPLAY_CRUSH_HEADING, REPLAY_CRUSH_VERSION } from "./mtm/replay.ts";
+export type { MtmReplay, MtmReplayCrush, MtmReplayRecord, MtmReplaySample, MtmReplayVehicle } from "./mtm/replay.ts";
 export { MOD_MIX_GAIN, modChannels, parseMod, renderMod } from "./audio/mod.ts";
 export type { ModSample, ModSong, RenderedMod } from "./audio/mod.ts";
+export { audioSampleRate, detectAudioFormat } from "./audio/probe.ts";
+export type { AudioFormat } from "./audio/probe.ts";
 export type { LocMessage } from "./mtm/loc.ts";
 export { parseCockpitLayout, parseCockpitSections } from "./mtm/cockpit.ts";
 export type { MtmCockpitLayout, CockpitSection, CockpitGauge, CockpitMirror } from "./mtm/cockpit.ts";
@@ -201,4 +209,8 @@ export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 
 /** The library version, as published in package.json. */
-export const VERSION = "1.4.0";
+export const VERSION = "1.5.0";
+export { parseMtmPlayerPro, writeMtmPlayerPro, newMtmDriver, PLAYER_PRO_VERSION } from "./mtm/player-pro.ts";
+export type { MtmDriver, MtmPlayerPro } from "./mtm/player-pro.ts";
+export { parseMtmHighScores, writeMtmHighScores, decipherHighScores, encipherHighScores, HIGH_SCORES_FILE } from "./mtm/high-scores.ts";
+export type { MtmHighScore, MtmHighScoreTrack } from "./mtm/high-scores.ts";

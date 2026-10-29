@@ -67,12 +67,23 @@ export interface DefDefinition {
   binForHydration: string;
   /** The header's leading integers; six in every shipped definition. */
   prefix?: number[];
-  /** World units; slot 2 of the six-integer header. */
+  /**
+   * World units; slot 2 of the six-integer header. The editor's copy: every game recomputes it
+   * at load from the simple model, as the radius of its bounding-box corner,
+   * `round(sqrt(ax^2 + ay^2 + az^2))` over the per-axis largest absolute extent (TV GAME.EXE
+   * 0x22df0, Fury3 0x40bf80, Hellbender 0x404d40), and writes it over this value.
+   */
   hitRadius?: number;
   /** TVCAD [Logic] index; slot 0. -1 when the header is not the six-integer shape. */
   logic?: number;
-  /** The ground offset's Y (slot 4); the only thing that lifts a TV/F3 object. */
+  /**
+   * The placement offset's Y (slot 4), in world units. Terminal Velocity and Fury3 add it to
+   * every placement; Hellbender does not (HELLBEND.EXE 0x404f60).
+   */
   groundOffsetY: number;
+  /** The placement offset's X and Z (slots 3 and 5), added to every placement by all three games. */
+  groundOffsetX: number;
+  groundOffsetZ: number;
   description: string;
   /** Body line 1, slot 4 (TVCAD [Weapons]). */
   weapon?: number;
@@ -218,7 +229,7 @@ function findNextEnemyDefinitionHeaderLine(lines: string[], start: number): numb
 */
 function parseEnemyDefinition(line: string, description: string): DefDefinition {
   const p = line.split(",");
-  if (p.length < 2) return { binForHydration: "", groundOffsetY: 0, description: "" };
+  if (p.length < 2) return { binForHydration: "", groundOffsetY: 0, groundOffsetX: 0, groundOffsetZ: 0, description: "" };
   const complexAsset = p[p.length - 2].trim();
   const simpleAsset = p[p.length - 1].trim();
   const cu = complexAsset.toUpperCase();
@@ -232,13 +243,15 @@ function parseEnemyDefinition(line: string, description: string): DefDefinition 
   }
   // Only the canonical six-integer shape is trusted to carry the offset in a known slot.
   const canonical = prefix.length === 6;
+  const groundOffsetX = canonical ? prefix[3] : 0;
   const groundOffsetY = canonical ? prefix[4] : 0;
+  const groundOffsetZ = canonical ? prefix[5] : 0;
   const hitRadius = canonical ? prefix[2] : 0;
   const logic = canonical ? prefix[0] : -1;
 
   return {
     complexAsset, simpleAsset, binForHydration,
-    prefix, hitRadius, logic, groundOffsetY,
+    prefix, hitRadius, logic, groundOffsetY, groundOffsetX, groundOffsetZ,
     description: description ?? "",
   };
 }

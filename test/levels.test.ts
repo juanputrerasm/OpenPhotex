@@ -7,7 +7,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   CPR_WALL_LAYERS,
+  HB_POWERUPS,
   HB_UNDERGROUND_BIAS,
+  cellTriangleHeight,
+  decodeClrGrid,
+  heightAtPoint,
+  hbPowerup,
+  parseHbQuakes,
+  parseHbNavPoints,
+  parsePowerups,
+  parseTvTunnel,
+  tunnelSegmentGeometry,
+  TUNNEL_SEGMENT_LENGTH,
   cprCheckpointRole,
   cprSegmentPairs,
   cprTextureIndex,
@@ -206,7 +217,7 @@ test("Hellbender cavern: hollow cells, the grown mask and the split texture word
   cl1.set([1, 2, 3, 4], 5 * 4);
   const cave = decodeHbUnderground(floor, ceiling, cl1, n);
   assert.ok(cave);
-  assert.equal(HB_UNDERGROUND_BIAS, -256);
+  assert.equal(HB_UNDERGROUND_BIAS, -255);
   assert.equal(cave.hollowCellCount, 1);
   // The hollow cell and its eight neighbours; (3,3) is out of reach.
   assert.equal(cave.mask.reduce((a, b) => a + b, 0), 9);
@@ -230,4 +241,149 @@ test("CPR walls (CART.EXE 0x4473b0, 0x44be30, 0x44a1a0): a tree point holds only
   assert.equal(tree.solid, false);
   assert.equal(tall.heightFt, 16, "a Very tall wall: four 4 ft panels");
   assert.equal(tall.solid, true);
+});
+
+test("Hellbender cavern: narrow .CL1 (one byte per word) reads as bare texture indices", () => {
+  const n = 2;
+  const floor = new Uint8Array(n * n).fill(10);
+  const ceiling = new Uint8Array(n * n).fill(40);
+  const cl1 = new Uint8Array(n * n * 2);
+  cl1.set([7, 9], 2);
+  const cave = decodeHbUnderground(floor, ceiling, cl1, n)!;
+  assert.deepEqual([...cave.floorClr.subarray(2, 4)], [7, 0]);
+  assert.deepEqual([...cave.ceilingClr.subarray(2, 4)], [9, 0]);
+});
+
+test("narrow .CLR and .CL0: one byte per cell or face is a texture with no mirror or rotation", () => {
+  assert.deepEqual([...decodeClrGrid(new Uint8Array([1, 2, 3, 0xff]), 2)!], [1, 2, 3, 0xff]);
+  assert.deepEqual([...decodeClrGrid(new Uint8Array([1, 0x40, 2, 0, 3, 0, 4, 0]), 2)!], [0x4001, 2, 3, 4]);
+  assert.equal(decodeClrGrid(new Uint8Array(3), 2), null);
+  const ra0 = new Uint8Array([0, 0, 0, 0]);
+  const ra1 = new Uint8Array([5, 0, 0, 0]);
+  const cl0 = new Uint8Array(4 * 6);
+  cl0.set([11, 12, 13, 14, 15, 16], 0);
+  const [box] = decodeGroundBoxes(ra0, ra1, cl0, 2);
+  assert.deepEqual(box.faceTexture, [11, 12, 13, 14, 15, 16]);
+  assert.deepEqual(box.faceRotation, [0, 0, 0, 0, 0, 0]);
+});
+
+test("cell triangles: the checkerboard split matches the engines' sampler", () => {
+  // Corners h00=0, h10=4, h11=8, h01=0. On the (0,0)-(1,1) diagonal the centre is (0+8)/2 = 4;
+  // on the other diagonal it is (4+0)/2 = 2.
+  assert.equal(cellTriangleHeight(0, 4, 8, 0, 0.5, 0.5, false), 4);
+  assert.equal(cellTriangleHeight(0, 4, 8, 0, 0.5, 0.5, true), 2);
+  // Corners are exact on either split.
+  for (const other of [false, true]) {
+    assert.equal(cellTriangleHeight(1, 2, 3, 4, 0, 0, other), 1);
+    assert.equal(cellTriangleHeight(1, 2, 3, 4, 1, 0, other), 2);
+    assert.equal(cellTriangleHeight(1, 2, 3, 4, 1, 1, other), 3);
+    assert.equal(cellTriangleHeight(1, 2, 3, 4, 0, 1, other), 4);
+  }
+  // A 3x3 grid: cell (1,0) is odd, so the checkerboard takes the other diagonal there.
+  const raw = new Uint8Array([0, 0, 4, 0, 8, 8, 0, 0, 0]);
+  const grid = { gridSize: 3 };
+  assert.equal(heightAtPoint(grid, raw, 1.5, 0.5, "fixed"), (0 + 8) / 2);
+  assert.equal(heightAtPoint(grid, raw, 1.5, 0.5, "checkerboard"), (4 + 8) / 2);
+});
+
+test("Hellbender powerups: 31 types, Fury3's order first, names attached to .PUP", () => {
+  assert.equal(HB_POWERUPS.length, 31);
+  assert.equal(hbPowerup(0)?.model, "F6RFL.BIN");
+  assert.equal(hbPowerup(22)?.name, "Message Pod");
+  assert.equal(hbPowerup(30)?.name, "Super Weapon Piece 8");
+  assert.equal(hbPowerup(31), null);
+  const [pickup] = parsePowerups(new TextEncoder().encode("1\r\n0,0,0,13\r\n"), 128, "HB");
+  assert.equal(pickup.name, "Cluster");
+  assert.equal(pickup.modelName, "F6CLS.BIN");
+  assert.equal(pickup.furyName, "");
+});
+
+/** One .TNL segment in file order. */
+function tnlSegment(sides: number, open = 0, type = 0): string[] {
+  return [
+    "8192,4096,8448,4096," + sides, "0,65536,0", "3200,1024", "0,65536", "3200,1024",
+    "65535", "1", String(open), String(type), "1",
+    ...Array.from({ length: sides }, (_, k) => String(k + 2)),
+    "0", "65535", "32768",
+  ];
+}
+
+test(".TNL: segments of 13 + N lines, rings by the engine's rule, one cell per segment", () => {
+  const text = ["2", ...tnlSegment(6), ...tnlSegment(4, 1, 2)].join("\r\n") + "\r\n";
+  const tnl = parseTvTunnel(new TextEncoder().encode(text))!;
+  assert.ok(tnl.complete);
+  assert.equal(tnl.segments.length, 2);
+  const [a, b] = tnl.segments;
+  assert.deepEqual(a.centreA, [8192, 4096]);
+  assert.deepEqual(a.centreB, [8448, 4096]);
+  assert.deepEqual(a.ringA, { startAngle: 0, endAngle: 65536, radiusX: 3200, radiusY: 1024 });
+  assert.deepEqual(a.sideTextures, [2, 3, 4, 5, 6, 7]);
+  assert.equal(a.timer, 65535);
+  assert.equal(a.textureList, 1);
+  assert.deepEqual(a.unknown, [0, 1, 0, 65535, 32768]);
+  assert.equal(b.open, 1);
+  assert.equal(b.type, 2);
+
+  const g = tunnelSegmentGeometry(a);
+  assert.equal(g.ringA.length, 6);
+  assert.deepEqual(g.ringA[0], [8192 + 3200, 4096, 0]);
+  assert.equal(g.ringB[0][2], TUNNEL_SEGMENT_LENGTH);
+  assert.equal(g.ringB[0][0], 8448 + 3200);
+  assert.deepEqual(g.faces[5], { a: 5, b: 0, texture: 7 });
+
+  // Open by one: three ring vertices a third of a turn apart, the fourth on ring A's centre.
+  const open = tunnelSegmentGeometry(b);
+  assert.equal(open.ringA[0][2], TUNNEL_SEGMENT_LENGTH);
+  assert.deepEqual(open.ringA[3], [8192, 4096, TUNNEL_SEGMENT_LENGTH]);
+  assert.ok(Math.abs(open.ringA[1][0] - (8192 + Math.cos((21845 / 65536) * 2 * Math.PI) * 3200)) < 1e-9);
+
+  assert.equal(parseTvTunnel(new TextEncoder().encode("91\r\n")), null);
+  const short = parseTvTunnel(new TextEncoder().encode(["2", ...tnlSegment(6)].join("\r\n")))!;
+  assert.equal(short.segments.length, 1);
+  assert.equal(short.complete, false);
+});
+
+test("Hellbender .QKE: ground and box quakes in the writer's field order", () => {
+  const text = [
+    "-------- Ground Quake Count -------", "1",
+    "------- Ground Quake Entry 1-------", "3", "1280,0", "4,5,6,7,2", "0,0,0,0",
+    "0,65536,131072,65536,0", "1,0,1,2", "UP.WAV", "NULL", "NULL", "NULL", "NULL",
+    "!--Additional quake info--", "5",
+    "-------- Box Quake Count --------", "1",
+    "-------- Box Quake Entry 1 --------", "1", "-17920,-25344", "10,88,2", "86,0,0,0",
+    "1,196608,0,65536,196608", "0,1,0,1,4", "3-0UDOOR.WAV", "1-0DDOOR.WAV", "NULL", "NULL", "NULL",
+    "!--Additional quake info--", "0", "@--Box quake switch info--", "1", "MESWTCH1.RAW", "MESWTCH0.RAW",
+  ].join("\r\n") + "\r\n";
+  const qke = parseHbQuakes(new TextEncoder().encode(text))!;
+  assert.ok(qke.complete);
+  const [ground] = qke.groundQuakes;
+  assert.equal(ground.mode, 3);
+  assert.deepEqual([ground.x0, ground.z0, ground.x1, ground.z1, ground.layer], [4, 5, 6, 7, 2]);
+  assert.equal(ground.upperStep, 10);
+  assert.equal(ground.topWait, 131072);
+  assert.equal(ground.endMode, 1);
+  assert.deepEqual(ground.sounds, ["UP.WAV", null, null, null, null]);
+  assert.equal(ground.additionalInfo, 5);
+  const [box] = qke.boxQuakes;
+  assert.deepEqual([box.z, box.x, box.layer], [10, 88, 2]);
+  assert.equal(box.upperStep, -140);
+  assert.equal(box.lowerStep, -198);
+  assert.equal(box.riseTime, 196608);
+  assert.deepEqual(box.flags, [1, 0, 1, 4]);
+  assert.equal(box.switchFlag, 1);
+  assert.deepEqual(box.switchTextures, ["MESWTCH1.RAW", "MESWTCH0.RAW"]);
+  assert.equal(parseHbQuakes(new TextEncoder().encode("0\r\n")), null);
+});
+
+test("Hellbender .NAV: sync points the game added are flagged, and types 10 and 11 are named", () => {
+  const entry = (type: number, text: string, payload: string[] = []) => [
+    String(type), "0,0,0", "!priority,time", "0,0", "@Completion sound & completion text (39 chars max)", "null",
+    "null: line ignored", "; Proximity Sound file", "null", text, ...payload, "-------------------------------------------------",
+  ];
+  const text = ["4", ...entry(7, "Sync point: auto added"), ...entry(7, "Sync Point"), ...entry(10, "x", ["0,0,0", "1"]), ...entry(11, "y", ["5"])].join("\r\n");
+  const points = parseHbNavPoints(new TextEncoder().encode(text), 128);
+  assert.equal(points.length, 4);
+  assert.deepEqual(points.map((p) => p.autoAdded), [true, false, false, false]);
+  assert.equal(points[2].typeName, "Orientation (unused)");
+  assert.equal(points[3].typeName, "Random (unused)");
 });
