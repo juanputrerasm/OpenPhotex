@@ -111,3 +111,59 @@ test("tire size: MTM's 3 ft by 4 ft unless another game's vehicle gives its own"
   const hi = rest(stock), lo = rest(car);
   assert.ok(Number.isFinite(lo) && lo < hi - 1, `small tires rest at ${lo}, MTM's at ${hi}`);
 });
+
+// Optional handling (constants.ts `Mtm2Rules`: airPitchControl, airRotationDamping, groundYawDamping), which neither
+// game has: left out, or at its neutral value, the step is the game's to the bit.
+const handling = (rules: S.Mtm2Rules, pos: T3, setup: (s: S.Mtm2TruckState) => void, steps: number, settle = 0) => {
+  const terrain = S.createTerrain(new Uint8Array(65536).fill(50)); // 100 ft
+  const ground = S.createTerrainGround(terrain, null, 0, null, rules);
+  const p = S.createTruckParams();
+  const s = S.createTruckState(pos, 0, S.GEAR.FIRST, p);
+  const ctx = { ground, human: true, difficulty: S.DIFFICULTY.INTERMEDIATE, sonicTrack: false };
+  // Settled on its wheels first, when asked (still, so no setting changes the fall).
+  for (let i = 0; i < settle; i++) { S.stepTruck(s, p, ctx, 1 / 60); S.postStepTruck(s, p, ground, 1 / 60); }
+  setup(s);
+  for (let i = 0; i < steps; i++) { S.stepTruck(s, p, ctx, 1 / 60); S.postStepTruck(s, p, ground, 1 / 60); }
+  return s;
+};
+const ALOFT: T3 = [1000, 400, 1000];
+
+test("optional handling: neutral values are the game's handling, to the bit", () => {
+  const spin = (s: S.Mtm2TruckState) => { s.rates.set([0.5, 2, 1]); s.bvel.set([0, 0, 40]); s.controls.throttle = 1; };
+  const neutral = { ...S.MTM2_RULES, airPitchControl: 0, airRotationDamping: 1, groundYawDamping: 1 };
+  for (const pos of [ALOFT, [1000, 106, 1000] as T3]) {
+    const a = handling(S.MTM2_RULES, pos, spin, 90), b = handling(neutral, pos, spin, 90);
+    assert.deepEqual([...b.rates, ...b.bvel, ...b.pos, ...b.euler], [...a.rates, ...a.bvel, ...a.pos, ...a.euler]);
+  }
+});
+
+test("optional handling: less damping in the air keeps a spin going", () => {
+  const pitch = (s: S.Mtm2TruckState) => { s.rates.set([0, 2, 0]); };
+  const game = handling(S.MTM2_RULES, ALOFT, pitch, 30);
+  const light = handling({ ...S.MTM2_RULES, airRotationDamping: 0.25 }, ALOFT, pitch, 30);
+  // The game's damping (about 9,100 lb ft per rad/s on 5,000 slug ft²) halves the rate in about 0.4 s.
+  assert.ok(game.rates[1] > 0.6 && game.rates[1] < 1.2, `${game.rates[1]}`);
+  assert.ok(light.rates[1] > 1.5, `${light.rates[1]}`);
+  // On the ground it is the game's.
+  const grounded = (rules: S.Mtm2Rules) => handling(rules, [1000, 106, 1000], (s) => { s.rates.set([0, 0, 1]); s.bvel.set([0, 0, 30]); }, 60, 120);
+  assert.deepEqual([...grounded({ ...S.MTM2_RULES, airRotationDamping: 0.25 }).rates], [...grounded(S.MTM2_RULES).rates]);
+});
+
+test("optional handling: in the air the throttle lifts the nose and the brakes drop it", () => {
+  const pedal = (throttle: number, brake: number) => handling({ ...S.MTM2_RULES, airPitchControl: 4 }, ALOFT, (s) => {
+    s.controls.throttle = throttle; s.controls.brakeFront = brake; s.controls.brakeRear = brake;
+  }, 6);
+  assert.ok(pedal(1, 0).rates[1] < -0.2, "nose up");
+  assert.ok(pedal(0, 1).rates[1] > 0.2, "nose down");
+  assert.equal(pedal(0, 0).rates[1], 0);
+  // Without the rule the pedals do nothing to the body in the air.
+  assert.equal(handling(S.MTM2_RULES, ALOFT, (s) => { s.controls.throttle = 1; }, 6).rates[1], 0);
+});
+
+test("optional handling: less yaw damping with the wheels down", () => {
+  const turn = (rules: S.Mtm2Rules) => handling(rules, [1000, 106, 1000], (s) => { s.rates.set([0, 0, 1.5]); s.bvel.set([0, 0, 30]); }, 6, 120);
+  assert.ok(Math.abs(turn({ ...S.MTM2_RULES, groundYawDamping: 0.5 }).rates[2]) > Math.abs(turn(S.MTM2_RULES).rates[2]));
+  // In the air it is the air's damping that counts.
+  const aloft = (rules: S.Mtm2Rules) => handling(rules, ALOFT, (s) => { s.rates.set([0, 0, 1.5]); }, 30);
+  assert.equal(aloft({ ...S.MTM2_RULES, groundYawDamping: 0.5 }).rates[2], aloft(S.MTM2_RULES).rates[2]);
+});

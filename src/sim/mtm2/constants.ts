@@ -40,6 +40,16 @@ export interface Mtm2Rules {
   wheelSpinClimb: number;
   /** Whether a tire's spin counts in that climb only while it is on the ground. */
   wheelSpinNeedsGround: boolean;
+  /*
+    Handling changes a host may ask for; neither game has them, and leaving them out is the game's handling
+    (SIM_MTM2.md, "Optional handling"). The aero damping of §14.7 is scaled, not replaced.
+  */
+  /** Pitch from the pedals with all four wheels off: rad/s² for a full throttle (nose up) or full brakes (nose down). Default 0. */
+  airPitchControl?: number;
+  /** The aero damping of the roll, pitch and yaw rates with all four wheels off, as a share of the game's. Default 1. */
+  airRotationDamping?: number;
+  /** The aero damping of the yaw rate with a wheel down, as a share of the game's. Default 1. */
+  groundYawDamping?: number;
 }
 export const MTM2_RULES: Mtm2Rules = Object.freeze({
   id: "mtm2", waterDragDensity: 0.15, deepWater: true, weatherGrip: true, crashDamage: true,

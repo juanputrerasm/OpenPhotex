@@ -33,6 +33,52 @@ export interface Mtm2SitTruck {
   orient: SitTriple;
   /** "!ap.courseToFollow": every racer follows extended course 2 in all fifteen stock levels. */
   courseToFollow?: number;
+  /**
+   * A truck in the middle of a race, as MONSTER.EXE's own writer (0x4c0360) prints it for "Save situation" and a
+   * saved game: its motion, gear, autopilot, damage and race progress. Without it the record is a stock grid slot,
+   * at rest with a zeroed race state and no `@damageCode` line.
+   */
+  state?: Mtm2SitTruckState;
+}
+
+/** A truck's live state in a SIT record (0x4c0360). Times are seconds; positions and speeds feet. */
+export interface Mtm2SitTruckState {
+  /** bvel: body-axis velocity, ft/s. */
+  bvel: readonly [number, number, number];
+  /** p, q, r: body rates, rad/s. */
+  rates: readonly [number, number, number];
+  /** faxle.angle, faxle.steering_angle and the rear axle's. */
+  frontAxle?: readonly [number, number];
+  rearAxle?: readonly [number, number];
+  /** The tires' on-ground flags, right then left, as the game keeps them (-1 and 1 at rest). */
+  frontOnGround?: readonly [number, number];
+  rearOnGround?: readonly [number, number];
+  /** xm.gear (`+0x58c`): 0 reverse ... 4 first; the game's numbering. */
+  gear: number;
+  /** ap.autopilot (1 on) and ap.cnumber, the course segment it follows. */
+  autopilot: number;
+  cnumber: number;
+  /** ap.speed_control, ap.course_control, ap.lasterror. */
+  apControl?: readonly [number, number, number];
+  /** `@damageCode` (`+0x1764`), the 32-bit crash damage code. */
+  damageCode: number;
+  /** heliTimer, heliTheta, heliPhi, heliPsi, and heliPos. */
+  heli?: readonly [number, number, number, number];
+  heliPos?: readonly [number, number, number];
+  /** segments (`+0x8f0`), laps (`+0x8f4`), staged (`+0x8fc`), bonusLaps (`+0x900`), finishedRace (`+0x904`), nextcheckpoint (`+0xfa8`). */
+  segments: number;
+  laps: number;
+  staged?: number;
+  bonusLaps?: number;
+  finished: number;
+  nextCheckpoint: number;
+  /** totalracetime (`+0xfa4`), fastestLap (`+0xfa0`), dragTimer (`+0x90c`). */
+  totalRaceTime: number;
+  fastestLap: number;
+  dragTimer?: number;
+  /** Up to 20 laps' times (`+0xf50`), and each lap's up to 20 checkpoint times (`+0x910`); missing ones are 0. */
+  lapTimes: readonly number[];
+  checkpointTimes: readonly (readonly number[])[];
 }
 
 /** A *** Ramps *** record: a model, or a wedge's length, width and height. */
@@ -229,12 +275,68 @@ function mass(value: SitValue | undefined): string {
 }
 
 function truck(out: string[], vehicle: Mtm2SitTruck): void {
-  out.push("truckFile", vehicle.truckFile ?? "POWERBIG.TRK", "ipos", triple(vehicle.position), "bvel", "0,0,0", "theta,phi,psi", triple(vehicle.orient),
-    "p,q,r", "0,0,0", "faxle.angle,faxle.steering_angle", "0,0", "faxle.rtire.on_gnd,faxle.ltire.on_gnd", "-1,1",
-    "raxle.angle,raxle.steering_angle", "0,0", "raxle.rtire.on_gnd,raxle.ltire.on_gnd", "-1,1", "xm.gear", "4",
-    "ap.autopilot,ap.cnumber", "0,1", "ap.speed_control,ap.course_control,ap.lasterror", "0,0,0", "!ap.courseToFollow", String(vehicle.courseToFollow ?? 2),
-    "$heliTimer,heliTheta,heliPhi,heliPsi", "0,0,0,0", "heliPos", "0,0,0", "^segments,laps,staged,bonusLaps,finishedRace,nextcheckpoint", "0,0,0,0,0,0", "totalracetime,fastestLap,dragTimer", "0,0,0");
-  for (let lap = 0; lap < 20; lap++) out.push("***Lap time***", "0", "*****Checkpoint times*****", ...Array<string>(20).fill("0"));
+  const s = vehicle.state;
+  if (!s) {
+    out.push("truckFile", vehicle.truckFile ?? "POWERBIG.TRK", "ipos", triple(vehicle.position), "bvel", "0,0,0", "theta,phi,psi", triple(vehicle.orient),
+      "p,q,r", "0,0,0", "faxle.angle,faxle.steering_angle", "0,0", "faxle.rtire.on_gnd,faxle.ltire.on_gnd", "-1,1",
+      "raxle.angle,raxle.steering_angle", "0,0", "raxle.rtire.on_gnd,raxle.ltire.on_gnd", "-1,1", "xm.gear", "4",
+      "ap.autopilot,ap.cnumber", "0,1", "ap.speed_control,ap.course_control,ap.lasterror", "0,0,0", "!ap.courseToFollow", String(vehicle.courseToFollow ?? 2),
+      "$heliTimer,heliTheta,heliPhi,heliPsi", "0,0,0,0", "heliPos", "0,0,0", "^segments,laps,staged,bonusLaps,finishedRace,nextcheckpoint", "0,0,0,0,0,0", "totalracetime,fastestLap,dragTimer", "0,0,0");
+    for (let lap = 0; lap < 20; lap++) out.push("***Lap time***", "0", "*****Checkpoint times*****", ...Array<string>(20).fill("0"));
+    return;
+  }
+  // As 0x4c0360 prints a live truck: floats with six decimals (`%f`), the damage code unsigned (`%u`).
+  const f = (v: number | undefined) => Number(v || 0).toFixed(6);
+  const fs = (vs: readonly (number | undefined)[]) => vs.map(f).join(",");
+  const i = (v: number | undefined) => String(Math.trunc(Number(v || 0)));
+  out.push("truckFile", vehicle.truckFile ?? "POWERBIG.TRK", "ipos", fs(vehicle.position.map(Number)), "bvel", fs(s.bvel),
+    "theta,phi,psi", fs(vehicle.orient.map(Number)), "p,q,r", fs(s.rates),
+    "faxle.angle,faxle.steering_angle", fs(s.frontAxle ?? [0, 0]), "faxle.rtire.on_gnd,faxle.ltire.on_gnd", (s.frontOnGround ?? [-1, 1]).map(i).join(","),
+    "raxle.angle,raxle.steering_angle", fs(s.rearAxle ?? [0, 0]), "raxle.rtire.on_gnd,raxle.ltire.on_gnd", (s.rearOnGround ?? [-1, 1]).map(i).join(","),
+    "xm.gear", i(s.gear), "ap.autopilot,ap.cnumber", `${i(s.autopilot)},${i(s.cnumber)}`,
+    "ap.speed_control,ap.course_control,ap.lasterror", fs(s.apControl ?? [0, 0, 0]), "!ap.courseToFollow", String(vehicle.courseToFollow ?? 2),
+    "@damageCode", String(s.damageCode >>> 0),
+    "$heliTimer,heliTheta,heliPhi,heliPsi", fs(s.heli ?? [0, 0, 0, 0]), "heliPos", fs(s.heliPos ?? [0, 0, 0]),
+    "^segments,laps,staged,bonusLaps,finishedRace,nextcheckpoint",
+    [s.segments, s.laps, s.staged, s.bonusLaps, s.finished, s.nextCheckpoint].map(i).join(","),
+    "totalracetime,fastestLap,dragTimer", fs([s.totalRaceTime, s.fastestLap, s.dragTimer]));
+  for (let lap = 0; lap < 20; lap++) {
+    out.push("***Lap time***", f(s.lapTimes[lap]), "*****Checkpoint times*****", ...Array.from({ length: 20 }, (_, k) => f(s.checkpointTimes[lap]?.[k])));
+  }
+}
+
+/**
+ * The lines of one SIT truck record (after its delimiter), as `writeMtm2Sit` writes it: for a caller that rewrites
+ * the vehicles of an existing SIT (`replaceSitVehicles`).
+ */
+export function sitTruckLines(vehicle: Mtm2SitTruck): string[] {
+  const out: string[] = [];
+  truck(out, vehicle);
+  return out;
+}
+
+const RECORD_DELIMITER = "*********************************************";
+
+/**
+ * An existing SIT's text with its `*** Vehicles ***` section put in place of `vehicles`, and, when given, its
+ * `$racetime, raceStartTime, dragDebugTimer` line: what MONSTER.EXE's "Save situation" writer (0x553230) changes in a
+ * level's SIT, the live trucks and the race clock. The rest is kept line for line. Lines end CRLF.
+ */
+export function replaceSitVehicles(sitText: string, vehicles: readonly Mtm2SitTruck[], { raceTimes }: { raceTimes?: readonly number[] } = {}): string {
+  const lines = sitText.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const start = lines.findIndex((line) => line.trim() === "*** Vehicles ***");
+  if (start < 0) throw new Error("The SIT has no *** Vehicles *** section");
+  let end = start + 1;
+  while (end < lines.length && !/^\*\*\* \S/.test(lines[end].trim())) end++;
+  const section = ["*** Vehicles ***", String(vehicles.length)];
+  for (const vehicle of vehicles) section.push(RECORD_DELIMITER, ...sitTruckLines(vehicle));
+  lines.splice(start, end - start, ...section);
+  if (raceTimes) {
+    const label = lines.findIndex((line) => line.trim().startsWith("$racetime"));
+    if (label >= 0 && label + 1 < lines.length) lines[label + 1] = raceTimes.map((v) => Number(v || 0).toFixed(6)).join(",");
+  }
+  while (lines.length && lines[lines.length - 1] === "") lines.pop();
+  return lines.join(CRLF) + CRLF;
 }
 
 function course(out: string[], segments: readonly Mtm2SitCourseSegment[], direction: number): void {

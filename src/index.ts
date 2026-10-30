@@ -104,7 +104,7 @@ export {
   parseMtmSit, parseMtmLvl, parseTexList, parseTty, detectSitOrigin, sitTrackTypeName, sitWorldTriplet, sitFeetTriplet,
   BOX_LIGHT, BOX_MOVING, parseSitLight,
 } from "./mtm/sit.ts";
-export type { MtmSit, MtmLvl, TtyEntry, SitBox, SitCourse, SitCourseSegment, SitTruck, SitArena, SitOrigin, SitLight } from "./mtm/sit.ts";
+export type { MtmSit, MtmLvl, TtyEntry, SitBox, SitCourse, SitCourseSegment, SitTruck, SitTruckState, SitArena, SitOrigin, SitLight } from "./mtm/sit.ts";
 export { parseTvLvl, detectTvLvlOrigin, isNullAssetName, tvLvlFallbackName } from "./tv/lvl.ts";
 export type { TvLvl, TvLvlOrigin } from "./tv/lvl.ts";
 export { parseDef, defPlacementToEditor, TR_ANGLE_TO_RAD } from "./tv/def.ts";
@@ -142,11 +142,14 @@ export {
 } from "./mtm/level-palette.ts";
 export {
   writeMtm2Sit, writeMtm2Lvl, writeTexList, writeTty, writeEmptyList, emptyGroundBoxGrids, buildMtm2Lte, writeMtm2Trk,
+  sitTruckLines, replaceSitVehicles,
 } from "./mtm/write.ts";
+export { MTM2_SAVED_GAME_HEADER, parseMtm2SavedGame, writeMtm2SavedGame } from "./mtm/saved-game.ts";
+export type { Mtm2SavedGame, Mtm2SavedTruck } from "./mtm/saved-game.ts";
 export { parseTxv, txvValue, writeTxv } from "./mtm/txv.ts";
 export type { TxvLine } from "./mtm/txv.ts";
 export type {
-  SitValue, SitTriple, Mtm2Sit, Mtm2SitTruck, Mtm2SitBox, Mtm2SitRamp, Mtm2SitTopCrush, Mtm2SitStadium, Mtm2SitCourseSegment,
+  SitValue, SitTriple, Mtm2Sit, Mtm2SitTruck, Mtm2SitTruckState, Mtm2SitBox, Mtm2SitRamp, Mtm2SitTopCrush, Mtm2SitStadium, Mtm2SitCourseSegment,
   Mtm2Lvl, Mtm2Trk, Mtm2TrkLight,
 } from "./mtm/write.ts";
 export { parseFlyTagged, flyTag, flyTags, parseFlyAngle } from "./fly/tagged.ts";
@@ -209,7 +212,7 @@ export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 
 /** The library version, as published in package.json. */
-export const VERSION = "1.5.0";
+export const VERSION = "1.5.1";
 export { parseMtmPlayerPro, writeMtmPlayerPro, newMtmDriver, PLAYER_PRO_VERSION } from "./mtm/player-pro.ts";
 export type { MtmDriver, MtmPlayerPro } from "./mtm/player-pro.ts";
 export { parseMtmHighScores, writeMtmHighScores, decipherHighScores, encipherHighScores, HIGH_SCORES_FILE } from "./mtm/high-scores.ts";

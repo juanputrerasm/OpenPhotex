@@ -68,6 +68,16 @@ Where the original does something surprising, the code does it too and the sourc
 The tests (`test/sim-mtm2-*.test.ts`) check the formulas against hand-computed values;
 `test/stock.test.ts` builds every stock course and checks that each arc meets its straights.
 
+## Community Patch 3's AI Speed
+
+CP3 (OpenMTM2 `docs/CP3_EXE_ANALYSIS.md` section 5) scales the computer trucks by its AI Speed setting, a percent from
+70 to 130. The library takes the factor (`aiSpeed / 100`, default 1) in two places, and the caller passes it for
+computer trucks only:
+
+- `AutopilotContext.aiSpeed`: `applyAutopilot` multiplies the target speed by it last, after the 17 ft/s floor and the
+  segment's speed limit;
+- `StepContext.aiSpeed`: `deliveredTorque` multiplies a computer truck's torque by it (never a human driver's).
+
 ## Crash damage
 
 `truck/damage.ts` holds the rules of `core/TruckDmg.c` (OpenMTM2 `docs/MONSTER_EXE_ANALYSIS.md`
@@ -97,6 +107,22 @@ wraps a ground sets the field on its own), and `collideTrucks(a, b, dt, rules)` 
 
 A road ground's per-truck view (`createRoadGround(...).below`) passes on the road ground's `rules`,
 else its base's.
+
+## Optional handling
+
+Three optional `Mtm2Rules` fields change the handling for a host that asks (OpenMTM2's Freestyle "Trick physics").
+Neither game has them. Left out, or at the neutral value, the step is the game's to the bit.
+
+| Field | Neutral | Effect |
+|---|---|---|
+| `airPitchControl` | 0 | With all four wheels off, the pedals pitch the truck: `(throttle - (brakeFront + brakeRear) / 2) * airPitchControl * I_pitch` lb ft, throttle nose up, brakes nose down. |
+| `airRotationDamping` | 1 | With all four wheels off, the aero damping of the roll, pitch and yaw rates (§14.7) is multiplied by this. |
+| `groundYawDamping` | 1 | With a wheel down, the aero damping of the yaw rate is multiplied by this. |
+
+Why they exist: §14.7's damping uses `q_bar` floored at its value at 150 ft/s. Below about 102 mph that damps
+pitch in the air with a time constant of about 0.55 s (about 9,100 lb ft per rad/s on 5,000 slug ft²) and roll
+with about 0.66 s, so a truck can't turn much past half a flip from a ramp's take-off rate. The pedals do nothing to
+the body in the air, and at full lock the truck circles at about 1 rad/s.
 
 ## Summit Rumble
 

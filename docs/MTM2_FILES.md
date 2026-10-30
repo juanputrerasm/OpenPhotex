@@ -89,6 +89,27 @@ trucks between records, 16 Hz) and `OpenMTM2 crush` (version 1, a count, then `t
 crushed share, 0 to 1, from that time on, which no record holds). There is no separate demo format: the game's
 debug "Load demo" and "Save demo" read and write these files, and `DEMO\DEMO1.DMO` in `STARTUP.POD` is empty.
 
+## `.mtm`: saved games (`parseMtm2SavedGame`, `writeMtm2SavedGame`, 0x41a557, 0x41ae80)
+
+A race in progress ("Saved Game Files (*.mtm)", `CRace::saveGame` and `CRace::loadGame` in RACE.CPP), CRLF text, one
+value per line: `MonsterTruckMadness 2.00` (any other first line is refused with "Invalid saved game version
+string"), the player's truck (a truck catalogue name, the TRK's file name, matched ignoring case), the race's index in
+the game's track catalogue (`CRace + 0xa548`), its laps (`+0xa54c`), the number of trucks (`+0xa0f8`) and per truck its
+catalogue name, tire cut, suspension and transfer (the Garage setup, `+0x5c`, `+0x60`, `+0x64` of its 0x88-byte race
+entry), then the weather. The rest of the file is a whole SIT as the debug "Save situation" writer (0x553230) prints
+it, which the SIT loader (0x551f90) reads back when the race resumes: the level's header with the race clock
+(`$racetime, raceStartTime, dragDebugTimer`), the live trucks under `*** Vehicles ***`, then the objects, course,
+stadium and backdrop.
+
+Each live truck record (0x4c0360) is a level's grid record with its values filled in, and one more line pair: `ipos`,
+`bvel`, `theta,phi,psi`, `p,q,r` and the axles as `%f`; `xm.gear` (`+0x58c`); `ap.autopilot,ap.cnumber`;
+`ap.speed_control,ap.course_control,ap.lasterror`; `!ap.courseToFollow`; `@damageCode` (`+0x1764`, `%u`), which a
+level's own SIT does not have; the helicopter; `^segments,laps,staged,bonusLaps,finishedRace,nextcheckpoint`
+(`+0x8f0`, `+0x8f4`, `+0x8fc`, `+0x900`, `+0x904`, `+0xfa8`); `totalracetime,fastestLap,dragTimer` (`+0xfa4`,
+`+0xfa0`, `+0x90c`); then 20 laps, each a `***Lap time***` (`+0xf50`) and 20 `*****Checkpoint times*****`
+(`+0x910`). `parseMtmSit` reads them into each truck's `state`, and the race clock line into `raceTimes`; `replaceSitVehicles` puts live trucks and the race
+clock into a level's own SIT text, and `writeMtm2Sit` writes a truck's `state` when it has one.
+
 ## `player.pro`: the drivers (`parseMtmPlayerPro`, `writeMtmPlayerPro`, 0x4ca1d0, 0x4dae90, 0x4da480)
 
 Text in the game folder, one value a line, CR LF: the version (103), the number of drivers, the selected driver

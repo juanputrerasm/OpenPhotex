@@ -143,6 +143,41 @@ export interface SitTruck {
   positionFt?: [number, number, number];
   /** `!ap.courseToFollow`: the course this vehicle drives, 0 the primary and 1..4 the extended ones. */
   courseToFollow?: number;
+  /**
+   * The record's motion and race state (MONSTER.EXE's writer, 0x4c0360): zero in a level's own SIT, a race in
+   * progress in a saved game's. Null where the record has no `bvel` line (MTM1, CPR).
+   */
+  state?: SitTruckState | null;
+}
+
+/** A SIT truck record's live lines (0x4c0360); see `Mtm2SitTruckState` in write.ts for each field. */
+export interface SitTruckState {
+  bvel: [number, number, number];
+  rates: [number, number, number];
+  frontAxle: [number, number];
+  rearAxle: [number, number];
+  frontOnGround: [number, number];
+  rearOnGround: [number, number];
+  gear: number;
+  autopilot: number;
+  cnumber: number;
+  apControl: [number, number, number];
+  /** Null when the record has no `@damageCode` line (a level's own SIT). */
+  damageCode: number | null;
+  heli: [number, number, number, number];
+  heliPos: [number, number, number];
+  segments: number;
+  laps: number;
+  staged: number;
+  bonusLaps: number;
+  finished: number;
+  nextCheckpoint: number;
+  totalRaceTime: number;
+  fastestLap: number;
+  dragTimer: number;
+  /** 20 laps' times and each lap's 20 checkpoint times, as many as the record has. */
+  lapTimes: number[];
+  checkpointTimes: number[][];
 }
 
 export interface SitArena {
@@ -190,6 +225,12 @@ export interface MtmSit {
   flyBy: string | null;
   /** The engine's hidden hard-track switch: the Fly-By line reads `Sonic` (MONSTER.EXE 0x551f90). */
   sonicTrack: boolean;
+  /**
+   * `$racetime, raceStartTime, dragDebugTimer`: the race clock from the countdown's start, the moment of GO and the
+   * drag timer, seconds (0 in a level's own SIT, a race in progress in a saved game's); null where the SIT has no
+   * such line.
+   */
+  raceTimes: [number, number, number] | null;
   localeName: string | null;
   /**
    * The header's file names, as written, or null where the SIT has no such line: the track's picture on the game's
@@ -344,6 +385,10 @@ export function parseMtmSit(input: Uint8Array | string, sitTitle = ""): MtmSit {
     trackName: valueAfter("!Race Track Name")?.trim() ?? null,
     flyBy: valueAfter("Track Fly-By .AVI file")?.trim() ?? null,
     sonicTrack: valueAfter("Track Fly-By .AVI file")?.trim() === "Sonic",
+    raceTimes: (() => {
+      const at = lines.findIndex((line) => line.trim().startsWith("$racetime"));
+      return at >= 0 && at + 1 < lines.length ? parseFloatTriplet(lines[at + 1]) : null;
+    })(),
     localeName: valueAfter("Race Track Locale")?.trim() ?? null,
     logoBmp: valueAfter("Track Logo .BMP file")?.trim() || null,
     mapBmp: valueAfter("Track Map .BMP file")?.trim() || null,
@@ -734,7 +779,51 @@ function parseTruckBlock(lines: string[], startIdx: number): SitTruck {
   while (end < lines.length && !lines[end].startsWith("****")) end++;
   const followIdx = indexOfLinePrefix(lines, "!ap.courseToFollow", startIdx, end);
   if (followIdx >= 0 && followIdx + 1 < lines.length) truck.courseToFollow = parseLeadingInt(lines[followIdx + 1]);
+  truck.state = parseTruckState(lines, startIdx);
   return truck;
+}
+
+/** The numbers on the line after `label` in [start, end), or null. */
+function numbersAfter(lines: readonly string[], label: string, start: number, end: number): number[] | null {
+  const at = indexOfLinePrefix(lines, label, start, end);
+  if (at < 0 || at + 1 >= lines.length) return null;
+  return lines[at + 1].split(",").map((part) => parseLeadingFloat(part));
+}
+
+/**
+ * A truck record's live lines, from its first line to the next record's delimiter or section header (the lap and
+ * checkpoint times' own star lines have no space after the stars).
+ */
+function parseTruckState(lines: readonly string[], startIdx: number): SitTruckState | null {
+  let end = startIdx;
+  while (end < lines.length && !(lines[end].trim() === "*********************************************" || /^\*\*\* \S/.test(lines[end].trim()))) end++;
+  const bvel = numbersAfter(lines, "bvel", startIdx, end);
+  if (!bvel) return null;
+  const n = (label: string, count: number) => {
+    const values = numbersAfter(lines, label, startIdx, end) ?? [];
+    return Array.from({ length: count }, (_, i) => values[i] ?? 0);
+  };
+  const damage = numbersAfter(lines, "@damageCode", startIdx, end);
+  const race = n("^segments", 6), times = n("totalracetime", 3), ap = n("ap.autopilot", 2);
+  const lapTimes: number[] = [], checkpointTimes: number[][] = [];
+  for (let i = startIdx; i < end; i++) {
+    if (lines[i].trim() !== "***Lap time***") continue;
+    lapTimes.push(parseLeadingFloat(lines[i + 1]));
+    const splits: number[] = [];
+    if (lines[i + 2]?.trim() === "*****Checkpoint times*****") for (let k = 0; k < 20 && i + 3 + k < end; k++) splits.push(parseLeadingFloat(lines[i + 3 + k]));
+    checkpointTimes.push(splits);
+  }
+  const pair = (v: number[]) => [v[0], v[1]] as [number, number];
+  return {
+    bvel: [bvel[0] ?? 0, bvel[1] ?? 0, bvel[2] ?? 0], rates: n("p,q,r", 3) as [number, number, number],
+    frontAxle: pair(n("faxle.angle", 2)), rearAxle: pair(n("raxle.angle", 2)),
+    frontOnGround: pair(n("faxle.rtire", 2)), rearOnGround: pair(n("raxle.rtire", 2)),
+    gear: n("xm.gear", 1)[0], autopilot: ap[0], cnumber: ap[1], apControl: n("ap.speed_control", 3) as [number, number, number],
+    damageCode: damage ? damage[0] >>> 0 : null,
+    heli: n("$heliTimer", 4) as [number, number, number, number], heliPos: n("heliPos", 3) as [number, number, number],
+    segments: race[0], laps: race[1], staged: race[2], bonusLaps: race[3], finished: race[4], nextCheckpoint: race[5],
+    totalRaceTime: times[0], fastestLap: times[1], dragTimer: times[2], lapTimes, checkpointTimes,
+  };
 }
 
 /** An MTM-family .LVL: the level's asset references and environment, by line. */

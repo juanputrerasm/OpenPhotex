@@ -89,6 +89,15 @@ test("engine torque curve and gains", () => {
   near(deliveredTorque(2000, 1, { human: false, autoShift: true, difficulty: 2, sonicTrack: true }), engineTorque(2000) * 1.1);
 });
 
+test("CP3 AI Speed scales computer trucks' torque only", () => {
+  const cpu = { human: false, autoShift: true, difficulty: 2, sonicTrack: true, aiSpeed: 0.7 };
+  near(deliveredTorque(2000, 1, cpu), engineTorque(2000) * 1.1 * 0.7);
+  near(deliveredTorque(2000, 1, { ...cpu, difficulty: 1, aiSpeed: 1.3 }), engineTorque(2000) * 1.3);
+  near(deliveredTorque(2000, 1, { ...cpu, difficulty: 1, aiSpeed: undefined }), engineTorque(2000));
+  const human = { human: true, autoShift: false, difficulty: 1, sonicTrack: false, aiSpeed: 1.3 };
+  near(deliveredTorque(2000, 1, human), engineTorque(2000));
+});
+
 test("gear ratios and drive force", () => {
   assert.deepEqual([1, 2, 3, 4, 5, 6].map(gearRatio), [0, -60, 0, 40.467, 24.017, 16.45]);
   // transfer * gear * T / r * split * 0.5

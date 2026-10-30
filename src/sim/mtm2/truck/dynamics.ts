@@ -25,6 +25,8 @@ export interface StepContext {
   difficulty: number;
   sonicTrack: boolean;
   dragMode?: boolean;
+  /** Community Patch 3's AI Speed for a computer truck (drivetrain.ts `deliveredTorque`). Default 1. */
+  aiSpeed?: number;
   /** The race's view of this truck, for the stuck checks (§10.3); none means no checks. */
   recovery?: RecoveryContext;
 }
@@ -155,7 +157,7 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
   }
 
   const human = ctx.human;
-  const driver = { human, autoShift: p.autoShift, difficulty: ctx.difficulty, sonicTrack: ctx.sonicTrack };
+  const driver = { human, autoShift: p.autoShift, difficulty: ctx.difficulty, sonicTrack: ctx.sonicTrack, aiSpeed: ctx.aiSpeed };
   const ratio = gearRatio(c.gear);
   const r = p.tireRadiusFt;
   const frames: (TireFrame | null)[] = [null, null, null, null];
@@ -262,10 +264,15 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
   if (qbar < 26.74125) qbar = 26.74125;
   const L = p.hubs[0][2] * 2;
   const [pRoll, qPitch, rYaw] = s.rates;
+  // The host's optional handling (constants.ts `Mtm2Rules`); with none of it set this is the game's, to the bit.
+  const rules = ctx.ground.rules;
+  const aloft = s.tires.every((t) => !t.onGround);
+  const rotDamp = aloft ? rules?.airRotationDamping ?? 1 : 1;
+  const yawDamp = aloft ? rotDamp : rules?.groundYawDamping ?? 1;
   const moment = [
-    -0.2 * qPitch * AREA[1] * L * qbar,
-    -0.4 * rYaw * AREA[0] * L * qbar,
-    -0.2 * pRoll * AREA[0] * L * qbar,
+    -0.2 * qPitch * AREA[1] * L * qbar * rotDamp,
+    -0.4 * rYaw * AREA[0] * L * qbar * yawDamp,
+    -0.2 * pRoll * AREA[0] * L * qbar * rotDamp,
   ];
 
   // Hull contacts (§14.12), from gravity and drag so far.
@@ -293,6 +300,9 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
   }
   moment[0] += s.impulseMoment / dt;
   s.impulseMoment = 0;
+  // Optional: the pedals pitch the truck in the air, throttle nose up (a negative pitch moment), brakes nose down.
+  const airPitch = aloft ? rules?.airPitchControl ?? 0 : 0;
+  if (airPitch !== 0) moment[0] -= (c.throttle - 0.5 * (c.brakeFront + c.brakeRear)) * airPitch * p.inertia[1];
 
   // Integration (§14.9): rates and velocity first, then position and orientation.
   const [I1, I2, I3] = p.inertia; // roll (z), pitch (x), yaw (y)

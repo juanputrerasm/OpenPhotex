@@ -94,6 +94,23 @@ test("a CPU truck laps the course on autopilot, staying near the line", () => {
   assert.ok(top > 40, `top speed ${top}`);
 });
 
+test("CP3 AI Speed multiplies the target last, after the 17 ft/s floor", () => {
+  const { ground, course } = rectangleWorld();
+  const params = S.createTruckParams({ scrapePoints: HULL }, { difficulty: S.DIFFICULTY.INTERMEDIATE });
+  const base = { course, height: (x: number, z: number) => ground.height(x, z), dt: 1 / 60, difficulty: 1 };
+  const targetWith = (aiSpeed?: number) => {
+    const s = S.createTruckState([1000, 106.2, 1150], 0, S.GEAR.FIRST, params);
+    S.advanceAutopilotSegment(s, base);
+    S.applyAutopilot(s, params, { ...base, aiSpeed });
+    return s.ap.target;
+  };
+  const plain = targetWith();
+  assert.ok(plain >= 17);
+  near(targetWith(1), plain, 1e-12);
+  near(targetWith(0.7), plain * 0.7, 1e-9);
+  near(targetWith(1.3), plain * 1.3, 1e-9);
+});
+
 // Traffic and the time to the segment's end (§14.24, §14.25).
 
 function twoTrucks() {

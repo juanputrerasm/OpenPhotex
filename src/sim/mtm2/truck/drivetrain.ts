@@ -6,7 +6,8 @@
     tire's forward speed (at least 800 rpm); in the air from the wheel's spin, at least
     throttle × limit, wound down by the brake.
   - Torque follows the curve, times the throttle, times 1.1 for computer trucks on Professional
-    on a Sonic track or 0.9 for a human driver with automatic shifting.
+    on a Sonic track or 0.9 for a human driver with automatic shifting. Community Patch 3's AI
+    Speed multiplies computer trucks' torque too (OpenMTM2 docs/CP3_EXE_ANALYSIS.md 5).
   - The gearbox shifts instantly: automatically between first and third gear at 7000 and 3500
     rpm, or on request with manual shifting.
 */
@@ -74,12 +75,15 @@ export interface TorqueDriver {
   autoShift: boolean;
   difficulty: number;
   sonicTrack: boolean;
+  /** Community Patch 3's AI Speed (OpenMTM2 docs/CP3_EXE_ANALYSIS.md 5): computer trucks' torque times it. Default 1. */
+  aiSpeed?: number;
 }
 
 /** Engine torque delivered at this rpm and throttle, with the driver gains, lb ft. */
 export function deliveredTorque(rpm: number, throttle: number, driver: TorqueDriver): number {
   let torque = throttle * engineTorque(rpm);
   if (!driver.human && driver.difficulty === DIFFICULTY.PROFESSIONAL && driver.sonicTrack) torque *= 1.1;
+  if (!driver.human && driver.aiSpeed !== undefined && driver.aiSpeed !== 1) torque *= driver.aiSpeed;
   if (driver.human && driver.autoShift) torque *= 0.9;
   return torque;
 }

@@ -57,6 +57,11 @@ export interface AutopilotContext {
   rubberBand?: boolean;
   /** Every truck in the race, this one included, for traffic (§14.25); none, no traffic. */
   traffic?: readonly TrafficTruck[];
+  /**
+   * Community Patch 3's AI Speed for a computer truck (OpenMTM2 docs/CP3_EXE_ANALYSIS.md 5): the
+   * target speed is multiplied by it last, after the 17 ft/s floor and the speed limit. Default 1.
+   */
+  aiSpeed?: number;
 }
 
 /**
@@ -287,6 +292,7 @@ export function applyAutopilot(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: Autop
   if (seg.ctype === 1 && (seg as CourseStraight).speedLimit >= 10 && (seg as CourseStraight).speedLimit < target) {
     target = (seg as CourseStraight).speedLimit;
   }
+  if (ctx.aiSpeed !== undefined && ctx.aiSpeed !== 1) target *= ctx.aiSpeed;
   const u = 1.2 * fdt * (target - predicted);
   if (u >= 0) {
     ctl.throttle = Math.min(u, 1);
