@@ -39,9 +39,17 @@ test("terrain surface: the cell's CLR texture, then water at or below the level"
   assert.equal(terrainSurfaceValue(terrain, map, 1, 1, 9.5), 712);
   assert.equal(terrainSurfaceValue(terrain, map, 1, 1, 10), 1300);
   assert.equal(terrainSurfaceValue(terrain, map, 1, 1, 12, true), 800);
-  // No water: ground at exactly 0 ft still reads deep water, as in the game.
+  // Ground at exactly 0 ft is Default (0x502210 returns 3; 0x503060 reads past its table), with water over it or not,
+  // whatever its texture: TD's River Run's river bed under a 1 ft level drags nothing in the game.
   const flat = level(0, 1);
-  assert.equal(terrainSurfaceValue(flat.terrain, createSurfaceMap(flat.clr, new Int32Array([0, 200])), 5, 5, null), 1300);
+  const flatMap = createSurfaceMap(flat.clr, new Int32Array([0, 200]));
+  assert.equal(terrainSurfaceValue(flat.terrain, flatMap, 5, 5, null), 0);
+  assert.equal(terrainSurfaceValue(flat.terrain, flatMap, 5, 5, 1), 0);
+  // In Snow the ground is raised to the level first: no longer 0, it is ice.
+  assert.equal(terrainSurfaceValue(flat.terrain, flatMap, 5, 5, 1, true), 800);
+  // Off the flat bed, between a corner at 0 and one at 2 ft, ground under the level is deep water.
+  const bank = createTerrain(new Uint8Array(65536).fill(0).map((_, i) => (i % 256 === 11 ? 1 : 0)));
+  assert.equal(terrainSurfaceValue(bank, flatMap, 10 * 32 + 16, 5, 1), 1300);
   // A texture past the table reads 0.
   const far = level(5, 40);
   assert.equal(terrainSurfaceValue(far.terrain, createSurfaceMap(far.clr, new Int32Array(2)), 5, 5, null), 0);

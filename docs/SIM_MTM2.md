@@ -59,7 +59,10 @@ Where the original does something surprising, the code does it too and the sourc
 - keyboard rates run at about half their stored values (the frame time is scaled by 0x7fff / 0x10000);
 - without automatic shifting, releasing the accelerator keeps the throttle;
 - the engine rpm is pulled once per tire per step, four times;
-- ground at exactly the water level reads deep water, even on a level with no water (level 0);
+- ground at exactly 0 ft (in 1/256 ft, floored; in Snow after the bed is raised to the water level) is Default,
+  surface 0, whatever its texture and whether or not water is over it: the game sets that height apart (`0x502210`
+  returns 3) and reads its type past the end of its table, into memory that is always zero (`0x503060`);
+- ground above 0 and at or below the water level reads deep water;
 - an axis-aligned line in the course intersection takes the game's shortcut;
 - the two-contact support split is the reverse of the lever rule, and sliding friction uses
   |vt + v|;
