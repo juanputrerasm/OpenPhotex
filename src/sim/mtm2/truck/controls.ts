@@ -42,6 +42,9 @@ export interface ControlState {
   rearSteer: number;
   gear: number;
   shiftRequest: number;
+  /** Optional handling (not the game's): the automatic box takes shift requests too, then holds the gear (drivetrain.ts). */
+  autoOverride?: boolean;
+  shiftHold?: boolean;
   /** The steering exponent from the previous frame. */
   steerExponent: number;
 }

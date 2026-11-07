@@ -142,7 +142,7 @@ export {
 } from "./mtm/level-palette.ts";
 export {
   writeMtm2Sit, writeMtm2Lvl, writeTexList, writeTty, writeEmptyList, emptyGroundBoxGrids, buildMtm2Lte, writeMtm2Trk,
-  sitTruckLines, replaceSitVehicles,
+  sitTruckLines, replaceSitVehicles, mtm2SitFromParsed,
 } from "./mtm/write.ts";
 export { MTM2_SAVED_GAME_HEADER, parseMtm2SavedGame, writeMtm2SavedGame } from "./mtm/saved-game.ts";
 export type { Mtm2SavedGame, Mtm2SavedTruck } from "./mtm/saved-game.ts";
@@ -212,7 +212,7 @@ export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 
 /** The library version, as published in package.json. */
-export const VERSION = "1.5.2";
+export const VERSION = "1.6.0";
 export { parseMtmPlayerPro, writeMtmPlayerPro, newMtmDriver, PLAYER_PRO_VERSION } from "./mtm/player-pro.ts";
 export type { MtmDriver, MtmPlayerPro } from "./mtm/player-pro.ts";
 export { parseMtmHighScores, writeMtmHighScores, decipherHighScores, encipherHighScores, HIGH_SCORES_FILE } from "./mtm/high-scores.ts";

@@ -33,6 +33,8 @@ export interface EvoAiLine {
   lapTime: string;
   /** (x, height, z), in .SIT axes. */
   points: [number, number, number][];
+  /** Each sample's recorded speed, ft/s (EVO2_EXE_ANALYSIS.md 12); NaN where a sample has none. */
+  speeds: number[];
 }
 
 /** One AI line file: its header fields and the recorded positions, in .SIT axes. */
@@ -40,16 +42,22 @@ export function parseEvoAiLine(bytes: Uint8Array): EvoAiLine {
   const lines = new TextDecoder("latin1").decode(bytes).split(/\r?\n/).map((line) => line.trim());
   const header: Record<string, string> = {};
   const points: [number, number, number][] = [];
+  const speeds: number[] = [];
+  // A sample is its position, then its speed, then the checkpoint it heads for.
+  let afterPosition = false;
   for (const line of lines) {
     const field = /^([A-Za-z ]+):\s*(.*)$/.exec(line);
     if (field && points.length === 0) { header[field[1].trim()] = field[2].trim(); continue; }
     const m = POSITION.exec(line);
-    if (m) points.push([Number(m[1]), Number(m[2]), Number(m[3])]);
+    if (m) { points.push([Number(m[1]), Number(m[2]), Number(m[3])]); speeds.push(NaN); afterPosition = true; continue; }
+    if (afterPosition && /^-?\d+(?:\.\d+)?$/.test(line)) speeds[speeds.length - 1] = Number(line);
+    afterPosition = false;
   }
   return {
     driver: header["Driver Name"] ?? "",
     lapTime: header["Lap Time"] ?? "",
     points,
+    speeds,
   };
 }
 

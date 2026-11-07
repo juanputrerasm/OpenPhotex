@@ -19,6 +19,7 @@ import { eulerToMatrix, wrapPi } from "../mtm2/math.ts";
 import { surfaceType } from "../mtm2/world/surface.ts";
 import { holdRule, integrateOrientation, probeContacts, tireFrame, tireGeometry, type StepContext, type TireFrame } from "../mtm2/truck/dynamics.ts";
 import { solveHullContacts, type ContactResult } from "../mtm2/truck/contacts.ts";
+import { holdAfterShift } from "../mtm2/truck/drivetrain.ts";
 import { helicopterStep, updateStuck } from "../mtm2/truck/recovery.ts";
 import { createTruckState, type Mtm2TruckState } from "../mtm2/truck/state.ts";
 import type { Mtm2TruckParams, Triplet } from "../mtm2/truck/params.ts";
@@ -180,8 +181,11 @@ const dot = (a: ArrayLike<number>, b: ArrayLike<number>) => a[0] * b[0] + a[1] *
 function stepGearbox(s: CprTruckState, p: CprTruckParams): void {
   const c = s.controls;
   const top = GEAR.FIRST + p.cpr.gears.length - 1;
-  if (p.autoShift) {
-    if (c.gear >= GEAR.FIRST && c.gear < top && s.rpm >= CPR_CAR.upshiftRpm) c.gear++;
+  // A request in automatic (`autoOverride`, the port's): taken as the manual box would, then held to the limiter.
+  const taken = p.autoShift && !!c.autoOverride && c.shiftRequest !== 0;
+  const gearBefore = c.gear;
+  if (p.autoShift && !taken) {
+    if (c.gear >= GEAR.FIRST && c.gear < top && s.rpm >= (c.shiftHold ? Math.max(CPR_CAR.upshiftRpm, CPR_CAR.revLimit - 250) : CPR_CAR.upshiftRpm)) c.gear++;
     else if (c.gear > GEAR.FIRST && s.rpm < DOWNSHIFT_RPM) {
       // Down only where the lower gear stays under the limit.
       const lower = cprGearRatio(p, c.gear - 1), now = cprGearRatio(p, c.gear);
@@ -191,6 +195,7 @@ function stepGearbox(s: CprTruckState, p: CprTruckParams): void {
     if (c.shiftRequest > 0 && c.gear < top) c.gear++;
     if (c.shiftRequest < 0 && c.gear > GEAR.PARK) c.gear--;
   }
+  holdAfterShift(c, taken, p.autoShift && !taken, gearBefore);
   c.shiftRequest = 0;
   if (c.gear === GEAR.PARK) { c.brakeFront = 1; c.brakeRear = 1; }
 }

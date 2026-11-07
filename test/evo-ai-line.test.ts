@@ -21,6 +21,8 @@ test("an AI line file reads as its driver, lap time and positions", () => {
   assert.equal(line.lapTime, "01m48s07ms");
   // Speed and checkpoint lines are single numbers and are not taken for positions.
   assert.deepEqual(line.points, [[3197.96, 167.77, 4351.55], [3194.17, 167.77, 4363.26]]);
+  // The line after a position is its speed, ft/s.
+  assert.deepEqual(line.speeds, [139.59, 137.53]);
 });
 
 test("AI line files are found by class, line and track", () => {

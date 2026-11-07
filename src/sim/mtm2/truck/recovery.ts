@@ -46,6 +46,8 @@ export interface RecoveryContext {
   othersInFlight?: number;
   /** +0x17a8: a Professional CPU truck lifts off instead of being reset in place. */
   proLift?: boolean;
+  /** MTM1's rule (MTM1_MONSTER_EXE_ANALYSIS.md 11.2): a CPU truck that misses a checkpoint is lifted on every difficulty. */
+  missedLift?: boolean;
 }
 
 export type RecoveryAction = "reset" | "lift" | "cpuReset" | null;

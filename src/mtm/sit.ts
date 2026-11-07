@@ -277,6 +277,16 @@ export interface MtmSit {
   cylinders: { count: number; lines: string[] } | null;
   /** The "Track Longtitude, Latitude" value as written. */
   longitudeLatitude: string | null;
+  /**
+   * The saved race-state lines a level's SIT carries and no reader interprets, as written, so a writer can carry them
+   * over: `viewmode,spotd,spotp,spoth,zoom`, `controlflag, autoShift, autoStage, bothStaged, bothStagedPrev` and
+   * `stageComFlag, bonusLapFlag`. Null where the line is absent.
+   */
+  viewState: string | null;
+  controlFlags: string | null;
+  stageFlags: string | null;
+  /** `backdropType` from the `backdropType,backdropCount` line; null when the file has no *** Backdrop *** section. */
+  backdropType: number | null;
   /** What does not add up, such as a section declaring more records than it holds. */
   warnings: string[];
 }
@@ -409,6 +419,13 @@ export function parseMtmSit(input: Uint8Array | string, sitTitle = ""): MtmSit {
     trucks: parseTrucks(lines),
     cylinders: parseCylinders(lines),
     longitudeLatitude: valueAfter("Track Longtitude, Latitude")?.trim() ?? null,
+    viewState: valueAfter("viewmode,spotd,spotp,spoth,zoom")?.trim() ?? null,
+    controlFlags: valueAfter("controlflag, autoShift, autoStage, bothStaged, bothStagedPrev")?.trim() ?? null,
+    stageFlags: valueAfter("stageComFlag, bonusLapFlag")?.trim() ?? null,
+    backdropType: (() => {
+      const at = indexOfLine(lines, "*** Backdrop ***");
+      return at >= 0 && at + 2 < lines.length ? parseLeadingInt(lines[at + 2]) : null;
+    })(),
     warnings: [],
   };
   const trackType = valueAfter("Track Race Type");
@@ -774,8 +791,9 @@ function parseTruckBlock(lines: string[], startIdx: number): SitTruck {
     const a = parseFloatTriplet(lines[anglesIdx + 1]);
     truck.theta = a[0]; truck.phi = a[1]; truck.psi = a[2];
   }
-  // Within this record: the next one starts at a delimiter or a section header.
-  let end = startIdx;
+  // Within this record: the next one starts at a delimiter or a section header. The player slot's record opens on
+  // its own delimiter (it follows the section header directly), which is not the end of it.
+  let end = lines[startIdx]?.startsWith("****") ? startIdx + 1 : startIdx;
   while (end < lines.length && !lines[end].startsWith("****")) end++;
   const followIdx = indexOfLinePrefix(lines, "!ap.courseToFollow", startIdx, end);
   if (followIdx >= 0 && followIdx + 1 < lines.length) truck.courseToFollow = parseLeadingInt(lines[followIdx + 1]);
@@ -795,7 +813,7 @@ function numbersAfter(lines: readonly string[], label: string, start: number, en
  * checkpoint times' own star lines have no space after the stars).
  */
 function parseTruckState(lines: readonly string[], startIdx: number): SitTruckState | null {
-  let end = startIdx;
+  let end = lines[startIdx]?.startsWith("****") ? startIdx + 1 : startIdx;
   while (end < lines.length && !(lines[end].trim() === "*********************************************" || /^\*\*\* \S/.test(lines[end].trim()))) end++;
   const bvel = numbersAfter(lines, "bvel", startIdx, end);
   if (!bvel) return null;

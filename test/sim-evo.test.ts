@@ -202,8 +202,10 @@ test("an MTM truck translated to the Evo model keeps MTM2's figures", () => {
 test("the garage's settings change the figures as the game's setters do (EVO2_PHYSICS.md 2.2)", () => {
   const spec = E.evoSpecFromMtm2({});
   const evo = { ...spec, game: 2 as const, cgOffset: null, cgModifier: [0, 0, 0] as [number, number, number], finalDrive: 4, tireCF: [2, 2, 2, 2] as [number, number, number, number], torquePct: [0.4, 0.6] as [number, number] };
-  assert.equal(E.applyEvoGarage(evo, null, 2), evo, "no garage, no change");
-  assert.deepEqual(E.applyEvoGarage(evo, { springs: null, axleRatio: null }, 2).springRate, evo.springRate, "an unset setting keeps the vehicle's own");
+  // setSprings runs for every vehicle (0x508cd0): no garage is the default setting, 0.5, never the .TRK's rate.
+  assert.deepEqual(E.applyEvoGarage(evo, null, 2).springRate, E.evoSprings(evo, 0.5, 2).springRate, "no garage: the default springs");
+  assert.deepEqual(E.applyEvoGarage(evo, { springs: null, axleRatio: null }, 2).springRate, E.evoSprings(evo, 0.5, 2).springRate, "an unset setting is the default");
+  assert.equal(E.applyEvoGarage(evo, null, 2).finalDrive, evo.finalDrive);
   // Axle ratio: (1 - s) * 1.5 + 0.25 of the final drive; 0.5 is the vehicle's own.
   assert.equal(E.applyEvoGarage(evo, { axleRatio: 0.5 }, 2).finalDrive, 4);
   assert.equal(E.applyEvoGarage(evo, { axleRatio: 0 }, 2).finalDrive, 7);
@@ -213,13 +215,21 @@ test("the garage's settings change the figures as the game's setters do (EVO2_PH
   assert.equal(E.applyEvoGarage(evo, { brakeBalance: 0.3 }, 2).brakeBalance, 0.3);
   assert.deepEqual(E.applyEvoGarage(evo, { handling: 1 }, 2).tireCF, [3.5, 3.5, 2, 2]);
   assert.deepEqual(evo.tireCF, [2, 2, 2, 2], "the vehicle's own figures are left as they were");
-  // Springs: sag = min(maxcompr) * (0.5 - 0.4 * (0.5 - s)); each axle carries its share of the sprung weight on two springs.
+  // Springs: p = 1 - s, sag = min(maxcompr) * (0.5 - 0.4 * (0.5 - p)); each axle carries its share of the sprung weight on two springs.
   const springs = E.evoSprings(evo, 0.5, 2);
   const sag = Math.min(...evo.maxCompr) * 0.5;
   const sprung = evo.dryWeightLb + evo.axleWeightLb[0] + evo.axleWeightLb[1];
   const zf = evo.wheelAnchors[0]![2], zr = evo.wheelAnchors[2]![2];
   assert.ok(Math.abs(springs.springRate[0] - sprung * (2 - zr) / (zf - zr) * 0.5 / sag) < 1e-6);
   assert.ok(Math.abs(springs.damping[1] - 3.5 * Math.sqrt(springs.springRate[1])) < 1e-9);
-  assert.ok(E.evoSprings(evo, 1, 2).springRate[0] < springs.springRate[0], "1 sags more: softer springs");
-  assert.ok(E.evoSprings(evo, 0, 2).springRate[0] > springs.springRate[0], "0 sags less: stiffer springs");
+  assert.ok(E.evoSprings(evo, 1, 2).springRate[0] > springs.springRate[0], "1 (hard) sags less: stiffer springs");
+  assert.ok(E.evoSprings(evo, 0, 2).springRate[0] < springs.springRate[0], "0 (soft) sags more: softer springs");
+  assert.equal(springs.sagFt, sag);
+  // The CG over the front right wheel's full droop: + sag + modifier + 0.25 ft (EVO2_PHYSICS.md 2).
+  const params = E.createEvoParams(E.applyEvoGarage(evo, null, 2), E.EVO2_RULES, {}, {});
+  assert.ok(Math.abs(params.cgOffset[1] - (evo.wheelAnchors[0]![1] + sag + 0.25)) < 1e-9);
+  assert.equal(E.EVO2_RULES.rollPitchDamping, -0.05);
+  assert.equal(E.EVO1_RULES.rollPitchDamping, null);
+  assert.equal(E.EVO2_RULES.twoWayCheckpoints, true);
+  assert.equal(E.EVO1_RULES.twoWayCheckpoints, false);
 });

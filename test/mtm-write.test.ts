@@ -8,7 +8,7 @@ import {
   MTM2_PALETTE_FIRST_AUTHORED, MTM2_PALETTE_WHITE_INDEX, MTM_WHEEL_KEYS, buildFogMap, buildMtm2Lte, decodeActPalette,
   decodeRawTexture, emptyGroundBoxGrids, encodeRawTexture, medianCutPalette, mtm2LevelPalette, parseMtmLvl, parseMtmSit,
   parseMtmTrkLines, parseTexList, sampleForPalette, sitWorldTriplet, truckManifestLines, writeEmptyList, writeMtm2Lvl,
-  writeMtm2Sit, writeMtm2Trk, writeTexList,
+  writeMtm2Sit, writeMtm2Trk, writeTexList, mtm2SitFromParsed,
 } from "../src/index.ts";
 import type { Mtm2SitTruck, Mtm2Trk } from "../src/index.ts";
 
@@ -257,4 +257,74 @@ test("top-crush cars: read by position, model form and size form (MONSTER.EXE 0x
   assert.deepEqual(b.sizeFt, [16, 8, 5]);
   assert.deepEqual(b.size2Ft, [10, 7, 9]);
   assert.equal(sit.boxes.filter((x) => x.crushRole).length, 4);
+});
+
+/*
+  A hand-written MTM2 SIT, laid out as the files are (TRI's six-decimal records next to a community editor's two),
+  through mtm2SitFromParsed and writeMtm2Sit: every field the reader gives comes back.
+*/
+test("mtm2SitFromParsed writes a parsed SIT back as the same level", () => {
+  const delim = "*********************************************";
+  const gridTruck = (name: string, onGround: string, follow: number) => [
+    "truckFile", name, "ipos", "3340.503906,200.00,3852.25", "bvel", "0,0,0", "theta,phi,psi", "0.00,0.00,1.570796", "p,q,r", "0,0,0",
+    "faxle.angle,faxle.steering_angle", "0,0", "faxle.rtire.on_gnd,faxle.ltire.on_gnd", onGround,
+    "raxle.angle,raxle.steering_angle", "0,0", "raxle.rtire.on_gnd,raxle.ltire.on_gnd", onGround, "xm.gear", "4",
+    "ap.autopilot,ap.cnumber", "0,1", "ap.speed_control,ap.course_control,ap.lasterror", "0,0,0", "!ap.courseToFollow", String(follow),
+    "$heliTimer,heliTheta,heliPhi,heliPsi", "0,0,0,0", "heliPos", "0,0,0", "^segments,laps,staged,bonusLaps,finishedRace,nextcheckpoint", "0,0,0,0,0,0",
+    "totalracetime,fastestLap,dragTimer", "0,0,0",
+    ...Array.from({ length: 20 }, () => ["***Lap time***", "0", "*****Checkpoint times*****", ...Array<string>(20).fill("0")]).flat(),
+  ];
+  const segment = (n: number, start: string, end: string, width: string) => [`${delim} ${n}`, "ctype,cspeed_type", "1,0", "cstart", start, "cend", end,
+    "cdec_point,cspeed,lastentry", "30.000000,0.000000,0", "&cSpeedLimit,cTrackWidth", `0.000000,${width}`];
+  const box = (ipos: string, model: string[], type: string, extra: string[] = []) => [delim, "ipos", ipos, "theta,phi,psi", "0.00,0.00,4.71",
+    ...model, "mass", "0.000000", "bvel", "0.00,0.00,0.00", "p,q,r", "0.00,0.00,0.00", "!type,flags", type, "priority", "1",
+    "@sound effect entries", "HIT.WAV", "NULL.WAV", "0,0", ...extra];
+  const lines = [
+    "TEST.lvl", "!Race Track Name", "Valpara\u00edso", "Race Track Locale", "Chile", "Track Longtitude, Latitude", "1,2",
+    "Track Logo .BMP file", "TEST.BMP", "Track Map .BMP file", "TN-SWNDR.BMP", "Track Fly-By .AVI file", "Sonic",
+    "Track Announcer .WAV file", "Track", "Track Description .TXT file", "0,0", "Track Race Type", "2", "@Redbook Audio Track", "2",
+    "!ambient sound,track length,weather mask", "14,5000.000000,65535", "viewmode,spotd,spotp,spoth,zoom", "1,2,3,4,5",
+    "$racetime, raceStartTime, dragDebugTimer", "0.000000,0.000000,0.000000", "controlflag, autoShift, autoStage, bothStaged, bothStagedPrev", "0,1,1,0,0",
+    "stageComFlag, bonusLapFlag", "0,1",
+    "*** Your Truck (Not used anymore) ***", delim, ...gridTruck("powerbig.trk", "-1,1", 0),
+    "*** Vehicles ***", "1", delim, ...gridTruck("bigfoot.trk", "0,0", 1),
+    "*** Ramps ***", "1", delim, "ipos", "2965.50,203.98,4401.00", "theta,phi,psi", "0.00,0.00,4.71", "length,width,height", "10.00,32.00,8.00",
+    "mass", "0.000000", "bvel", "0.00,0.00,0.00", "p,q,r", "0.00,0.00,0.00",
+    "*** Boxes ***", "3",
+    ...box("4033.00,288.00,4288.00", ["model", "HOUSE.BIN"], "0,0"),
+    ...box("3053.50,223.91,4704.50", ["length,width,height", "6.00,103.50,60.00"], "6,0"),
+    ...box("100.123456,50.00,200.00", ["model", "LAMP.BIN"], "12,0", ["Llight rad,hgt,r,g,b,glow,glowRad,coneLen,coneRim,coneBase,bright,aimOff", "64,8,1,1,1,1,6,125,10,3.5,1,0"]),
+    "*** Cylinders ***", "1", "a,b,c",
+    "*** Top Crush ***", "0",
+    "*** Course ***", "c1Count,course_direction", "2,0",
+    ...segment(1, "3344.50,200.00,3945.50", "3343.50,200.00,4188.50", "16.000000"),
+    ...segment(3, "3359.00,200.00,4288.00", "3360.00,200.00,4326.00", "24.000000"),
+    "@*********** Extended Course Definitions *************", "4",
+    "[Course 1] c1Count,course_direction", "0,0",
+    "[Course 2] c1Count,course_direction", "1,1", ...segment(1, "1.00,2.00,3.00", "4.00,5.00,6.00", "16.000000"),
+    "[Course 3] c1Count,course_direction", "0,0", "[Course 4] c1Count,course_direction", "0,0",
+    "*** Stadium ***", "stadiumFlag,stadiumModelName", "0,none",
+    "*** Backdrop ***", "backdropType,backdropCount", "2,1", "backdropModelName", "DROP.BIN",
+  ];
+  const sit = parseMtmSit(lines.join("\r\n") + "\r\n", "TEST.SIT");
+  assert.equal(sit.origin, "MTM2");
+  assert.equal(sit.trucks[0].courseToFollow, 0, "the player slot's course");
+  assert.deepEqual(sit.trucks[1].state?.frontOnGround, [0, 0]);
+  assert.equal(sit.viewState, "1,2,3,4,5");
+  assert.equal(sit.controlFlags, "0,1,1,0,0");
+  assert.equal(sit.stageFlags, "0,1");
+  assert.equal(sit.backdropType, 2);
+  const back = parseMtmSit(writeMtm2Sit(mtm2SitFromParsed(sit)), "TEST.SIT");
+  assert.deepEqual({ ...back, lineCount: 0 }, { ...sit, lineCount: 0 });
+});
+
+test("mtm2SitFromParsed refuses what writeMtm2Sit cannot write", () => {
+  const sit = parseMtmSit(writeMtm2Sit({
+    lvlName: "T.LVL", trackName: "T", localeName: "L", pictureBmp: "T.BMP", iconBmp: "T.BMP", descriptionTxt: "0,0",
+    yourTruck: truck(1), vehicles: [], boxes: [], course: [], extendedCourses: [],
+  }), "T.SIT");
+  assert.throws(() => mtm2SitFromParsed({ ...sit, origin: "MTM1" }), /MTM1/);
+  const sized = { positionFt: [0, 0, 0], position2Ft: [0, 0, 0], theta: 0, phi: 0, psi: 0, modelName: "", cabModelName: "",
+    sizeFt: [1, 1, 1], size2Ft: [1, 1, 1], mass: 0, bvel: [0, 0, 0], rates: [0, 0, 0] } as typeof sit.topCrush[number];
+  assert.throws(() => mtm2SitFromParsed({ ...sit, topCrush: [sized] }), /size form/);
 });

@@ -99,6 +99,12 @@ export interface GearboxState {
   gear: number;
   /** Manual request, +1 or -1, cleared by the gearbox. */
   shiftRequest: number;
+  /**
+   * Optional handling (not the game's): with the automatic box, a shift request is still taken. The chosen gear then
+   * holds (`shiftHold`) until the engine reaches its redline (up) or falls under the downshift rpm (down).
+   */
+  autoOverride?: boolean;
+  shiftHold?: boolean;
   brakeFront: number;
   brakeRear: number;
 }
@@ -119,15 +125,22 @@ export interface GearboxContext {
  * brakes on.
  */
 export function stepGearbox(box: GearboxState, ctx: GearboxContext): void {
-  const { rpm, autoShift } = ctx;
+  const { rpm } = ctx;
+  // A request in automatic (`autoOverride`): taken as the manual box would, then held.
+  const taken = ctx.autoShift && !!box.autoOverride && box.shiftRequest !== 0;
+  const autoShift = ctx.autoShift && !taken;
+  const gearBefore = box.gear;
+  // Held: up only at the rev limit (the rpm is held to ENGINE.maxRpm on the ground, so just under it).
+  const upRpm = box.shiftHold ? ENGINE.maxRpm - 1 : ENGINE.upshiftRpm;
   const up = autoShift
-    ? rpm > ENGINE.upshiftRpm && box.gear >= GEAR.FIRST && box.gear <= GEAR.SECOND
+    ? rpm > upRpm && box.gear >= GEAR.FIRST && box.gear <= GEAR.SECOND
     : box.shiftRequest > 0 && box.gear < GEAR.THIRD;
   if (up) box.gear = ctx.dragStaging && box.gear === GEAR.PARK ? GEAR.NEUTRAL : box.gear + 1;
   const down = autoShift
     ? rpm < ENGINE.downshiftRpm && box.gear >= GEAR.SECOND
     : box.shiftRequest < 0 && (box.gear > GEAR.FIRST || (box.gear > GEAR.PARK && ctx.forwardSpeed <= 0));
   if (down) box.gear = ctx.dragStaging && box.gear === GEAR.NEUTRAL ? GEAR.PARK : box.gear - 1;
+  holdAfterShift(box, taken, autoShift, gearBefore);
   box.shiftRequest = 0;
   if (box.gear === GEAR.PARK) {
     box.brakeFront = 1;
@@ -137,3 +150,9 @@ export function stepGearbox(box: GearboxState, ctx: GearboxContext): void {
 
 /** Below this speed a tire holds the truck still (static hold, §5.2). */
 export const STATIC_HOLD_SPEED = MPH_10;
+
+/** `autoOverride`'s hold: set by a taken request, ended by the automatic box's own next shift. */
+export function holdAfterShift(box: { gear: number; shiftHold?: boolean }, taken: boolean, autoShift: boolean, gearBefore: number): void {
+  if (taken) box.shiftHold = true;
+  else if (autoShift && box.gear !== gearBefore) box.shiftHold = false;
+}

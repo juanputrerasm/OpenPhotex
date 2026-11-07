@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { buildCourse, isArc, type CourseStraight } from "../src/sim/mtm2/world/course.ts";
 import {
   mtm2Sim, evoSim, parseMtmLvl, decodeClrGrid, encodeClrGrid, decodeGroundBoxes, encodeGroundBoxes,
-  parseTty, writeTty, parseAnimations, writeAnimations,
+  parseTty, writeTty, parseAnimations, writeAnimations, writeMtm2Sit, mtm2SitFromParsed,
   parseKlp, parseMtmAmbientSounds, parseMtmSun, parseLoc, parseCockpitLayout,
   parseBin,
   parseFlyScf,
@@ -179,6 +179,27 @@ test("MTM2 CLR grids, ground boxes, TTY and ANI files write back what they read"
     }
   }
   assert.ok(counts.clr >= 15 && counts.boxes >= 15 && counts.tty >= 15 && counts.ani >= 15, JSON.stringify(counts));
+});
+
+/*
+  Every stock MTM2 SIT through mtm2SitFromParsed and writeMtm2Sit reads back as the same level (lineCount aside): the
+  round trip an editor makes when it changes a level's data and writes it back.
+*/
+test("MTM2 stock SITs read back the same after mtm2SitFromParsed and writeMtm2Sit", { skip: mtm2Folder.skip }, () => {
+  let count = 0;
+  for (const name of readdirSync(mtm2Folder.path).filter((n) => /\.pod$/i.test(n))) {
+    const bytes = new Uint8Array(readFileSync(join(mtm2Folder.path, name)));
+    let pod;
+    try { pod = parsePod(bytes); } catch { continue; }
+    for (const entry of pod.entries.filter((e) => /\.SIT$/i.test(e.name))) {
+      const sit = parseMtmSit(readPodEntry(bytes, entry), entry.title);
+      if (sit.origin !== "MTM2") continue;
+      const back = parseMtmSit(writeMtm2Sit(mtm2SitFromParsed(sit)), entry.title);
+      assert.deepEqual({ ...back, lineCount: 0 }, { ...sit, lineCount: 0 }, entry.name);
+      count++;
+    }
+  }
+  assert.ok(count >= 15, `${count} MTM2 SITs`);
 });
 
 test("MTM2 terrain rows follow z: stock objects sit closer to the ground that way", { skip: mtm2Folder.skip }, () => {

@@ -243,3 +243,18 @@ test("joystick pedals: throttle forward, brake back, Reverse when stopped, first
   applyJoystick(d, { x: 0, y: 0.8 }, { ...ctx, forwardSpeed: 0, dragMode: true });
   assert.equal(d.gear, GEAR.FIRST); assert.equal(d.brakeFront, 0.8);
 });
+
+test("autoOverride: the automatic box takes a request, holds the gear to the redline, then shifts on its own again", () => {
+  const b: { gear: number; shiftRequest: number; brakeFront: number; brakeRear: number; autoOverride: boolean; shiftHold?: boolean } =
+    { gear: GEAR.SECOND, shiftRequest: -1, brakeFront: 0, brakeRear: 0, autoOverride: true };
+  const at = (rpm: number) => ({ rpm, autoShift: true, forwardSpeed: 30, brakeFront: 0, brakeRear: 0, dragStaging: false });
+  stepGearbox(b, at(6000));
+  assert.equal(b.gear, GEAR.FIRST);
+  assert.equal(b.shiftHold, true);
+  // Past the upshift rpm the gear holds; at the redline it goes up and the hold ends.
+  stepGearbox(b, at(7500)); assert.equal(b.gear, GEAR.FIRST);
+  stepGearbox(b, at(8500)); assert.equal(b.gear, GEAR.SECOND); assert.equal(b.shiftHold, false);
+  // Without autoOverride a request in automatic is ignored, as the game's.
+  const plain = { gear: GEAR.SECOND, shiftRequest: -1, brakeFront: 0, brakeRear: 0 };
+  stepGearbox(plain, at(6000)); assert.equal(plain.gear, GEAR.SECOND);
+});

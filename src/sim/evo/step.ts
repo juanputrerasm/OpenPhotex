@@ -289,7 +289,9 @@ export function stepEvoTruck(s: EvoTruckState, p: EvoTruckParams, ctx: StepConte
   const L = p.hubs[0][2] * 2;
   const [pRoll, qPitch, rYaw] = s.rates;
   const A = spec.refArea;
-  const moment = [spec.cmq * qPitch * A[1] * L * qbar, spec.cnr * rYaw * A[0] * L * qbar, spec.clp * pRoll * A[0] * L * qbar];
+  // Evo 2 forces clp and cmq to -0.05 (`rollPitchDamping`); Evo 1 keeps the .TRK's.
+  const cmq = rules.rollPitchDamping ?? spec.cmq, clp = rules.rollPitchDamping ?? spec.clp;
+  const moment = [cmq * qPitch * A[1] * L * qbar, spec.cnr * rYaw * A[0] * L * qbar, clp * pRoll * A[0] * L * qbar];
 
   // Hull contacts (§7) with Evo's friction.
   const contacts = solveHullContacts(s, p.inertia, ctx.ground, force as V3, mass, W, dt, { factor: rules.hullFrictionFactor, mu: evoSurfaceMu });

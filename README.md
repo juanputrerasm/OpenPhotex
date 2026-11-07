@@ -159,7 +159,7 @@ The writers are library functions; the command line does not write game files. E
 | `.BIN` models | `writeBin` |
 | `.RAW` with its own `.ACT` | `encodeRawTexture` |
 | `.RAW` on an existing `.ACT` | `quantizeToPalette` |
-| MTM2 `.SIT`, `.LVL`, `.TEX`, empty side files | `writeMtm2Sit`, `writeMtm2Lvl`, `writeTexList`, `writeEmptyList` |
+| MTM2 `.SIT`, `.LVL`, `.TEX`, empty side files | `writeMtm2Sit` (with `mtm2SitFromParsed` to write a parsed SIT back), `writeMtm2Lvl`, `writeTexList`, `writeEmptyList` |
 | MTM2 `.LTE` light grid and ground-box grids | `buildMtm2Lte`, `emptyGroundBoxGrids` |
 | MTM2 level palette and `FOG\<track>.MAP` | `mtm2LevelPalette`, `buildFogMap` |
 | MTM2 2.1 truck `.TRK` | `writeMtm2Trk` |

@@ -35,6 +35,18 @@ Gear numbers are MTM2's in both games (1 Park, 2 Reverse, 3 Neutral, 4 first); a
 | `defaultCgZ` | 0 | 2 ft |
 | `steerRearGripCut` | no | yes |
 | `hullFrictionFactor` | 0.5 | 1.5 |
+| `twoWayCheckpoints` (the race's `twoWay`) | no: forwards only | yes: either way through |
+| `rollPitchDamping` (over the .TRK's `clp`, `cmq`) | the .TRK's | -0.05 |
+
+`applyEvoGarage` always runs the game's `setSprings` (0x5ecba0), for every vehicle, at the
+garage's suspension setting or the default 0.5: the slider is turned round (`p = 1 - s`), the
+sag is `min(maxcompr) * (0.5 - 0.4 * (0.5 - p))`, and the .TRK's `spring_rate` is replaced.
+The CG then sits at the front right wheel's full-droop height (`static_bpos.y`) plus the sag,
+`cgModifier.y` and 0.25 ft (`createEvoParams`).
+
+The gearboxes take an optional `autoOverride` on the controls (not the game's): with the
+automatic box, a shift request is still taken and the gear held (`shiftHold`) until the engine
+reaches its limiter (redline - 250) or falls under the downshift rpm.
 
 The surface mu (`EVO_SURFACE_MU`) and tread tables (`EVO_TREAD_FACTORS`) are the same in both.
 

@@ -19,13 +19,20 @@ export interface EvoRules extends Mtm2Rules {
   steerRearGripCut: boolean;
   /** Hull friction limit's factor on the support: 0.5 (Evo 1, as MTM2), 1.5 (Evo 2, 0x667090). */
   hullFrictionFactor: number;
+  /** A checkpoint counts either way through (Evo 2, 0x53a150) or forwards only (Evo 1, 0x5150f0); the race's `twoWay`. */
+  twoWayCheckpoints: boolean;
+  /** Roll and pitch damping coefficients forced over the .TRK's clp and cmq (Evo 2 -0.05, 0x5ed4b0); null keeps the .TRK's (Evo 1). */
+  rollPitchDamping: number | null;
 }
 
 export const EVO1_RULES: EvoRules = Object.freeze({
-  ...MTM2_RULES, id: "evo1", airborneG: G, defaultCgZ: 0, steerRearGripCut: false, hullFrictionFactor: 0.5,
+  ...MTM2_RULES, id: "evo1", airborneG: G, defaultCgZ: 0, steerRearGripCut: false, hullFrictionFactor: 0.5, twoWayCheckpoints: false, rollPitchDamping: null,
 });
 export const EVO2_RULES: EvoRules = Object.freeze({
   ...MTM2_RULES, id: "evo2", airborneG: 56.3045, defaultCgZ: 2, steerRearGripCut: true, hullFrictionFactor: 1.5,
+  // A checkpoint counts driven through either way (EVO2_PHYSICS.md 12); Evo 1's only forwards.
+  twoWayCheckpoints: true,
+  rollPitchDamping: -0.05,
 });
 
 /** The rules by name: "evo1" or "evo2" (anything else is Evo 2's). */
