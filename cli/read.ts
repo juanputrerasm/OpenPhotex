@@ -18,6 +18,7 @@ import {
   parseFlyScf, parseFlySceneryObjects, parseFlyBsp, parseFlyAlt, parseFlyTex, parseFlyTyp, parseFlyRef, parseFlyAl2, findPodEntry,
   parseDfm, parseSkl, parseKfm, parseCth, parseNocturneGeo, parseNocturneFog, parseNocturneSet,
   parseNocturneThm, parseNocturneZth, parseKlp, parseMtmAmbientSounds, parseMtmSun, parseLoc, parseTrn, parseCockpitLayout, smkInfo,
+  parseWtr, parseMtm2Veg, isMtm2Veg, parseCpt, parseSrf, readTxvInfo, parseTxv, isWtr,
   type PodArchive, type PodEntry,
 } from "openphotex";
 import { CliError, EXIT, printJson, usageError } from "./output.ts";
@@ -57,6 +58,11 @@ const READERS: Record<string, { reader: string; read: (bytes: Uint8Array, name: 
   "trn": { reader: "parseTrn", read: (b) => parseTrn(b) },
   "mtm-cockpit": { reader: "parseCockpitLayout", read: (b) => parseCockpitLayout(b) },
   "evo-veg": { reader: "parseEvoVeg", read: (b, n) => parseEvoVeg(b, n) },
+  "mtm2-veg": { reader: "parseMtm2Veg", read: (b) => parseMtm2Veg(b) },
+  "mtm2-wtr": { reader: "parseWtr", read: (b) => parseWtr(b) },
+  "mtm2-txv": { reader: "readTxvInfo", read: (b) => ({ info: readTxvInfo(b), lines: parseTxv(b) }) },
+  "mtm2-cpt": { reader: "parseCpt", read: (b) => parseCpt(b) },
+  "mtm2-srf": { reader: "parseSrf", read: (b) => parseSrf(b) },
   "evo-sc": { reader: "parseEvoScript", read: (b, n) => parseEvoScript(b, n) },
   "smf": { reader: "parseSmf", read: (b, n) => parseSmf(b, n) },
   "cpr-trk": { reader: "parseCprTrk", read: (b) => parseCprTrk(b) },
@@ -159,7 +165,11 @@ function detect(name: string, bytes: Uint8Array, archive: PodArchive | null, arc
     case "LTE": return isEvoLite(bytes) ? "evo-lte" : "";
     case "TEX": return evoArchive ? "evo-tex" : archive?.format === "epd" ? "fly-tex" : "tex";
     case "TTY": return "tty";
-    case "VEG": return "evo-veg";
+    case "VEG": return isMtm2Veg(bytes) ? "mtm2-veg" : "evo-veg";
+    case "WTR": return isWtr(bytes) ? "mtm2-wtr" : "";
+    case "TXV": return "mtm2-txv";
+    case "CPT": return "mtm2-cpt";
+    case "SRF": return "mtm2-srf";
     case "SC": return "evo-sc";
     case "SMF": return isSmfModel(bytes) ? "smf" : "";
     case "TRK": return text().includes("CRaceTrack.trackCount") ? "cpr-trk" : "truck";

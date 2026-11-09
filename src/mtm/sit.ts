@@ -65,6 +65,10 @@ export interface SitBox {
    * keeps what the author typed; `light` is the engine's reading of it, for type 12 only).
    */
   lightFields?: number[];
+  /** Community Patch 4 `BOX_FOG` (type 14): the `F` block read as the engine reads it, or its defaults. Fog boxes only. */
+  fog?: SitFog;
+  /** The `F` block's data line as written, field by field, on any box that carries one. */
+  fogFields?: number[];
   /** Top-crush parts: which record they came from, and which part they are. */
   crushGroup?: number;
   crushRole?: "body" | "cab";
@@ -101,6 +105,55 @@ export function parseSitLight(line: string | null | undefined): SitLight {
     rad: Math.min(4095, Math.max(0, rad)), hgt, color: [r, g, b], glow: Math.trunc(glow), glowRad, coneLen, coneRim, coneBase,
     bright: Math.min(3.75, Math.max(0.25, Math.round(bright * 4) / 4)), aimOff,
   };
+}
+
+/**
+ * A Community Patch 4 fog volume (box type 14, never drawn as an object). Feet unless noted. The volume is w (the box's
+ * X) by l (its Z) by h, its floor `base` above the box origin; `vis` is the distance to about 95% opaque; density
+ * halves every `half` ft upward (0 uniform); `edge`, `top` and `bot` soften the sides, top and bottom; `maxOp` caps
+ * opacity (0..1); `wmask` is one bit per weather (511 all nine); `round` 0 rectangle .. 1 ellipse; `wisp` (0..1) and
+ * `wsize` (ft) the drifting wisps, moving at `wspd` ft/s along the box's heading. The colour (0..1) is darkened per
+ * weather by the engine. Traxx 1.7 places at most 50 per track; the engine tracks 64.
+ */
+export interface SitFog {
+  w: number; l: number; h: number; base: number; vis: number; color: [number, number, number];
+  half: number; edge: number; top: number; maxOp: number; wmask: number;
+  round: number; wisp: number; wsize: number; wspd: number; bot: number;
+}
+
+export const BOX_FOG = 14;
+
+/** The F block's header line, exactly as Traxx writes it (the engine reads it with an 80-character fgets). */
+export const SIT_FOG_HEADER = "Ffog w,l,h,base,vis,r,g,b,half,edge,top,maxOp,wmask,round,wisp,wsize,wspd,bot";
+
+/** The engine's defaults for a missing field (Traxx FOGDEF_*); a new Traxx object differs only in round 1, wisp 0.5. */
+const FOG_DEFAULTS: readonly number[] = [0, 0, 0, 0, 300, 0.75, 0.78, 0.82, 8, 20, 5, 1, 511, 0, 0, 40, 3, 0];
+const FOG_RANGES: ReadonlyArray<readonly [number, number] | null> = [
+  [0, 100000], [0, 100000], [0, 100000], [-10000, 10000], [1, 100000], [0, 1], [0, 1], [0, 1],
+  [0, 100000], [0, 100000], [0, 100000], [0, 1], null, [0, 1], [0, 1], [1, 100000], [0, 100000], null,
+];
+
+/** The `F` block's data line, read tolerantly (missing trailing fields keep their defaults) and clamped as Traxx's ClampFog. */
+export function parseSitFog(line: string | null | undefined): SitFog {
+  const values = [...FOG_DEFAULTS];
+  if (line) line.split(",").slice(0, values.length).forEach((part, i) => {
+    const v = i === 12 ? Number.parseInt(part, 10) : Number.parseFloat(part);
+    if (Number.isFinite(v)) values[i] = v;
+  });
+  values.forEach((v, i) => {
+    const r = FOG_RANGES[i];
+    if (r) values[i] = !(v >= r[0]) ? r[0] : v > r[1] ? r[1] : v;
+  });
+  const [w, l, h, base, vis, r, g, b, half, edge, top, maxOp, wmask, round, wisp, wsize, wspd, bot] = values as [
+    number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number];
+  return { w, l, h, base, vis, color: [r, g, b], half, edge, top, maxOp, wmask, round, wisp, wsize, wspd, bot };
+}
+
+/** The F block's data line as Traxx writes it: C's %f for every field but wmask (%d). */
+export function formatSitFogLine(fog: SitFog): string {
+  const f = (v: number) => Math.fround(v).toFixed(6);
+  return [fog.w, fog.l, fog.h, fog.base, fog.vis, ...fog.color, fog.half, fog.edge, fog.top, fog.maxOp].map(f).join(",")
+    + `,${Math.trunc(fog.wmask)},` + [fog.round, fog.wisp, fog.wsize, fog.wspd, fog.bot].map(f).join(",");
 }
 
 export interface SitCourseSegment {
@@ -542,6 +595,11 @@ function parseBoxBlock(lines: string[], blockStart: number, isRamp: boolean): Si
   const lightIdx = indexOfLinePrefix(lines, "Llight", blockStart, endIndex);
   if (lightIdx >= 0 && lightIdx + 1 < endIndex) box.lightFields = lines[lightIdx + 1].split(",").map((v) => parseLeadingFloat(v));
   if (box.type === BOX_LIGHT) box.light = parseSitLight(lightIdx >= 0 ? lines[lightIdx + 1] : null);
+
+  // Community Patch 4's fog block sits where a light block would: "Ffog w,l,h,..." then its values.
+  const fogIdx = indexOfLinePrefix(lines, "Ffog", blockStart, endIndex);
+  if (fogIdx >= 0 && fogIdx + 1 < endIndex) box.fogFields = lines[fogIdx + 1].split(",").map((v) => parseLeadingFloat(v));
+  if (box.type === BOX_FOG) box.fog = parseSitFog(fogIdx >= 0 ? lines[fogIdx + 1] : null);
 
   const ratesIdx = indexOfLinePrefix(lines, "p,q,r", blockStart, endIndex);
   if (ratesIdx >= 0 && ratesIdx + 1 < endIndex) box.rates = parseFloatTriplet(lines[ratesIdx + 1]);

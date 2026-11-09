@@ -49,7 +49,7 @@ export type { EvoTrk, EvoTrkLight, EvoTrkColor, EvoTrkSpec } from "./evo/trk.ts"
 export { parseEvoParts } from "./evo/parts.ts";
 export type { EvoPart } from "./evo/parts.ts";
 export type { Vec3 } from "./truck/common.ts";
-export { parseMtmTrkLines, MTM_WHEEL_KEYS } from "./truck/mtm-trk.ts";
+export { parseMtmTrkLines, mtmTrkCockpit, MTM_WHEEL_KEYS } from "./truck/mtm-trk.ts";
 export type { MtmTrk, MtmTrkLight, MtmTrkDialect } from "./truck/mtm-trk.ts";
 export { isCprCarLines, parseCprCarLines, CPR_WHEEL_KEYS_IN_FILE_ORDER } from "./truck/cpr-car.ts";
 export type { CprCar } from "./truck/cpr-car.ts";
@@ -102,9 +102,9 @@ export {
 export type { HeightGrid, CellSplit } from "./terrain/height.ts";
 export {
   parseMtmSit, parseMtmLvl, parseTexList, parseTty, detectSitOrigin, sitTrackTypeName, sitWorldTriplet, sitFeetTriplet,
-  BOX_LIGHT, BOX_MOVING, parseSitLight,
+  BOX_LIGHT, BOX_MOVING, parseSitLight, BOX_FOG, parseSitFog, formatSitFogLine, SIT_FOG_HEADER,
 } from "./mtm/sit.ts";
-export type { MtmSit, MtmLvl, TtyEntry, SitBox, SitCourse, SitCourseSegment, SitTruck, SitTruckState, SitArena, SitOrigin, SitLight } from "./mtm/sit.ts";
+export type { MtmSit, MtmLvl, TtyEntry, SitBox, SitCourse, SitCourseSegment, SitTruck, SitTruckState, SitArena, SitOrigin, SitLight, SitFog } from "./mtm/sit.ts";
 export { parseTvLvl, detectTvLvlOrigin, isNullAssetName, tvLvlFallbackName } from "./tv/lvl.ts";
 export type { TvLvl, TvLvlOrigin } from "./tv/lvl.ts";
 export { parseDef, defPlacementToEditor, TR_ANGLE_TO_RAD } from "./tv/def.ts";
@@ -146,8 +146,28 @@ export {
 } from "./mtm/write.ts";
 export { MTM2_SAVED_GAME_HEADER, parseMtm2SavedGame, writeMtm2SavedGame } from "./mtm/saved-game.ts";
 export type { Mtm2SavedGame, Mtm2SavedTruck } from "./mtm/saved-game.ts";
-export { parseTxv, txvValue, writeTxv } from "./mtm/txv.ts";
-export type { TxvLine } from "./mtm/txv.ts";
+export { parseTxv, txvValue, writeTxv, readTxvInfo } from "./mtm/txv.ts";
+export type { TxvLine, TxvInfo } from "./mtm/txv.ts";
+export {
+  decodeMtm2Heights, decodeMtm2HeightPng, resolveMtm2TerrainMode, parseTerrainGridKey, mtm2HeightsToFeet, mtm2EngineHeightsFt,
+  MTM2_H16_PER_FT, MTM2_RAW_LENGTH_8BIT, MTM2_RAW_LENGTH_16BIT, MTM2_RAW_LENGTH_FINE, MTM2_FINE_CELL_FT,
+} from "./mtm/heights.ts";
+export type { Mtm2Heights, Mtm2TerrainMode } from "./mtm/heights.ts";
+export { isWtr, parseWtr, writeWtr, wtrLakeAt, WTR_HEIGHT_FT, WTR_FLAG_REFLECTIVE, WTR_TILES } from "./mtm/wtr.ts";
+export type { Wtr, WtrLake, WtrWriteLake } from "./mtm/wtr.ts";
+export {
+  isMtm2Veg, parseMtm2Veg, writeMtm2Veg, vegTreeAt, vegClumpAt, VEG_UNITS_PER_FT, VEG_KIND_PLACED, VEG_KIND_GROUND,
+  VEG_FLAG_CAST_SHADOW, VEG_FLAG_FAR_SHADOW, VEG_FLAG_CROSSFADE, VEG_FLAG_FACING, VEG_COLLIDE,
+} from "./mtm/veg.ts";
+export type { Veg, VegSpecies, VegTrees, VegClumps, VegGrassTile } from "./mtm/veg.ts";
+export { parseCpt } from "./mtm/cpt.ts";
+export type { Cpt, CptPart } from "./mtm/cpt.ts";
+export { parseSrf, srfTypeOf, srfTypeCode, SRF_TYPES, SRF_TYPE_CODES, SRF_MAX_LINES } from "./mtm/srf.ts";
+export type { Srf, SrfType } from "./mtm/srf.ts";
+export { terrainSplineExpand, terrainSplineSeg, TERRAIN_SPLINE_VERSION } from "./terrain/spline.ts";
+export { isPng, decodePngSamples } from "./texture/png.ts";
+export type { PngSamples } from "./texture/png.ts";
+export { inflateRaw, inflateZlib } from "./texture/inflate.ts";
 export type {
   SitValue, SitTriple, Mtm2Sit, Mtm2SitTruck, Mtm2SitTruckState, Mtm2SitBox, Mtm2SitRamp, Mtm2SitTopCrush, Mtm2SitStadium, Mtm2SitCourseSegment,
   Mtm2Lvl, Mtm2Trk, Mtm2TrkLight,
@@ -212,7 +232,7 @@ export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 
 /** The library version, as published in package.json. */
-export const VERSION = "1.6.0";
+export const VERSION = "1.7.0";
 export { parseMtmPlayerPro, writeMtmPlayerPro, newMtmDriver, PLAYER_PRO_VERSION } from "./mtm/player-pro.ts";
 export type { MtmDriver, MtmPlayerPro } from "./mtm/player-pro.ts";
 export { parseMtmHighScores, writeMtmHighScores, decipherHighScores, encipherHighScores, HIGH_SCORES_FILE } from "./mtm/high-scores.ts";

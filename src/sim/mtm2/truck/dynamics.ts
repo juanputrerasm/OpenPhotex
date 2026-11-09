@@ -389,7 +389,8 @@ export function probeGround(
   let depth = h - y;
   let water = depth;
   const value = ground.surface(x, h + 100, z);
-  if (surfaceType(value) === 13 && ground.waterLevelFt !== null) water += ground.waterLevelFt - h;
+  const level = ground.waterLevelAt ? ground.waterLevelAt(x, z) : ground.waterLevelFt;
+  if (surfaceType(value) === 13 && level !== null) water += level - h;
   depth -= surfaceSinkFt(value);
   return { depth, normal, water, point: [x, y, z] };
 }

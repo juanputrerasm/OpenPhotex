@@ -44,3 +44,38 @@ export function writeTxv(lines: readonly TxvLine[]): Uint8Array {
   const text = lines.map((line) => `${"key" in line ? `${line.key}=${line.value}` : line.text}\r\n`).join("");
   return Uint8Array.from(text, (c) => c.charCodeAt(0) & 0xff);
 }
+
+/*
+  The keys Community Patch 4 and Traxx 1.7 give a meaning to. `formatVersion` is the highest
+  feature level the track uses: 1 classic, 2 lights or movers, 3 vegetation, 4 fog volumes,
+  5 a 16-bit terrain grid. The engine reads `terrainGrid` (classic | spline | fine) and
+  `terrainHeights` (a height PNG, at most 64 characters) to load the terrain; the rest is
+  diagnostic.
+*/
+export interface TxvInfo {
+  formatVersion: number | null;
+  tool: string | null;
+  toolVersion: string | null;
+  built: string | null;
+  legacyFallback: boolean | null;
+  hdTextures: boolean | null;
+  fogVolumes: number | null;
+  vegetation: boolean | null;
+  vegTrees: number | null;
+  vegClumps: number | null;
+  terrainGrid: string | null;
+  terrainHeights: string | null;
+}
+
+export function readTxvInfo(input: Uint8Array | string | readonly TxvLine[]): TxvInfo {
+  const lines = Array.isArray(input) ? input as readonly TxvLine[] : parseTxv(input as Uint8Array | string);
+  const str = (k: string) => txvValue(lines, k);
+  const int = (k: string) => { const v = str(k); if (v == null) return null; const n = Number.parseInt(v, 10); return Number.isFinite(n) ? n : null; };
+  const bool = (k: string) => { const n = int(k); return n == null ? null : n !== 0; };
+  return {
+    formatVersion: int("formatVersion"), tool: str("tool"), toolVersion: str("toolVersion"), built: str("built"),
+    legacyFallback: bool("legacyFallback"), hdTextures: bool("hdTextures"), fogVolumes: int("fogVolumes"),
+    vegetation: bool("vegetation"), vegTrees: int("vegTrees"), vegClumps: int("vegClumps"),
+    terrainGrid: str("terrainGrid"), terrainHeights: str("terrainHeights"),
+  };
+}

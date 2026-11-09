@@ -10,7 +10,7 @@
 */
 import type { Vec3 } from "../math.ts";
 import { rampHeightAt, type SimRamp } from "../collide/ramp.ts";
-import { groundHeightAt, groundNormalAt, type Mtm2Terrain } from "./terrain.ts";
+import { groundHeightAt, groundNormalAt, terrainWaterLevelAt, type Mtm2Terrain } from "./terrain.ts";
 import { MTM2_RULES, weatherGrip, type Mtm2Rules } from "../constants.ts";
 import { terrainSurfaceValue, type Mtm2SurfaceMap } from "./surface.ts";
 
@@ -23,6 +23,8 @@ export interface Mtm2Ground {
   surface(x: number, y: number, z: number): number;
   /** The water level in feet, or null. */
   waterLevelFt: number | null;
+  /** The water level at (x, z) where it varies (Community Patch 4 lakes); `waterLevelFt` where absent. */
+  waterLevelAt?(x: number, z: number): number | null;
   /** Weather state 0..8. */
   weather: number;
   /** This frame's listed ramps, in list order; the caller keeps it up to date. */
@@ -53,6 +55,7 @@ export function createTerrainGround(
     normal: (x, z, out) => groundNormalAt(terrain, x, z, out, snow),
     surface: (x, _y, z) => (surface ? terrainSurfaceValue(terrain, surface, x, z, waterLevelFt, snow, rules.deepWater) : 200),
     waterLevelFt,
+    waterLevelAt: terrain.lakes ? (x, z) => terrainWaterLevelAt(terrain, x, z, waterLevelFt) : undefined,
     weather,
     ramps,
     rules,

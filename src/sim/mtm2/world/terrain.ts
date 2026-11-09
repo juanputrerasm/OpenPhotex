@@ -31,6 +31,12 @@ export interface Mtm2Terrain {
    * split into triangles as the coarse grid is, by its own rows and columns, and stands in for it.
    */
   fine?: { cells: number; cellFt: number; heightsFt: Float32Array };
+  /**
+   * Community Patch 4's lakes (WORLD\<stem>.WTR, mtm/wtr.ts): a 32 ft tile's lake id (0 none, x + z * 256) and each
+   * id's surface in feet (`levelFt[id]`). On a lake tile the water level is the lake's, elsewhere the track's
+   * (OpenMTM2 docs/CP4_EXE_ANALYSIS.md 2).
+   */
+  lakes?: { tileMap: Uint8Array; levelFt: Float32Array };
 }
 
 const UNITS_PER_FT = 256;
@@ -59,6 +65,27 @@ export function createTerrainFt(heightsFt: Float32Array, waterLevelFt: number | 
     t.fine = { cells, cellFt: (CELL_FT * TERRAIN_CELLS) / cells, heightsFt: fineFt };
   }
   return t;
+}
+
+/** Give a terrain Community Patch 4 lakes: the .WTR's tile map and each lake id's surface in feet (index 0 unused). */
+export function setTerrainLakes(t: Mtm2Terrain, tileMap: Uint8Array, levelFt: Float32Array): Mtm2Terrain {
+  if (tileMap.length !== TERRAIN_CELLS * TERRAIN_CELLS) throw new RangeError("a lake tile map has 65536 tiles");
+  t.lakes = { tileMap, levelFt };
+  return t;
+}
+
+/** The lake id (0 none) of the 32 ft tile under (x, z). */
+export function terrainLakeAt(t: Mtm2Terrain, x: number, z: number): number {
+  if (!t.lakes) return 0;
+  const col = (Math.trunc(x * UNITS_PER_FT) >> 13) & MASK;
+  const row = (Math.trunc(z * UNITS_PER_FT) >> 13) & MASK;
+  return t.lakes.tileMap[row * TERRAIN_CELLS + col]!;
+}
+
+/** The water level at (x, z): a lake's surface on its tiles, else the track's water (null for none). */
+export function terrainWaterLevelAt(t: Mtm2Terrain, x: number, z: number, trackLevelFt: number | null = t.waterLevelFt): number | null {
+  const id = terrainLakeAt(t, x, z);
+  return id ? t.lakes!.levelFt[id] ?? trackLevelFt : trackLevelFt;
 }
 
 /** The four corners and fractions of the fine cell under (x, z), and whether it splits along its main diagonal. */

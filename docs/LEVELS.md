@@ -119,6 +119,30 @@ TV and Fury3 place things at 2^20 units per terrain cell and 2^15 per height ste
 
 **`decodeHbUnderground(ra2, ra3, cl1, gridSize)`** decodes Hellbender's cavern: a floor and a ceiling heightfield biased so that byte 255 is altitude 0 (`HB_UNDERGROUND_BIAS`, -255: the game's loader stores each cavern byte as `(byte - 255) << 7`; an earlier, measured value of -256 was one step off), a mask of the hollow cells grown by one so the cavern closes itself, and the floor (first) and ceiling (second) texture words split out of `.CL1`, an order the game's floor and ceiling renderers confirm. The cavern's own ground boxes are `.RA4`/`.RA5`/`.CL2`, decoded by `decodeGroundBoxes` with the bias as the height offset.
 
+### Community Patch 4 terrain grids (MTM2)
+
+Community Patch 4 (beta 0.52) and Traxx 1.7.0 add 16-bit heights. **`decodeMtm2Heights(bytes, terrainGrid)`** reads `DATA\<stem>.RAW` of an MTM2 level and **`decodeMtm2HeightPng(bytes, terrainGrid)`** the height PNG a `.TXV` names with `terrainHeights` (grey or grey + alpha, 8 or 16 bits, 256 or 1024 square; RGB and palette are refused, as the engine refuses them). Both return 1/128 ft units (`MTM2_H16_PER_FT`): feet = v / 128, 0 to 511.99 ft, the classic ceiling at a 2.4 mm step. A classic byte b is b << 8. The CP4 engine keeps only v >> 1 in signed 16 bits (1/64 ft, about 4.8 mm; OpenMTM2 docs/CP4_EXE_ANALYSIS.md), shifting after the spline expansion: **`mtm2EngineHeightsFt`** gives the heights the game drives on, `mtm2HeightsToFeet` the file's.
+
+| Height file | Mode | Surface |
+| --- | --- | --- |
+| 65,536 bytes, u8 256 x 256 | `classic8` | flat 32 ft triangles (the original game) |
+| 131,072 bytes, u16 LE 256 x 256 | `classic16` | flat 32 ft triangles |
+| the same, `terrainGrid=spline` | `spline` | expanded to 1024 x 1024 at 8 ft, rounded; trucks drive on it |
+| 2,097,152 bytes, u16 LE 1024 x 1024 | `fine` ("Full Map") | 8 ft heights as authored, rounded or sharp |
+
+The mode rules are Traxx 1.7's `ResolveTerrainMode`, written to the engine's contract: a 1024-square file is always `fine`, a 256-square one is classic by width unless the key says `spline`, and `fine` on a 256-square file falls back to classic with a warning. Any other length throws. CPR's 131,072-byte terrain has the same length at another scale, so use this only for MTM2 levels. Ground boxes, `.CLR` and `.LTE` stay 256 x 256 at 32 ft in every mode.
+
+**`terrainSplineExpand(coarse)`** is the engine's spline (terrainspline.c version 2, shared verbatim by the CP4 engine and Traxx): each 32 ft segment a monotone cubic Hermite curve with harmonic-mean tangents, sampled at quarter points with integer weights over 64, pass 1 along X on the coarse rows, pass 2 along Z on every fine column, indices wrapping at 256. The port is exact (BigInt where the products pass 2^53) and reproduces Traxx's published test vectors (`test/terrain-spline.test.ts`). Evo 2's smoothing (`sim/evo/ground.ts`) fills the same 8 ft grid but with a Catmull-Rom spline, which can overshoot; the two are related, not identical.
+
+### Community Patch 4 lakes, vegetation, fog, surfaces
+
+- **`parseWtr` / `writeWtr`** (`WORLD\<stem>.WTR`, "MWTR"): extra water bodies above the `.LVL` water (body 0). Per lake a height in 0.5 ft units, flags (1 reflective), up to 8 seed tiles, a wrapping bounding box and a tile count; then a 256 x 256 tile map (x + z * 256) of lake ids. The engine uses the map as written. `wtrLakeAt` looks a tile up.
+- **`parseMtm2Veg` / `writeMtm2Veg`** (`WORLD\<stem>.VEG`, "MVEG"; the same extension as 4x4 Evolution's text .VEG, told apart by `isMtm2Veg`): placed trees (1/256 ft positions, 1/65536 turn headings, scale x 4096) sorted by tile, grass clumps grouped by 32 ft tile, and up to 60 species with far-card model, collision and shadow flags. RULE is Traxx's planting recipe, kept as text; the engine never reads it, nor the `_V` / `_G` mask PNGs.
+- **Fog volumes** are box type 14 (`BOX_FOG`) with an `F` block after the box's sounds: the header `SIT_FOG_HEADER`, then 18 values (`parseSitFog`: missing trailing fields take the engine's defaults, values clamped as Traxx clamps them; `formatSitFogLine` writes them as C's `%f`, `wmask` as `%d`). `parseMtmSit` fills `fog` on type 14 boxes and `fogFields` on any box with a block; `writeMtm2Sit` writes `fog`.
+- **`readTxvInfo`** types the `.TXV` keys: `formatVersion` (1 classic, 2 lights or movers, 3 vegetation, 4 fog, 5 16-bit terrain), `terrainGrid`, `terrainHeights`, `fogVolumes`, `vegetation`, `vegTrees`, `vegClumps`, `legacyFallback`, `hdTextures`.
+- **`parseSrf`** (`MODELS\<model>.SRF`): `material=type` lines making a placed model a drivable surface; `*` is the default, `water2` is refused, the later of two lines wins. **`parseCpt`** (`DATA\<name>_CP.CPT`): the 3D cockpit layout (cab, eye, gauge needles, wheel, shifter, gear lamps, shift light, mirror); the meaning of each part's trailing numbers is kept as written until confirmed in the engine.
+- **`decodePngSamples`** reads PNG samples at their stored depth (browsers flatten 16-bit grey to 8 bits), with a synchronous inflate (`inflateZlib`) so the core stays portable.
+
 ## Sky
 
 Every TV, Fury3, Hellbender and MTM1 sky texture is drawn only in palette slots 240-254, which are black in every `.ACT`. The engine copies 16 colours from colour 192 of the level's sky `.ACT` into slots 240-255, so one shared sky RAW is recoloured per level. **`skyGradient(act)`** returns those 16 colours and **`skyHorizon`** the last, which the engine clears the screen to before drawing the sky.

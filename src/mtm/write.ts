@@ -13,7 +13,8 @@
 import type { Vec3 } from "../truck/common.ts";
 import { MTM_WHEEL_KEYS } from "../truck/mtm-trk.ts";
 import { encodeWindows1252 } from "../text.ts";
-import type { MtmSit, SitBox, SitCourse, SitTruck } from "./sit.ts";
+import type { MtmSit, SitBox, SitCourse, SitFog, SitTruck } from "./sit.ts";
+import { SIT_FOG_HEADER, formatSitFogLine } from "./sit.ts";
 
 const CRLF = "\r\n";
 
@@ -114,6 +115,8 @@ export interface Mtm2SitBox extends Mtm2SitRamp {
    * bright, aimOff), written after the sounds when given. Community Patch 3 reads it on type 12.
    */
   light?: readonly SitValue[];
+  /** Community Patch 4's `F` block (type 14 fog volumes), written after the sounds and any light block. */
+  fog?: SitFog;
 }
 
 /** A *** Top Crush *** record: the base model at `position`, the keyframed cab at `position2`. */
@@ -238,6 +241,7 @@ export function writeMtm2Sit(sit: Mtm2Sit): Uint8Array {
     out.push("!type,flags", `${box.type},${box.flags ?? 0}`, "priority", String(box.priority ?? 0),
       "@sound effect entries", box.hitSound ?? "NULL.WAV", box.loopSound ?? "NULL.WAV", "0,0");
     if (box.light) out.push("Llight rad,hgt,r,g,b,glow,glowRad,coneLen,coneRim,coneBase,bright,aimOff", box.light.map(num).join(","));
+    if (box.fog) out.push(SIT_FOG_HEADER, formatSitFogLine(box.fog));
   }
   out.push("*** Cylinders ***", String(sit.cylinders?.count ?? 0), ...(sit.cylinders?.lines ?? []));
   const crushes = sit.topCrush ?? [];
@@ -402,6 +406,7 @@ export function mtm2SitFromParsed(sit: MtmSit): Mtm2Sit {
       ...placement(b), type: b.type, flags: b.flags, priority: b.priority ?? 0,
       hitSound: b.hitSound ?? undefined, loopSound: b.loopSound ?? undefined,
       light: b.lightFields,
+      fog: b.fog,
     })),
     cylinders: sit.cylinders ?? undefined,
     topCrush: sit.topCrush.map((car) => ({
