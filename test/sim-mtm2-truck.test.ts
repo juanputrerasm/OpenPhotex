@@ -11,7 +11,7 @@ import {
   airTargetRpm, chaseRpm, deliveredTorque, driveForce, engineTorque, gearRatio, groundTargetRpm,
   stepGearbox, wheelSpinFromRpm,
 } from "../src/sim/mtm2/truck/drivetrain.ts";
-import { applyJoystick, applyKeyboard, createControlState, KEY_DT_SCALE, rearSteer } from "../src/sim/mtm2/truck/controls.ts";
+import { applyJoystick, applyKeyboard, createControlState, joystickSteer, KEY_DT_SCALE, rearSteer } from "../src/sim/mtm2/truck/controls.ts";
 import { createTruckState } from "../src/sim/mtm2/truck/state.ts";
 import { DIFFICULTY, GEAR } from "../src/sim/mtm2/constants.ts";
 
@@ -222,6 +222,26 @@ test("joystick: dead zone, 1.11 gain, power curve and Rookie scale on steering",
   assert.ok(Math.abs(c.steer - 0.45 * Math.pow(0.375 * 1.11, 3)) < 1e-12);
   applyJoystick(c, { x: 0.5, y: 0 }, { ...ctx, forwardSpeed: 60 });
   assert.ok(Math.abs(c.steer - 0.45 * Math.pow(0.555, 3.3)) < 1e-12);
+});
+
+test("joystick, Community Patch 3: steering response to 2, the steering range, and the Expo curve with its ease-off", () => {
+  const ctx = { dt: 1 / 60, autoShift: true, forwardSpeed: 0, dragMode: false, segments: 0 };
+  const near = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-12, `${a} vs ${b}`);
+  // Original (1998) with CP3's softest sensitivity: r = 2, e = 5; the range sets the gain (100 / 90).
+  near(joystickSteer(0.5, { ...ctx, steeringResponse: 2 }), Math.pow(0.555, 5));
+  near(joystickSteer(0.5, { ...ctx, steerRange: 90 }), Math.pow(0.5 * (100 / 90), 3));
+  near(joystickSteer(0.5, { ...ctx, steerRange: 50 }), 1);
+  // Expo: x³ blended with x by steerExpo, eased off by steerSpeedSens up to 88 ft/s (60 % at most).
+  const expo = { ...ctx, steerCurveMode: 1, steerRange: 100, steerExpo: 100, steerSpeedSens: 35 };
+  near(joystickSteer(0.5, expo), 0.125);
+  near(joystickSteer(0.5, { ...expo, steerExpo: 0 }), 0.5);
+  near(joystickSteer(0.5, { ...expo, steerExpo: 50 }), 0.5 * 0.125 + 0.5 * 0.5);
+  near(joystickSteer(-0.5, expo), 0.125);
+  near(joystickSteer(1, { ...expo, forwardSpeed: 88 }), 1 - 0.35 * 0.6);
+  near(joystickSteer(1, { ...expo, forwardSpeed: -176, steerSpeedSens: 100 }), 0.4);
+  const c = createControlState();
+  applyJoystick(c, { x: -0.5, y: 0 }, expo);
+  near(c.steer, -0.45 * 0.125);
 });
 
 test("joystick pedals: throttle forward, brake back, Reverse when stopped, first again", () => {
