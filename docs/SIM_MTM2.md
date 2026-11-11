@@ -160,7 +160,9 @@ shape cache is speed only and is not kept.
 
 **Surfaces.** `withSurfaceMeshes(ground, boxes)` gives a ground `tireSurface`, which the tire step prefers to
 `surface`: a ray from 4 ft above the point 10 ft down into the boxes' typed faces (up component at least 0.25, the
-hit nearest the point's height), the terrain where the hit is more than 1/4 ft under it and the terrain is nearer.
+hit nearest the point's height), the terrain where the hit is more than 1/4 ft under it and the terrain is nearer. Only the
+first `limit` boxes count, in their order: 64 by default, as CP4 keeps them (`MAX_SURFACE_BOXES`); a host may pass more
+(`withSurfaceMeshes(ground, boxes, { limit: Infinity })`).
 
 **Not here.** CP4's tree collisions (vegetation collide 1 and 2) are the host's walls, as before; how CP4's trunk
 cylinder meets a truck is not traced.
@@ -168,7 +170,9 @@ cylinder meets a truck is not traced.
 ## Optional handling
 
 Three optional `Mtm2Rules` fields change the handling for a host that asks (OpenMTM2's Freestyle "Trick physics").
-Neither game has them. Left out, or at the neutral value, the step is the game's to the bit.
+Neither game has them. Left out, or at the neutral value, the step is the game's to the bit. The 4x4 Evolution and
+CART Precision Racing steps (`sim/evo`, `sim/cpr`) read the same three fields from the session ground's rules, on
+their own aero damping, so a host's trick handling works under every vehicle model (`sim/mtm2/truck/trick.ts`).
 
 | Field | Neutral | Effect |
 |---|---|---|

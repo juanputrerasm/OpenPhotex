@@ -221,7 +221,8 @@ The core is environment-neutral. It takes a `Uint8Array` or `ArrayBuffer` and re
 | `parseMtmSit`, `parseMtmLvl`, `parseTexList`, `parseTty` | MTM1, MTM2 and CPR scene scripts and level files; `detectSitOrigin` tells the three apart. |
 | `parseKlp`, `parseMtmAmbientSounds`, `parseMtmSun`, `parseLoc`, `parseCockpitLayout`, `parseMod`, `renderMod`, `detectAudioFormat`, `audioSampleRate` | MTM2 loop points, ambient sounds, sun and flare, message replacements and cockpit layouts. |
 | `openSmk`, `smkInfo` | Smacker films (`.SMK`): the header, then each frame's 8-bit picture, palette and sound in order. |
-| `mtm2Sim` | The MTM2 simulation: terrain, surfaces, water, courses, checkpoints, truck parameters, controls and drivetrain ([docs/SIM_MTM2.md](docs/SIM_MTM2.md)). |
+| `mtm2Sim` | The MTM2 simulation: terrain, surfaces, water, courses, checkpoints, truck parameters, controls, drivetrain, box and truck-pair collisions, and the optional trick handling the Evo and CPR steps share ([docs/SIM_MTM2.md](docs/SIM_MTM2.md)). |
+| `cp4Sim` | Community Patch 4's physics on MTM2's step: CP4's rules, triangle collisions from a model's `.BIN` (`binCollisionSoup`), and the `.SRF` surface meshes for the tires' grip (`withSurfaceMeshes`, the first 64 boxes as CP4 keeps them, or a host's `limit`) ([docs/SIM_MTM2.md](docs/SIM_MTM2.md)). |
 | `evoSim` | The 4x4 Evolution 1 and 2 vehicle model on the MTM2 world: rules, surface and tread tables, `.TRK` figures, driveline and step ([docs/SIM_EVO.md](docs/SIM_EVO.md)). |
 | `parseCprTrk`, `parseCprTtx` | CPR's road layer and its texture list, with the cross-section schema (`CPR_POINT_NAMES`, `CPR_WALL_LAYERS`, `cprVisibleSlots`, `cprTrackIsClosed`). |
 | `parseTvLvl`, `parseDef`, `parseNavPoints`, `parseHbNavPoints`, `parsePowerups`, `parseTunnelDefs`, `parseAnimations`, `parseHbBriefing` | Terminal Velocity, Fury3 and Hellbender level files; `placementToEditor` converts their coordinates. |
@@ -230,6 +231,7 @@ The core is environment-neutral. It takes a `Uint8Array` or `ArrayBuffer` and re
 | `paletteCandidates`, `bundledPalette` | Which `.ACT` a texture should use, ranked, and the four stock METALCR2 and VGA palettes. |
 | `parseFlyScf`, `parseFlySceneryObjects`, `parseFlyQuadrant`, `parseFlyBsp`, `flyTileAt` | Fly! scenery manifests, object placements, terrain quadrants, structures and the globe tile grid. |
 | `writeBin`, `encodeRawTexture`, `writeMtm2Sit`, `writeMtm2Lvl`, `writeMtm2Trk`, `buildMtm2Lte`, `mtm2LevelPalette`, `buildFogMap` | The writers listed under [Writers](#writers). |
+| `isPng`, `decodePngSamples` | A PNG's samples without a canvas: palette images at 1, 2, 4 and 8 bits (with `PLTE` and `tRNS`), grey at 1 to 16 bits and RGB, through a portable inflate. Height PNGs stay 8 or 16-bit. |
 | `decodeTiff(bytes, name)` | An Evo 2 `.TIF` as RGBA, with `kind` `palette` (diffuse art) or `rgb` (`_BUMP` normal maps). |
 | `PodFormatError` | Has `.code` (`TOO_SMALL`, `BAD_ENTRY_COUNT`, `DIRECTORY_OUT_OF_BOUNDS`, `BAD_ENTRY_NAME`, `ENTRY_OUT_OF_BOUNDS`) and `.entryIndex`. |
 | `PodWriteError` | Has `.code` (`BAD_ENTRY_COUNT`, `BAD_NAME`, `NAME_TOO_LONG`, `DUPLICATE_NAME`, `BAD_PALETTE`, `BAD_TEXT`, `TOO_LARGE`) and `.entryIndex`. |

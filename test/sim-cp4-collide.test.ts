@@ -183,3 +183,16 @@ test("SRF grip: a typed deck's surface for the tires, the terrain where the deck
   deck.shape!.surfaceTypes.fill(C.UNTYPED_SURFACE);
   assert.equal(ground.tireSurface!(500, 111, 500), 200);
 });
+
+test("SRF grip: CP4 counts the first 64 surface boxes; a host may lift the limit", () => {
+  const decks = Array.from({ length: 65 }, (_, i) => {
+    const deck = levelBox([200 + (i % 9) * 60, 110, 200 + Math.floor(i / 9) * 60], [20, 2, 20]);
+    deck.shape!.surfaceTypes = new Int16Array(12).fill(800); // ice
+    return deck;
+  });
+  const last = decks[64]!.pos;
+  const cp4 = C.withSurfaceMeshes(S.createTerrainGround(S.createTerrain(new Uint8Array(65536).fill(50)), null, 0, null, C.CP4_RULES), decks);
+  assert.equal(cp4.tireSurface!(last[0], 111, last[2]), 200);
+  const all = C.withSurfaceMeshes(S.createTerrainGround(S.createTerrain(new Uint8Array(65536).fill(50)), null, 0, null, C.CP4_RULES), decks, { limit: Infinity });
+  assert.equal(all.tireSurface!(last[0], 111, last[2]), 800);
+});

@@ -18,6 +18,7 @@ import { solveHullContacts, type ContactResult } from "./contacts.ts";
 import { fluidAreas } from "./water-drag.ts";
 import { objectSurfaceValue, tireOnObject } from "./object-support.ts";
 import { helicopterStep, updateStuck, type RecoveryContext } from "./recovery.ts";
+import { trickDamping, trickPitchMoment } from "./trick.ts";
 
 export interface StepContext {
   ground: Mtm2Ground;
@@ -282,8 +283,7 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
   const L = p.hubs[0][2] * 2;
   const [pRoll, qPitch, rYaw] = s.rates;
   const aloft = s.tires.every((t) => !t.onGround);
-  const rotDamp = aloft ? rules?.airRotationDamping ?? 1 : 1;
-  const yawDamp = aloft ? rotDamp : rules?.groundYawDamping ?? 1;
+  const [rotDamp, yawDamp] = trickDamping(rules, aloft);
   const moment = [
     -0.2 * qPitch * AREA[1] * L * qbar * rotDamp,
     -0.4 * rYaw * AREA[0] * L * qbar * yawDamp,
@@ -316,8 +316,7 @@ export function stepTruck(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: StepContex
   moment[0] += s.impulseMoment / dt;
   s.impulseMoment = 0;
   // Optional: the pedals pitch the truck in the air, throttle nose up (a negative pitch moment), brakes nose down.
-  const airPitch = aloft ? rules?.airPitchControl ?? 0 : 0;
-  if (airPitch !== 0) moment[0] -= (c.throttle - 0.5 * (c.brakeFront + c.brakeRear)) * airPitch * p.inertia[1];
+  moment[0] += trickPitchMoment(rules, aloft, c.throttle, c.brakeFront, c.brakeRear, p.inertia[1]);
 
   // Integration (§14.9): rates and velocity first, then position and orientation.
   const [I1, I2, I3] = p.inertia; // roll (z), pitch (x), yaw (y)

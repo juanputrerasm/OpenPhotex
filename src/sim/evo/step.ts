@@ -25,6 +25,7 @@ import {
 } from "./driveline.ts";
 import type { EvoTruckParams } from "./params.ts";
 import { evoSurfaceMu, evoTreadFactor } from "./rules.ts";
+import { trickDamping, trickPitchMoment } from "../mtm2/truck/trick.ts";
 
 export interface EvoState {
   /** Wheelspin per tire, FR, FL, RR, RL (tire +0x11c). */
@@ -291,7 +292,9 @@ export function stepEvoTruck(s: EvoTruckState, p: EvoTruckParams, ctx: StepConte
   const A = spec.refArea;
   // Evo 2 forces clp and cmq to -0.05 (`rollPitchDamping`); Evo 1 keeps the .TRK's.
   const cmq = rules.rollPitchDamping ?? spec.cmq, clp = rules.rollPitchDamping ?? spec.clp;
-  const moment = [cmq * qPitch * A[1] * L * qbar, spec.cnr * rYaw * A[0] * L * qbar, clp * pRoll * A[0] * L * qbar];
+  // The host's trick handling (mtm2/truck/trick.ts), on the session's rules; none set is Evo's.
+  const [rotDamp, yawDamp] = trickDamping(ctx.ground.rules, airborne);
+  const moment = [cmq * qPitch * A[1] * L * qbar * rotDamp, spec.cnr * rYaw * A[0] * L * qbar * yawDamp, clp * pRoll * A[0] * L * qbar * rotDamp];
 
   // Hull contacts (§7) with Evo's friction.
   const contacts = solveHullContacts(s, p.inertia, ctx.ground, force as V3, mass, W, dt, { factor: rules.hullFrictionFactor, mu: evoSurfaceMu });
@@ -317,6 +320,7 @@ export function stepEvoTruck(s: EvoTruckState, p: EvoTruckParams, ctx: StepConte
   }
   moment[0] += s.impulseMoment / dt;
   s.impulseMoment = 0;
+  moment[0] += trickPitchMoment(ctx.ground.rules, airborne, c.throttle, c.brakeFront, c.brakeRear, p.inertia[1]);
 
   const [I1, I2, I3] = p.inertia;
   const clamp13 = (v: number) => (v > 13 ? 13 : v < -13 ? -13 : v);

@@ -233,7 +233,7 @@ export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 
 /** The library version, as published in package.json. */
-export const VERSION = "1.7.0";
+export const VERSION = "1.7.1";
 export { parseMtmPlayerPro, writeMtmPlayerPro, newMtmDriver, PLAYER_PRO_VERSION } from "./mtm/player-pro.ts";
 export type { MtmDriver, MtmPlayerPro } from "./mtm/player-pro.ts";
 export { parseMtmHighScores, writeMtmHighScores, decipherHighScores, encipherHighScores, HIGH_SCORES_FILE } from "./mtm/high-scores.ts";
