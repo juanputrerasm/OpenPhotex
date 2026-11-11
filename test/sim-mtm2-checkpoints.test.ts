@@ -5,8 +5,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildCheckpoints, checkpointCrossingTime, pointInCheckpointBox, speedThroughCheckpoint,
-  withinCheckpointReach,
+  withinCheckpointReach, CHECKPOINT_FOOTPRINT_TYPE, checkpointFootprintType, inCheckpointFootprint,
 } from "../src/sim/mtm2/world/checkpoints.ts";
+import { listedByComputerTruck } from "../src/sim/mtm2/collide/box.ts";
 import { parseMtmSit } from "../src/index.ts";
 
 const near = (a: number, b: number, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
@@ -86,4 +87,34 @@ test("SIT trucks carry raw feet", () => {
   const grid = sit.trucks.filter((t) => !t.playerSlot);
   assert.ok(grid.length >= 1);
   assert.deepEqual(grid[0].positionFt, [8179.5, 106, 3383.3125]);
+});
+
+test("type 0 boxes in a checkpoint's footprint become type 11 (full width and length, gate frame, no height)", () => {
+  // Gate turned a quarter (psi = pi/2): its x (width 100) runs along world -z, its z (length 20) along world +x.
+  const cps = buildCheckpoints([cpBox(100, 100, Math.PI / 2)]);
+  const at = (x: number, y: number, z: number, type = 0) => checkpointFootprintType({ type, positionFt: [x, y, z] }, cps);
+  assert.equal(CHECKPOINT_FOOTPRINT_TYPE, 11);
+  assert.equal(at(115, 50, 100), 11);
+  // Along the length: 25 ft is past the full length (20), though inside the width.
+  assert.equal(at(125, 50, 100), 0);
+  // Across: the full width (100), not half of it.
+  assert.equal(at(100, 50, 160), 11);
+  assert.equal(at(100, 50, 205), 0);
+  // The test is strict, and the height is not tested.
+  assert.equal(at(120, 50, 100), 0);
+  assert.equal(at(100, 5000, 100), 11);
+  // Only type 0 boxes change.
+  assert.equal(at(100, 50, 100, 1), 1);
+  assert.equal(checkpointFootprintType({ type: 0 }, cps), 0);
+  assert.equal(checkpointFootprintType({ type: 0, positionFt: [100, 50, 100] }, []), 0);
+  assert.ok(inCheckpointFootprint(cps[0].gate, [100, 50, 100]));
+});
+
+test("a computer truck does not bring in type 11 or model-less boxes, unless in a network game", () => {
+  assert.ok(listedByComputerTruck(0, true));
+  assert.ok(listedByComputerTruck(10, true));
+  assert.ok(!listedByComputerTruck(11, true));
+  assert.ok(!listedByComputerTruck(0, false));
+  assert.ok(listedByComputerTruck(11, true, 1));
+  assert.ok(listedByComputerTruck(0, false, 1));
 });

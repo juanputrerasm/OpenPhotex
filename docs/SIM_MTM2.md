@@ -36,7 +36,7 @@ plain arrays and objects, so a state can be posted between workers or saved as i
 | `world/surface.ts` | texture to `.TTY` type, water below the level, friction, drag density, tire grip |
 | `world/water.ts` | the water level and its 8 s, +-1 ft bob |
 | `world/course.ts` | the driven course: SIT straights plus the arcs, bank and corner speeds the game builds at load time |
-| `world/checkpoints.ts` | checkpoint gates and their enlarged detectors, the pretest, direction and crossing-time rules |
+| `world/checkpoints.ts` | checkpoint gates and their enlarged detectors, the pretest, direction and crossing-time rules; the footprint rule that makes a type 0 box inside a gate's full width and length type 11 (`checkpointFootprintType`, retail 0x552a93, CP4 0x1403ba223, not in Summit Rumble), which a computer truck does not bring into the object list (`listedByComputerTruck` in `collide/box.ts`, retail 0x554802, CP4 0x1403b39c0) |
 | `truck/params.ts` | per-truck constants, the 11.6 ft wheelbase clamp, springs from sag, transfer ratio, grip and torque gains |
 | `truck/state.ts` | the dynamic state |
 | `truck/controls.ts` | keyboard pedals and steering, including automatic Reverse |
@@ -47,6 +47,13 @@ plain arrays and objects, so a state can be posted between workers or saved as i
 | `truck/contacts.ts` | hull contacts: support split for 1 to 4 contacts, recovery, friction |
 | `truck/recovery.ts` | the stuck timer, the player reset, the helicopter lift-off and flight, the Helicopter key |
 | `truck/water-drag.ts` | `fluidAreas`: density times area per body axis from submerged wheels and hull faces, the rest at air density; the splash flag |
+| `truck/object-support.ts` | the game's in-water rule for the sounds (`inWaterForSound`, retail 0x41bbd0: a hub under the water there, or a tire on the ground on 300 or 1300); and a host choice that is not the game's, StepContext `dryOnObjects` (OpenMTM2's): a tire held up by anything but the terrain reads Default (0) in place of the terrain's water or deep water (`tireOnObject`, `objectSurfaceValue`) |
+| `collide/truck-pair.ts` | what the truck-box pair tests share: the contact record, the pushable force law, last step's hubs |
+| `../cp4/rules.ts` | Community Patch 4's rules (`CP4_RULES`, `CP4_CLASSIC_RULES`, `cp4Substeps`) |
+| `../cp4/coll-shape.ts` | CP4's collision shapes: k-DOP hull test, grid, ray, tire-cylinder and point queries |
+| `../cp4/truck-tri.ts` | CP4's truck against a box's triangles: hull points, the nine-spoke support, cylinder and hold, walls, phantom corners |
+| `../cp4/surface-mesh.ts` | CP4's .SRF grip: the typed model face under a tire (`withSurfaceMeshes`, `Mtm2Ground.tireSurface`) |
+| `../../model/coll-soup.ts` | a .BIN's faces as a collision triangle soup |
 
 A step is `applyKeyboard` (or the autopilot), `stepTruck`, then (after collisions)
 `postStepTruck`. Still to come, in OpenMTM2's plan order: ground boxes and ramps in
@@ -110,6 +117,53 @@ wraps a ground sets the field on its own), and `collideTrucks(a, b, dt, rules)` 
 
 A road ground's per-truck view (`createRoadGround(...).below`) passes on the road ground's `rules`,
 else its base's.
+
+## Community Patch 4's rules
+
+Community Patch 4 (CP4 beta 0.52, monster.exe 2.0.52.2) runs MTM2's vehicle model unchanged and adds a fixed tick,
+some clamps, computer-truck grip and a triangle collision solver (OpenMTM2 `docs/CP4_EXE_ANALYSIS.md` 10 and 11, read
+from the executable; its author published no source code). `src/sim/cp4` holds them as rules over this module:
+`CP4_RULES` (triangles, `collisionMode` 1) and `CP4_CLASSIC_RULES` (box faces, `collisionMode` 0, the clamps kept).
+Every field is optional on `Mtm2Rules`; absent is MTM2's behaviour, so MTM2 and MTM1 are unchanged to the bit.
+
+| Field | CP4 | Effect |
+|---|---|---|
+| `tickS`, `substepS` | 0xa3d / 65536 s, 0.01 s | for the host: one step per 40 ms tick, or `cp4Substeps(rules, true)` steps of 10 ms (online, or `simSubstepOffline`) |
+| `suspVelMaxFtPerSec` | 20 | the axle solve's extension rate clamped, which the damper reads |
+| `terrainComprMaxFt` | 6 | the post-step's terrain wheel penetration capped (values between 0 and 1 read 1, above 500 read 500) |
+| `restNeedsContacts` | 3 | the rest freeze needs that many ground contacts, wheels down plus `contactCount` |
+| `surfaceAtPoint` | yes | the tire's surface is asked at its bottom, and the ground's lake test uses the queried height |
+| `aiGrip` | 1.3 | a computer truck's `mu` times this, offline (`StepContext.online` false) and outside drag races |
+| `dragCpuGrip`, `dragCpuSteerSlew` | 1.5, 1.5 | in a drag race (`StepContext.dragMode`, `AutopilotContext.dragMode`): a computer truck's grip limit, and its autopilot's steering slew |
+| `sonicTireCf`, `sonicStraightBrake`, `sonicCurveSpeed` | 3, 0.45, 1.25 | the Sonic values of the grip constant (step and autopilot), the straight's brake factor and the curve speed factor |
+| `impulseCap` | yes | the hull solver's recovery capped at the force that stops the closing speed, `m max(0, -n.v) / dt` |
+| `bottomPropShare`, `smallPropRatio` | 0.4, 2 | bottoming cancels 0.4 of its usual share on a prop shorter than 2 tire radii |
+| `offCentreCollision` | yes | for the host: a box model whose vertical centre is further from its origin than its height gets its box moved onto it |
+| `collisionMode`, `triangles` | 1, `CP4_TRIANGLES` | boxes with a usable `SimBox.shape` collide by their triangles |
+
+**Triangle collision.** A level box (not a ground box, `type` not -1) whose `shape` passes `shapeUsable` (k-DOP volume of
+at least 1e-4 ft^3, more than 3 hull vertices, a grid within CP4's limits) is tested by `sim/cp4/truck-tri.ts` in place
+of the four box-face routines of `collide/truck-box.ts`: hull points 1 to 12 as rays against the triangles; the
+wheel's support from nine spokes (gate n.y > 0.5 in the truck frame, depth along body y, the wheel's circle profile,
+deepest wins), then the tire cylinder, then a three-tick hold, capped at 2 ft on small props; the tire's wall from nine
+rays (a drivable face under a supported tire is a spring, not a wall; climb blend; at most 1 ft, times 0.3 each tick);
+and the box's corners against the wheels without the phantom corners (more than 3 ft from every triangle). Box
+against box casts the mover's corners at the base's triangles (`boxOnTri`). The rest of the contact model is
+MTM2's: the deepest support wins at the tire, then the post-step and the hull solver. `collideTruckBox`,
+`collideTruckImmovableBox` and `collideBoxes` take the rules as an optional last argument; without it every box is
+a box. A tire's `supportSource` (1 terrain, 2 box or ramp, 3 triangle prop) and `propHeight` record what holds it up.
+
+**Shapes.** `binCollisionSoup` fans a .BIN's faces in the game frame, as CP4 does. CP4 also reads eight facet opcodes
+`parseBin` strides over (7, 8, 21, 26, 27, 30, 33, 56); none occurs in the 2,277 models the BIN walk was checked on.
+`buildCollShape(positions, surfaceTypes)` takes the triangles in the box's frame about its position. CP4's on-disk
+shape cache is speed only and is not kept.
+
+**Surfaces.** `withSurfaceMeshes(ground, boxes)` gives a ground `tireSurface`, which the tire step prefers to
+`surface`: a ray from 4 ft above the point 10 ft down into the boxes' typed faces (up component at least 0.25, the
+hit nearest the point's height), the terrain where the hit is more than 1/4 ft under it and the terrain is nearer.
+
+**Not here.** CP4's tree collisions (vegetation collide 1 and 2) are the host's walls, as before; how CP4's trunk
+cylinder meets a truck is not traced.
 
 ## Optional handling
 

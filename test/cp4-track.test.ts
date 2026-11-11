@@ -259,3 +259,57 @@ test("a truck names its 3D cockpit with its last two non-blank lines, COCKPIT th
   assert.equal(mtmTrkCockpit(["COCKPIT", "DATA\\X_CP.CPT"]), null, "no path");
   assert.equal(mtmTrkCockpit(["COCKPIT", "X_CP.CPT", "more"]), null, "not the last lines");
 });
+
+/**
+ * CP4's formats grow by addition only (its developers, reply_to_kmaster_online_rooms_2.md section 4): `bytes` with a
+ * newer minor version and an extra chunk of an id we do not know, its directory entry first, the data last.
+ */
+function withUnknownChunk(bytes: Uint8Array, version = 1): Uint8Array {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const headerSize = dv.getUint32(8, true), count = dv.getUint32(12, true);
+  const extra = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+  const out = new Uint8Array(bytes.length + 16 + extra.length);
+  out.set(bytes.subarray(0, headerSize));
+  out.set(bytes.subarray(headerSize), headerSize + 16);
+  const o = new DataView(out.buffer);
+  o.setUint16(6, 7, true);
+  o.setUint32(12, count + 1, true);
+  for (let i = 0; i < count; i++) {
+    const e = headerSize + 16 + i * 16;
+    o.setUint32(e + 8, o.getUint32(e + 8, true) + 16, true);
+  }
+  out.set([0x58, 0x54, 0x52, 0x41], headerSize);
+  o.setUint32(headerSize + 4, version, true);
+  o.setUint32(headerSize + 8, bytes.length + 16, true);
+  o.setUint32(headerSize + 12, extra.length, true);
+  out.set(extra, bytes.length + 16);
+  return out;
+}
+
+test("VEG and WTR readers skip a chunk they do not know and a newer minor version", () => {
+  const trees = { count: 1, position: Int32Array.from([10, 50, 20]), species: Uint16Array.from([0]), heading: Uint16Array.from([1]), scale: Uint16Array.from([4096]), tint: new Uint8Array(1), tier: new Uint8Array(1) };
+  const clumps = { count: 0, tiles: [], species: new Uint16Array(0), offset: new Uint8Array(0), y: new Int32Array(0), heading: new Uint8Array(0), scale: new Uint8Array(0), tint: new Uint8Array(0) };
+  const species = [{ model: "PINE01.BIN", farModel: "", kind: 0, collide: 1, flags: 0, trunkDiameter: 64, trunkHeight: 160 }];
+  const veg = withUnknownChunk(writeMtm2Veg({ species, trees, clumps, info: "tool=Test\r\n" }), 3);
+  const v = parseMtm2Veg(veg);
+  assert.equal(v.species[0]!.model, "PINE01.BIN");
+  assert.equal(v.trees.count, 1);
+  assert.equal(v.info.tool, "Test");
+
+  const tmap = new Uint8Array(65536); tmap[0] = 1;
+  const wtr = withUnknownChunk(writeWtr([{ height: 40, flags: 0, seeds: [{ x: 0, z: 0 }], box: { minX: 0, minZ: 0, maxX: 0, maxZ: 0 }, tileCount: 1 }], tmap));
+  const w = parseWtr(wtr);
+  assert.equal(w.lakes.length, 1);
+  assert.equal(w.lakes[0]!.height, 40);
+});
+
+test("VEG: the first directory entry of an id wins, even a bad one (Traxx VegFindChunk)", () => {
+  const trees = { count: 1, position: Int32Array.from([10, 50, 20]), species: Uint16Array.from([0]), heading: Uint16Array.from([1]), scale: Uint16Array.from([4096]), tint: new Uint8Array(1), tier: new Uint8Array(1) };
+  const clumps = { count: 0, tiles: [], species: new Uint16Array(0), offset: new Uint8Array(0), y: new Int32Array(0), heading: new Uint8Array(0), scale: new Uint8Array(0), tint: new Uint8Array(0) };
+  const species = [{ model: "PINE01.BIN", farModel: "", kind: 0, collide: 1, flags: 0, trunkDiameter: 64, trunkHeight: 160 }];
+  const bytes = writeMtm2Veg({ species, trees, clumps, info: "tool=Test\r\n" });
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  // Mark the first entry (SPEC) as a version we do not know: SPEC is then absent, as in Traxx.
+  dv.setUint32(32 + 4, 2, true);
+  assert.equal(parseMtm2Veg(bytes).species.length, 0);
+});

@@ -15,6 +15,7 @@ export * from "./world/wrap.ts";
 export {
   CHECKPOINT_TYPE, DETECTOR_WIDTH_SCALE, DETECTOR_HEIGHT_SCALE, SPHERE_PRETEST_FACTOR, buildCheckpoints,
   withinCheckpointReach, speedThroughCheckpoint, checkpointCrossingTime, pointInCheckpointBox,
+  CHECKPOINT_FOOTPRINT_TYPE, inCheckpointFootprint, checkpointFootprintType,
 } from "./world/checkpoints.ts";
 export type {
   CheckpointBox, Mtm2Checkpoint, CheckpointBoxInput, ModelExtentsFn,
@@ -27,6 +28,7 @@ export { stepTruck, postStepTruck, tireGeometry, probeGround, lateralCoefficient
 export type { StepContext } from "./truck/dynamics.ts";
 export { solveHullContacts } from "./truck/contacts.ts";
 export { fluidAreas, hullFaceWaterArea, wheelWaterAreas, SPLASH_SPEED } from "./truck/water-drag.ts";
+export { OBJECT_DRY_SURFACE, tireOnObject, objectSurfaceValue, inWaterForSound } from "./truck/object-support.ts";
 export type { FluidAreas } from "./truck/water-drag.ts";
 export * from "./truck/recovery.ts";
 export * from "./truck/damage.ts";

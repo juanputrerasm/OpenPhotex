@@ -48,6 +48,12 @@ export interface TireState {
   /** Water depth at the last wheel probe (positive in water) and that probe's world point. */
   waterDepth: number;
   waterPoint: [number, number, number];
+  /**
+   * Community Patch 4: the height of the prop holding the wheel up (0 for none), and what supports it:
+   * 0 none, 1 terrain, 2 box or ramp, 3 triangle prop, 4 top-crush (CP4_EXE_ANALYSIS.md 11.5).
+   */
+  propHeight?: number;
+  supportSource?: number;
 }
 
 export interface AxleState {

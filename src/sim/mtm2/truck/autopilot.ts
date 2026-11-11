@@ -7,7 +7,7 @@
   Traffic (`0x483600`, §14.25, passing and following other trucks) is in `traffic.ts`; the
   reversed course is not in yet.
 */
-import { ENGINE, G, INV_G } from "../constants.ts";
+import { ENGINE, G, INV_G, type Mtm2Rules } from "../constants.ts";
 import { isArc, nextSegmentIndex, orientedCourse, type CourseArc, type CourseSegment, type CourseStraight } from "../world/course.ts";
 import { gearRatio } from "./drivetrain.ts";
 import { truckWeight } from "./dynamics.ts";
@@ -50,6 +50,8 @@ export interface AutopilotContext {
   sonicTrack?: boolean;
   /** Drag mode: no 17 ft/s floor, rear steer x1.25. */
   dragMode?: boolean;
+  /** Another game's rules (constants.ts `Mtm2Rules`): Community Patch 4's Sonic values and drag steering. MTM2's when absent. */
+  rules?: Mtm2Rules;
   /** The course is driven the other way round (GOLD mode, `0x647564`). */
   reversed?: boolean;
   /** Rubber-banding (§14.23): this truck's place, and whether it is a CPU truck while the player is not first. */
@@ -210,8 +212,9 @@ export function applyAutopilot(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: Autop
   if (course.length === 0) return;
   const seg = course[s.ap.segment]!;
   const arc = isArc(seg);
-  const K = ctx.sonicTrack && ctx.difficulty === 2 ? K_SONIC : K_DEFAULT;
-  const kSlope = ctx.sonicTrack && ctx.difficulty === 2 ? SLOPE_K_SONIC : SLOPE_K_DEFAULT;
+  const sonicPro = !!ctx.sonicTrack && ctx.difficulty === 2;
+  const K = sonicPro ? ctx.rules?.sonicTireCf ?? K_SONIC : K_DEFAULT;
+  const kSlope = sonicPro ? ctx.rules?.sonicStraightBrake ?? SLOPE_K_SONIC : SLOPE_K_DEFAULT;
   const { S, E } = segmentLine(s, seg, fdt);
   const x = s.pos[0], y = s.pos[1], z = s.pos[2];
 
@@ -247,7 +250,7 @@ export function applyAutopilot(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: Autop
     let ratio = (Math.sin(bHere) + Math.cos(bHere) * K) / (Math.sin(a.bank) + Math.cos(a.bank) * K);
     const wide = Math.hypot(rx, rz) - a.radius;
     if (wide > 0) {
-      const k2 = ctx.sonicTrack ? 0.75 : 0.725;
+      const k2 = ctx.sonicTrack ? ctx.rules?.sonicCurveSpeed ?? 0.75 : 0.725;
       ratio *= Math.min(Math.sqrt(Math.max(0, (k2 * wide + a.radius) / a.radius)), 1.2);
     }
     if (ratio < 0.1) ratio = 0.1;
@@ -275,7 +278,8 @@ export function applyAutopilot(s: Mtm2TruckState, p: Mtm2TruckParams, ctx: Autop
   if (!arc) cmd *= Math.min(Math.sqrt(Math.abs(20 / s.bvel[2])), 1);
   cmd = Math.max(-0.45, Math.min(0.45, cmd));
   const ctl = s.controls;
-  ctl.steer -= (ctl.steer - cmd) * 6.66 * dt;
+  const slew = ctx.dragMode ? ctx.rules?.dragCpuSteerSlew ?? 1 : 1;
+  ctl.steer -= (ctl.steer - cmd) * 6.66 * slew * dt;
   ctl.steer = Math.max(-0.45, Math.min(0.45, ctl.steer));
   ctl.rearSteer = -ctl.steer * 0.33 * (ctx.dragMode ? 1.25 : 1);
 

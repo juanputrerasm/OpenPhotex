@@ -13,16 +13,15 @@ import type { Mtm2TruckParams } from "../truck/params.ts";
 import type { Mtm2TruckState } from "../truck/state.ts";
 import type { SimBox } from "./box.ts";
 import { truckRadius } from "../truck/recovery.ts";
-import { truckWeight } from "../truck/dynamics.ts";
-import { INV_G } from "../constants.ts";
 import { HULL_ORDER, WHEEL_ORDER, depthInside, faceNormal, nearestFace } from "./faces.ts";
+import type { Mtm2Rules } from "../constants.ts";
+import { cornerNearTriangles, triangleBox, triHullPoints, triTireWall, triWheelSupport } from "../../cp4/truck-tri.ts";
+import {
+  lastHub, pushPoint, setBoxForce, setTruckForce, toBody, toWorld, touched, truckMass, unit,
+  type BoxTouch, type Pair, type Touch, type V3,
+} from "./truck-pair.ts";
 
-type V3 = [number, number, number];
-
-const toWorld = (m: ArrayLike<number>, x: number, y: number, z: number): V3 =>
-  [m[0] * x + m[1] * y + m[2] * z, m[3] * x + m[4] * y + m[5] * z, m[6] * x + m[7] * y + m[8] * z];
-const toBody = (m: ArrayLike<number>, x: number, y: number, z: number): V3 =>
-  [m[0] * x + m[3] * y + m[6] * z, m[1] * x + m[4] * y + m[7] * z, m[2] * x + m[5] * y + m[8] * z];
+export type { BoxTouch } from "./truck-pair.ts";
 
 /** The sphere and separating-axis early out (§14.14 step 1). */
 export function truckBoxSeparated(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, dt: number): boolean {
@@ -44,45 +43,6 @@ export function truckBoxSeparated(s: Mtm2TruckState, p: Mtm2TruckParams, box: Si
   return false;
 }
 
-/** The truck's mass in slugs. */
-function truckMass(p: Mtm2TruckParams): number {
-  return truckWeight(p) * INV_G;
-}
-
-/**
- * A contact of the truck with the box, as MONSTER.EXE plays the box's sound for one (`0x428bc0`, MONSTER_EXE_ANALYSIS.md
- * "Object sounds"): a hull point that goes deeper into it, a wheel or tire contact point inside it, or one of its
- * corners against a wheel. `speed` is the hardest closing speed of those contacts, ft/s (0 when none closes).
- */
-export interface BoxTouch { speed: number }
-type Touch = { hit: BoxTouch | null };
-
-/** Records a contact along `normalWorld` (outward from the box), at the truck's speed against the box. */
-function touched(touch: Touch, s: Mtm2TruckState, box: SimBox, normalWorld: ArrayLike<number>): void {
-  const iv = toWorld(s.matrix, s.bvel[0], s.bvel[1], s.bvel[2]);
-  const closing = -((iv[0] - box.vel[0]) * normalWorld[0] + (iv[1] - box.vel[1]) * normalWorld[1] + (iv[2] - box.vel[2]) * normalWorld[2]);
-  const speed = closing > 0 ? closing : 0;
-  if (!touch.hit) touch.hit = { speed };
-  else if (speed > touch.hit.speed) touch.hit.speed = speed;
-}
-
-/**
- * How the pair works (§14.17): pushable when the box has a mass below the truck's (the box's mass
- * is then the effective mass), else immovable with the truck's mass.
- */
-interface Pair {
-  pushable: boolean;
-  /** The contact this pair test found, for the object's sound (null: none). */
-  touch: Touch;
-  mEff: number;
-  /**
-   * The pair's force and moment on the box (box axes) and on the truck (body axes). Every
-   * contact replaces them; they are applied once, after the whole pair test (§14.17).
-   */
-  box: { f: V3; m: V3 } | null;
-  truck: { f: V3; m: V3 } | null;
-}
-
 /**
  * A truck against a box (§14.14, §14.17): hull points, wheels and tire contact points, then the
  * box's corners against the wheels. An immovable box becomes ground for the truck; a pushable one
@@ -90,20 +50,30 @@ interface Pair {
  * `s.extForce` / `s.extMoment` (truck body axes) and `box.force` / `box.moment` (box axes).
  * `s.prevPos` and `s.prevMatrix` are the truck's pose before this step's move.
  */
-export function collideTruckBox(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, dt: number): BoxTouch | null {
+export function collideTruckBox(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, dt: number, rules?: Mtm2Rules): BoxTouch | null {
   if (truckBoxSeparated(s, p, box, dt)) return null;
   const mt = truckMass(p);
   const pushable = box.mass !== 0 && box.mass < mt;
   const pair: Pair = { pushable, touch: { hit: null }, mEff: pushable ? box.mass : mt, box: null, truck: null };
-  hullPoints(s, box, pair, dt);
+  // Community Patch 4 tests a box with a usable shape by its triangles (sim/cp4/truck-tri.ts).
+  const tri = triangleBox(box, rules);
+  if (tri) triHullPoints(s, box, pair, dt); else hullPoints(s, box, pair, dt);
   // Wheels, tires 13 to 16 (FR, FL, RR, RL), sides -1, +1, -1, +1.
   for (let i = 0; i < 4; i++) {
     const side = i % 2 === 0 ? -1 : 1;
-    wheelSuspension(s, p, box, i, side, pair.touch);
-    tireContactPoint(s, p, box, i, pair, dt);
+    if (tri) {
+      triWheelSupport(s, p, box, i, side, pair.touch, rules!);
+      triTireWall(s, p, box, i, pair, dt, rules!);
+    } else {
+      wheelSuspension(s, p, box, i, side, pair.touch);
+      tireContactPoint(s, p, box, i, pair, dt);
+    }
   }
   if (box.mass > 0 && !truckBoxSeparated(s, p, box, dt)) {
-    for (let c = 0; c < 8; c++) for (let i = 0; i < 4; i++) cornerAgainstWheel(s, p, box, c, i, pair, dt);
+    for (let c = 0; c < 8; c++) {
+      if (tri && !cornerNearTriangles(box, c, rules!)) continue;
+      for (let i = 0; i < 4; i++) cornerAgainstWheel(s, p, box, c, i, pair, dt);
+    }
   }
   if (pair.box) {
     for (let k = 0; k < 3; k++) { box.force[k] += pair.box.f[k]; box.moment[k] += pair.box.m[k]; }
@@ -115,14 +85,24 @@ export function collideTruckBox(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimB
 }
 
 /** The immovable case only, whatever the box's mass (ground boxes have none). Returns the contact, as `collideTruckBox`. */
-export function collideTruckImmovableBox(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, dt: number): BoxTouch | null {
+export function collideTruckImmovableBox(
+  s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, dt: number, rules?: Mtm2Rules,
+): BoxTouch | null {
   if (truckBoxSeparated(s, p, box, dt)) return null;
   const touch: Touch = { hit: null };
-  hullPoints(s, box, { pushable: false, touch, mEff: truckMass(p), box: null, truck: null }, dt);
+  const tri = triangleBox(box, rules);
+  const hull: Pair = { pushable: false, touch, mEff: truckMass(p), box: null, truck: null };
+  if (tri) triHullPoints(s, box, hull, dt); else hullPoints(s, box, hull, dt);
   for (let i = 0; i < 4; i++) {
     const side = i % 2 === 0 ? -1 : 1;
-    wheelSuspension(s, p, box, i, side, touch);
-    tireContactPoint(s, p, box, i, { pushable: false, touch, mEff: 0, box: null, truck: null }, dt);
+    const pair: Pair = { pushable: false, touch, mEff: 0, box: null, truck: null };
+    if (tri) {
+      triWheelSupport(s, p, box, i, side, touch, rules!);
+      triTireWall(s, p, box, i, pair, dt, rules!);
+    } else {
+      wheelSuspension(s, p, box, i, side, touch);
+      tireContactPoint(s, p, box, i, pair, dt);
+    }
   }
   return touch.hit;
 }
@@ -162,58 +142,6 @@ function hullPoints(s: Mtm2TruckState, box: SimBox, pair: Pair, dt: number): voi
   }
 }
 
-/**
- * The pushable force law (§14.17) at a truck point `body` (truck axes) that is `depth` inside the
- * face with outward normal `n`, at `cur` (both box axes). Returns whether the box was pushed.
- */
-function pushPoint(
-  s: Mtm2TruckState, box: SimBox, body: V3, cur: V3, n: V3, depth: number, pair: Pair, dt: number,
-): boolean {
-  const m = s.matrix, bm = box.matrix;
-  const [p, q, r] = s.rates;
-  const vt = [s.bvel[0] + (r * body[2] - p * body[1]), s.bvel[1] + (p * body[0] - q * body[2]), s.bvel[2] + (q * body[1] - r * body[0])];
-  const vw = toWorld(m, vt[0], vt[1], vt[2]);
-  const vtb = toBody(bm, vw[0], vw[1], vw[2]);
-  const [pb, qb, rb] = box.rates;
-  const vb = [box.bvel[0] + (rb * cur[2] - pb * cur[1]), box.bvel[1] + (pb * cur[0] - qb * cur[2]), box.bvel[2] + (qb * cur[1] - rb * cur[0])];
-  const closing = -(n[0] * (vtb[0] - vb[0]) + n[1] * (vtb[1] - vb[1]) + n[2] * (vtb[2] - vb[2]));
-  if (!(closing >= 0)) return false;
-  const F = (closing / dt) * pair.mEff;
-  setBoxForce(pair, cur, [-F * n[0], -F * n[1], -F * n[2]]);
-  const fw = toWorld(bm, F * n[0], F * n[1], F * n[2]);
-  setTruckForce(pair, body, toBody(m, fw[0], fw[1], fw[2]));
-  const nw = toWorld(bm, n[0], n[1], n[2]);
-  box.pos[0] -= depth * nw[0]; box.pos[1] -= depth * nw[1]; box.pos[2] -= depth * nw[2];
-  return true;
-}
-
-const crossV = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-
-/** The pair's force on the box, `f` at `at` (box axes), replacing the last one. */
-function setBoxForce(pair: Pair, at: V3, f: V3): void {
-  pair.box = { f, m: crossV(at, f) };
-}
-
-/** The pair's force on the truck, `f` at `at` (body axes), replacing the last one. */
-function setTruckForce(pair: Pair, at: V3, f: V3): void {
-  pair.truck = { f, m: crossV(at, f) };
-}
-
-function unit(v: V3): V3 {
-  const l = Math.hypot(v[0], v[1], v[2]);
-  return l === 0 ? [0, 1, 0] : [v[0] / l, v[1] / l, v[2] / l];
-}
-
-/**
- * Where tire `i`'s hub was last step, world feet (tire +0x24, §14.14 step 3): the truck's last position and rotation,
- * and the hub as the step began. The wheels' rays start here, not at the truck's centre.
- */
-function lastHub(s: Mtm2TruckState, i: number): V3 {
-  const h = s.tires[i].hub;
-  const w = toWorld(s.prevMatrix, h[0], h[1], h[2]);
-  return [s.prevPos[0] + w[0], s.prevPos[1] + w[1], s.prevPos[2] + w[2]];
-}
-
 /** The wheel's suspension against the box: driving on its top (§14.14 step 3). */
 function wheelSuspension(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, i: number, side: number, touch: Touch): void {
   const m = s.matrix, bm = box.matrix, half = box.half;
@@ -248,6 +176,9 @@ function wheelSuspension(s: Mtm2TruckState, p: Mtm2TruckParams, box: SimBox, i: 
   if (pen > 0) {
     t.normal = outWorld;
     t.onGround = true;
+    // Community Patch 4 records the prop for its bottoming rule (CP4_EXE_ANALYSIS.md 11.5); unused otherwise.
+    t.propHeight = box.half[1] * 2;
+    t.supportSource = 2;
     touched(touch, s, box, outWorld); // `0x4a5da0`
   }
   t.penetration = pen;

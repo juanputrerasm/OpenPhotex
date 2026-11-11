@@ -96,7 +96,7 @@ export function postStepBox(box: SimBox, ground: Mtm2Ground): void {
     const x = box.pos[0] + c[0], y = box.pos[1] + c[1], z = box.pos[2] + c[2];
     ground.normal(x, z, n);
     const gh = ground.height(x, z);
-    const d = gh - y - surfaceSinkFt(ground.surface(x, gh + 100, z));
+    const d = gh - y - surfaceSinkFt(ground.surface(x, ground.rules?.surfaceAtPoint ? gh : gh + 100, z));
     let push: number;
     let nx: number, ny: number, nz: number;
     if (d * n[1] <= box.depths[i]) {

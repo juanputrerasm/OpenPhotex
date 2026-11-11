@@ -61,12 +61,15 @@ export function textureWordValue(map: Mtm2SurfaceMap, word: number): number {
  */
 export function terrainSurfaceValue(
   terrain: Mtm2Terrain, map: Mtm2SurfaceMap, x: number, z: number, waterLevelFt: number | null, snow = false, deepWater = true,
+  pointY: number | null = null,
 ): number {
   if (deepWater) {
     const height = terrainHeightAt(terrain, x, z);
     // A Community Patch 4 lake tile is deep water below the lake's surface (FUN_140203ed0, CP4_EXE_ANALYSIS.md 2).
+    // CP4's own physics tests the queried point (`pointY`, the tire's bottom, 10.3); otherwise the ground.
     const lake = terrainLakeAt(terrain, x, z);
-    if (lake && height < terrain.lakes!.levelFt[lake]!) return (snow ? FROZEN_WATER_TYPE : DEEP_WATER_TYPE) * 100;
+    const probeY = pointY ?? height;
+    if (lake && probeY < terrain.lakes!.levelFt[lake]!) return (snow ? FROZEN_WATER_TYPE : DEEP_WATER_TYPE) * 100;
     const level = waterLevelFt ?? 0;
     // In the game's units (1/256 ft, floored): ground at 0 is Default, before the water test.
     if (Math.floor((snow && height < level ? level : height) * 256) === 0) return 0;

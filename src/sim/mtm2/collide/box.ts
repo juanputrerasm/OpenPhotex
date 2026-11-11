@@ -7,6 +7,7 @@
 */
 import { eulerToMatrix } from "../math.ts";
 import { wrapCoord } from "../world/wrap.ts";
+import type { CollShape } from "../../cp4/coll-shape.ts";
 
 export interface SimBox {
   pos: [number, number, number];
@@ -38,6 +39,12 @@ export interface SimBox {
   /** Corners the last post-step pushed out (the contact solver runs only when it is not 0). */
   contactCount: number;
   impactForce: number;
+  /**
+   * Community Patch 4 (CP4_EXE_ANALYSIS.md 11.2): the model's triangles in the box frame, and whether the box
+   * is a ground box (RA0/RA1), which always stays classic. Read only under rules with `collisionMode` 1.
+   */
+  shape?: CollShape | null;
+  ground?: boolean;
 }
 
 /** The corner order of the game's box setup (§14.15). */
@@ -89,6 +96,18 @@ const NON_COLLIDING_TYPES = new Set([6, 7, 8]);
 /** Whether a level box is a collision object at a MONSTER.INI detail level (§14.15). */
 export function levelBoxCollides(box: Pick<LevelBoxSource, "type" | "priority">, detailLevel = 2): boolean {
   return !NON_COLLIDING_TYPES.has(box.type) && (box.priority ?? 0) <= detailLevel;
+}
+
+/**
+ * Whether a truck that is not the player's own brings a box into the frame's object list by being
+ * near it (§14.15; retail 0x554802..0x554844, CP4 0x1403b39c0..0x1403b3a10, the same rule): not a
+ * box in a checkpoint's footprint (type 11) nor a box with no model, unless the count at
+ * `[0x646c40] + 0xc` (CP4 `[0x140945560] + 0x18`; believed to be a network game's other drivers)
+ * is at least 1. The player's truck, ramps and listed boxes bring in every box; once listed, a box
+ * meets every truck.
+ */
+export function listedByComputerTruck(type: number, hasModel: boolean, networkDrivers = 0): boolean {
+  return networkDrivers >= 1 || (type !== 11 && hasModel);
 }
 
 /**

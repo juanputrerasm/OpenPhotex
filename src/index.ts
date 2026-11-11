@@ -226,6 +226,7 @@ export type { MtmCockpitLayout, CockpitSection, CockpitGauge, CockpitMirror } fr
 export * as mtm2Sim from "./sim/mtm2/index.ts";
 export * as evoSim from "./sim/evo/index.ts";
 export * as cprSim from "./sim/cpr/index.ts";
+export * as cp4Sim from "./sim/cp4/index.ts";
 export { CPR_DEFAULT_SETUP, cloneCprSetup, parseCprGarage, writeCprGarage } from "./cpr/garage.ts";
 export type { CprPitStop, CprSetup } from "./cpr/garage.ts";
 export { PodFormatError } from "./errors.ts";

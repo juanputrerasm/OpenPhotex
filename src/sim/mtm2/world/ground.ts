@@ -21,6 +21,11 @@ export interface Mtm2Ground {
   normal(x: number, z: number, out: Vec3): Vec3;
   /** TTY value (`type * 100 + depth`) of the surface at a point. */
   surface(x: number, y: number, z: number): number;
+  /**
+   * The surface a tire grips at a point, where it differs from `surface`: Community Patch 4's typed model
+   * faces (.SRF, sim/cp4/surface-mesh.ts). The tire step uses it when present.
+   */
+  tireSurface?(x: number, y: number, z: number): number;
   /** The water level in feet, or null. */
   waterLevelFt: number | null;
   /** The water level at (x, z) where it varies (Community Patch 4 lakes); `waterLevelFt` where absent. */
@@ -53,7 +58,9 @@ export function createTerrainGround(
       return groundHeightAt(terrain, x, z, snow);
     },
     normal: (x, z, out) => groundNormalAt(terrain, x, z, out, snow),
-    surface: (x, _y, z) => (surface ? terrainSurfaceValue(terrain, surface, x, z, waterLevelFt, snow, rules.deepWater) : 200),
+    surface: (x, y, z) => (surface
+      ? terrainSurfaceValue(terrain, surface, x, z, waterLevelFt, snow, rules.deepWater, rules.surfaceAtPoint ? y : null)
+      : 200),
     waterLevelFt,
     waterLevelAt: terrain.lakes ? (x, z) => terrainWaterLevelAt(terrain, x, z, waterLevelFt) : undefined,
     weather,

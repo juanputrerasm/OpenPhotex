@@ -22,7 +22,7 @@ export const WATER_DRAG_DENSITY = 0.15;
  * executable (OpenMTM2 docs/MTM1_MONSTER_EXE_ANALYSIS.md 4.3); nothing else is known to differ.
  */
 export interface Mtm2Rules {
-  id: "mtm2" | "mtm1" | "evo1" | "evo2" | "cpr";
+  id: "mtm2" | "mtm1" | "evo1" | "evo2" | "cpr" | "cp4";
   /** Drag density of water, slug/ft³: a submerged part drags 6.7 times harder in MTM1. */
   waterDragDensity: number;
   /** Ground below the water level reads deep water (type 13), or ice in Snow. MTM1 has neither. */
@@ -50,6 +50,80 @@ export interface Mtm2Rules {
   airRotationDamping?: number;
   /** The aero damping of the yaw rate with a wheel down, as a share of the game's. Default 1. */
   groundYawDamping?: number;
+  /*
+    Community Patch 4's rules (OpenMTM2 docs/CP4_EXE_ANALYSIS.md 10 and 11; its author published no source
+    code). Absent means the retail game's behaviour; `src/sim/cp4/rules.ts` sets them all.
+  */
+  /** The fixed tick, s, and the substep used online or when asked (10.2). The host steps with them. */
+  tickS?: number;
+  substepS?: number;
+  /** The suspension extension rate is clamped to +-this, ft/s (10.3). */
+  suspVelMaxFtPerSec?: number;
+  /** The terrain wheel probe's penetration is capped at this, ft (10.3). */
+  terrainComprMaxFt?: number;
+  /** Velocities are zeroed at rest only with at least this many ground contacts, wheels plus hull (10.3). */
+  restNeedsContacts?: number;
+  /** The tire's surface is read at its bottom, so a lake is deep water only when the tire is in it (10.3). */
+  surfaceAtPoint?: boolean;
+  /** A computer truck's grip factor times this, offline and outside drag races (10.4). */
+  aiGrip?: number;
+  /** A computer truck's grip limit and its autopilot steering slew times these in drag races (10.4). */
+  dragCpuGrip?: number;
+  dragCpuSteerSlew?: number;
+  /** With a computer truck on Professional on a Sonic track: tire_cf, straight_brake and curve_speed (10.4). */
+  sonicTireCf?: number;
+  sonicStraightBrake?: number;
+  sonicCurveSpeed?: number;
+  /** The hull solver's recovery is capped at the force that stops the closing speed (11.7). */
+  impulseCap?: boolean;
+  /** Bottoming cancels this share of what it would on a small prop (11.7). */
+  bottomPropShare?: number;
+  /** A small prop is shorter than this times the tire radius (11.1). */
+  smallPropRatio?: number;
+  /** Box models off their vertical centre shift the collision box (10.6); the host builds the boxes. */
+  offCentreCollision?: boolean;
+  /** 1: boxes with a triangle shape collide by their triangles (11); 0 or absent: box faces. */
+  collisionMode?: 0 | 1;
+  triangles?: TriangleCollisionRules;
+}
+
+/** Community Patch 4's [Collision] keys as the triangle solver reads them (CP4_EXE_ANALYSIS.md 11.1). */
+export interface TriangleCollisionRules {
+  /** Support spokes 1..9, the circle profile, and the pick when the profile is off (0 deepest, 1 nearest, 2 least). */
+  supportSpokes: number;
+  supportProfile: boolean;
+  supportPick: 0 | 1 | 2;
+  /** The support cylinder, its hold in ticks, and its extra reach, ft. */
+  supportCylinder: boolean;
+  supportCylHoldTicks: number;
+  supportSlackFt: number;
+  /** The support cap, ft, and whether it applies only on small props. */
+  supportComprMaxFt: number;
+  supportClampSmall: boolean;
+  /** The tire cylinder is cut at the sidewalls (a capsule when false). */
+  cylinderTreadClip: boolean;
+  /** Walls: drivable hits become springs; short props below this share of the radius too (0 off). */
+  wallSkipDrivable: boolean;
+  wallShortPropPct: number;
+  /** The climb blend and its smoothstep ramp; the lift guard; the reference point is the hit (else P). */
+  climbBlend: boolean;
+  climbBlendLo: number;
+  climbBlendHi: number;
+  climbLiftGuard: boolean;
+  dropFromHit: boolean;
+  /** Wall depth: cap, ft; damping reference, ft/s (0 off); the share kept each tick. */
+  wallComprMaxFt: number;
+  wallDampRefFtPerSec: number;
+  wallCorrect: number;
+  /** The cylinder supplies walls the rays missed, pushable props only. */
+  wallCylinder: boolean;
+  /** Box corners further than this from every triangle are not tested against the tires, ft. */
+  phantomCornerFt: number;
+  /** A box's corners are raycast against another box's triangles. */
+  boxOnTri: boolean;
+  /** Small props: recovery scaled by height (off in CP4) and capped at this share of the truck weight. */
+  smallPropImpulse: boolean;
+  smallPropMaxG: number;
 }
 export const MTM2_RULES: Mtm2Rules = Object.freeze({
   id: "mtm2", waterDragDensity: 0.15, deepWater: true, weatherGrip: true, crashDamage: true,
