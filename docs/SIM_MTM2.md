@@ -53,6 +53,7 @@ plain arrays and objects, so a state can be posted between workers or saved as i
 | `../cp4/coll-shape.ts` | CP4's collision shapes: k-DOP hull test, grid, ray, tire-cylinder and point queries |
 | `../cp4/truck-tri.ts` | CP4's truck against a box's triangles: hull points, the nine-spoke support, cylinder and hold, walls, phantom corners |
 | `../cp4/surface-mesh.ts` | CP4's .SRF grip: the typed model face under a tire (`withSurfaceMeshes`, `Mtm2Ground.tireSurface`) |
+| `../cp4/falls.ts` | CP4 beta 0.53's waterfall build from a .WFL: validation, the walk, the sheet and foam mesh, mist, sound, looks (never read by the step) |
 | `../../model/coll-soup.ts` | a .BIN's faces as a collision triangle soup |
 
 A step is `applyKeyboard` (or the autopilot), `stepTruck`, then (after collisions)
@@ -166,6 +167,85 @@ first `limit` boxes count, in their order: 64 by default, as CP4 keeps them (`MA
 
 **Not here.** CP4's tree collisions (vegetation collide 1 and 2) are the host's walls, as before; how CP4's trunk
 cylinder meets a truck is not traced.
+
+## Community Patch 4 beta 0.53 waterfalls
+
+Beta 0.53 adds waterfalls (`WORLD\<stem>.WFL`, read by `parseWfl`, docs/LEVELS.md). The file holds only crests; the
+engine builds each fall's sheet at load by walking water from the crest over the terrain into the water. `src/sim/cp4/falls.ts`
+is that build, from OpenMTM2 `docs/CP4_EXE_ANALYSIS.md` 12 (read from monster.exe and trid3d11.dll; the CP4 author
+published no source code). Section numbers below are that document's. Falls never touch the simulation (12.10): this
+is load-time geometry and parameters for a renderer, sound and fog. Exported from `cp4Sim` and the package root.
+
+```js
+import { parseWfl, parseWtr, decodeMtm2Heights, buildFallMeshes, fallGround, fallWater, fallMist, fallSound } from "openphotex";
+const wtr = parseWtr(wtrBytes);
+const m = buildFallMeshes(parseWfl(wflBytes).falls, {
+  ...wtr,                                        // lakes + tileMap, for the validation
+  ground: fallGround(decodeMtm2Heights(rawBytes, txv.terrainGrid)),
+  water: fallWater(wtr, lvl.waterHeight === null ? null : lvl.waterHeight * 0.5),
+});
+// m.vertices (Float32Array, 16 floats a vertex), m.indices (Uint32Array, global), m.falls, m.refused, m.dropped
+const mist = fallMist(m.falls[0], m.falls[0]);   // or null
+```
+
+| Function | Does |
+|---|---|
+| `readFallFile(bytes)` | the engine's parser (12.1.2), which never throws: `status` 0..7 (`FALL_FILE_STATUS_TEXT` names those the "damaged (%s)" message shows, 12.1.3; 4 is the "newer build" one), only the first FALL entry, the count clamped to the chunk (`counters.truncated`), and bad records kept for `checkFallRecords` (a point count outside 2..8, a name without a NUL), where Traxx's `parseWfl` refuses the whole file |
+| `checkFallRecords(falls)` | the parser's record checks (12.1.2) in its order: id 1..255 and unique (taken before the later checks), 2..8 points, coordinates below 0x20000, speed 16..1600, height 1..4096, flags within 7, names within 15 characters, 64 accepted (`over`); opacity clamped to 100, mist and volume to 200. Returns the accepted records, the rejected ones and the counters |
+| `validateFall(fall, { lakes, tileMap })` | null or the REFUSED reason (12.1.4) in the engine's order: `FALL_POINTS` (a segment under 2 ft, wrapped differences), `FALL_TURN` (consecutive segments with a negative dot), `FALL_WIDTH` (crest over 1024 ft), then for a lake-fed fall `FALL_SOURCE` (no loaded lake with that id), `FALL_HEIGHT` (stored height not exactly the lake's), `FALL_DIRECTION` (some point's 1 ft probe behind the crest, nudged up to 0.5 ft along an adjacent segment, is not on a source-lake tile) |
+| `fallGround(heights)` | the walk's ground (12.2.3) from `decodeMtm2Heights`: terrain only, the engine's integer triangles on v >> 1 at 1/64 ft, times 4, 16.16 fractions, `(a * b) >> 16`, the parity split; the 32 ft grid for classic, the 1024 x 1024 8 ft grid for spline and Full Map. `fallTerrainHeight(corners, cells, x, z)` is the same on a raw grid. Any `(x, z) => ft` callback may stand in |
+| `fallWater(wtr, lvlWaterFt)` | the walk's water (12.2.3): the tile's lake surface, but the track's .LVL water on a dry tile or on the fall's own source lake, and none when that is below 1/256 ft |
+| `buildFallMeshes(falls, { ground, water, lakes, tileMap })` | the loader (12.1.5, 12.2): record checks, validation, then each fall in order into one track buffer. `skipped` and `tooBig` are the two on-screen messages of 12.1.3 |
+| `fallDebugColumns(fall, spacing, { ground, water })` | the walk's rows of every column before the row cut, with the trim's verdict (what `waterfallDebug` re-walks, 12.1.6) |
+| `fallMist(built, record, { waterfallMistPct })` | null or the mist fog volume (12.4); `fallMists(built, { sitFogVolumes })` applies the 64 slots shared with the .SIT fog volumes (`fallMistSlotFree`) |
+| `fallSound(built, record, { snow })` | `{ silent: "no-sound-flag" \| "no-stem" \| "frozen" }` or the loop: `sound\<stem>.WAV` at the landing (x, z wrapped), volume and hearing (12.7). The 30-loop room (`FALL_SOUND_LOOP_ROOM`, shared with the SIT continuous sounds) and the distance order are the host's; `fallSoundGain` is the falloff |
+| `fallLook(...)`, `FALL_RIPPLE_FRAMES`, `fallTextureName` | the look rule (12.8.3), the default ripple (RIPPL100 .. RIPPL800 .. RIPPL200, 14 frames of 0.25 s, 12.8.1), ".RAW" for a stem without a '.' |
+
+**The walk** (12.2.4), per column at 1/60 s steps, at most 4000: move, add -32/60 to vy; under ground + 0.3 ft the
+water is draped (put on it, the into-ground velocity removed, all of v times 0.98, air 0); otherwise air is 1 when more
+than 0.05 ft above that. Water is reached when the surface is above the ground and at or above y (snapped to it);
+else it rests when draped on ground within 5 deg of flat below 2 ft/s; else step 4000 is the limit. A row is emitted
+each time the path since the last row reaches the spacing, and at the end.
+
+**Rows and trim** (12.2.5). A column that does not end in water keeps only 8 ft of chord path past where it got within
+1 ft of its final height, counted from the start of its trailing run of flat contacts (air 0, ground within 10 deg of
+flat). A water column gets one more row, the sink (4 ft down, carried along the last step when that step is steeper
+than 30 deg).
+
+**Budget** (12.2.6). Spacings 2, 3, 4, 6, 8 ft in turn (more than 1100 columns: none); the first whose vertices
+(rows + 3 per column of each run of two or more kept water columns, the foam) fit min(16384, track room) and whose
+indices fit the track's 1,572,864 is used. Else the 8 ft columns are cut at R rows, R the largest that fits by
+bisection from 2 (SHORTENED); when even 2 rows do not fit, or no room is left, the fall is DROPPED. The track holds
+262,144 vertices; falls are built in file order, so one dropped fall does not stop a later smaller one.
+
+**Vertex** (16 floats, `FALL_VERTEX`): position in 1/256 ft from the anchor (crest point 0 at the crest height,
+`anchorFt`), u (ft along the crest), tau (s since the crest), smoothed speed, air, edge (column distance from the
+outer columns / 3, at most 1), end (1 on a water column with its sink, 0 on the sink; else the fade over the last 6 ft
+of path), kind (0 sheet, 1 foam), the fall's slot, drop below the crest, normal (12.2.8), chord path. The foam strip
+(12.2.10) follows the sheet: three vertices a kept water column, 0.1 ft above the surface, clamp(1.5 * drop, 4, 40) ft
+wide across the last step. Indices (12.2.9) zip neighbouring columns of unequal length, then the foam's quads.
+
+**Landing** (12.2.11): over the kept water columns, the mean surface height and drop, the summed unit last steps for
+the direction (else the crest's point directions, else (0, 1)), and the width across it plus the spacing used; with no
+kept water column, the lowest last row with no width.
+
+**Mist** (12.4): density (mist / 100) * clamp(speed * crest length * drop / 7200, 0.25, 2) * waterfallMist / 100; a
+box W = max(width + 0.6 drop, 20), L = max(0.6 drop, 20) * mist depth %, H = min(0.7 drop, 120) * mist height %, at
+most 240; centre 0.3 L ahead of the landing, wrapped; floor 2 ft below the landing; vis clamp(120 / density, 20, 1000)
+and the SIT fog defaults the engine sets (colour 0.75, 0.78, 0.82, edge 20, top 5, wisps 0.6 of 25 ft at 2 ft/s); the
+weather mask without Snow on a FREEZE fall.
+
+**Fidelity.** The rules, constants and counts are the engine's. It computes in floats; this module in doubles,
+stored as Float32Array, so positions agree to float precision and a column that lands within a rounding error of a
+threshold could emit one row more or less than the game.
+
+**Ambiguous in 12, chosen here.** `rowsMin` / `rowsMax` (the log's "rows %d..%d") are the vertices written per column,
+sink included. The normals' 1e-6 degeneracy tests run on the stored vertex positions (1/256 ft units). The landing's
+"unit horizontal last step" skips a step shorter than 1e-6 ft, and its fallback direction needs more than 1e-6. A tile
+naming a lake the WTR loader did not keep has no water (the engine reads a cleared body, surface 0, which no ground
+lies under). Fine-grid falls use the classic diagonal formulas over 8 ft cells, as 12.2.3 says ("the same parity
+split"). The droplets (12.5), foam zones and landing rings (12.6) and the per-frame draw (12.9) are per-frame renderer
+work and are not built here; their inputs (landing, width, drop, direction, flags) are in each built fall.
 
 ## Optional handling
 

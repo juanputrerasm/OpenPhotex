@@ -65,6 +65,8 @@ export interface TxvInfo {
   vegClumps: number | null;
   terrainGrid: string | null;
   terrainHeights: string | null;
+  /** Waterfalls in WORLD\<stem>.WFL (Traxx 1.7.1 writes it only with the file). */
+  waterfalls: number | null;
 }
 
 export function readTxvInfo(input: Uint8Array | string | readonly TxvLine[]): TxvInfo {
@@ -76,6 +78,6 @@ export function readTxvInfo(input: Uint8Array | string | readonly TxvLine[]): Tx
     formatVersion: int("formatVersion"), tool: str("tool"), toolVersion: str("toolVersion"), built: str("built"),
     legacyFallback: bool("legacyFallback"), hdTextures: bool("hdTextures"), fogVolumes: int("fogVolumes"),
     vegetation: bool("vegetation"), vegTrees: int("vegTrees"), vegClumps: int("vegClumps"),
-    terrainGrid: str("terrainGrid"), terrainHeights: str("terrainHeights"),
+    terrainGrid: str("terrainGrid"), terrainHeights: str("terrainHeights"), waterfalls: int("waterfalls"),
   };
 }

@@ -155,6 +155,21 @@ export {
 export type { Mtm2Heights, Mtm2TerrainMode } from "./mtm/heights.ts";
 export { isWtr, parseWtr, writeWtr, wtrLakeAt, WTR_HEIGHT_FT, WTR_FLAG_REFLECTIVE, WTR_TILES } from "./mtm/wtr.ts";
 export type { Wtr, WtrLake, WtrWriteLake } from "./mtm/wtr.ts";
+export { isWfl, parseWfl, writeWfl, wflPointsFt, WFL_MAX_FALLS, WFL_MAX_POINTS, WFL_POINT_FT, WFL_SPEED_FT, WFL_HEIGHT_FT, WFL_FLAG_FREEZE, WFL_FLAG_SPLASH, WFL_FLAG_SOUND } from "./mtm/wfl.ts";
+export type { Wfl, WflFall, WflWriteFall } from "./mtm/wfl.ts";
+export {
+  buildFallMeshes, checkFallRecords, validateFall, fallDebugColumns, fallGround, fallTerrainHeight, fallWater, fallMist, fallMists, fallMistSlotFree,
+  fallSound, fallSoundGain, fallLook, fallRippleFrame, fallTextureName, readFallFile, FALL_FILE_STATUS_TEXT,
+  FALL_SPACINGS_FT, FALL_MAX_COLUMNS, FALL_VERTEX_FLOATS, FALL_MAX_FALL_VERTICES, FALL_MAX_TRACK_VERTICES, FALL_MAX_TRACK_INDICES,
+  FALL_MAX_BUILT, FALL_MAX_ROWS, FALL_WALK, FALL_VERTEX, FALL_VERTEX_UNITS_PER_FT, FALL_END_WATER, FALL_END_REST, FALL_END_LIMIT,
+  FALL_FLAG_FREEZE, FALL_FLAG_SPLASH, FALL_FLAG_SOUND, FALL_WEATHER_SNOW, FOG_VOLUME_SLOTS, FALL_MIST_WEATHER_ALL, FALL_MIST_WEATHER_NO_SNOW,
+  FALL_SOUND_LOOP_ROOM, FALL_SOUND_RANGE, FALL_LOOK_ORIGINAL, FALL_LOOK_ENHANCED, FALL_LOOK_REALISTIC, FALL_LOOK_ICE, FALL_GPU_DRAW,
+  FALL_GPU_ICE, FALL_RIPPLE_FRAMES, FALL_RIPPLE_FRAME_TICKS, FALL_RIPPLE_FRAME_SEC, FALL_GRAPHICS_DEFAULTS,
+} from "./sim/cp4/falls.ts";
+export type {
+  BuiltFall, FallBuildOptions, FallDebugColumn, FallGround, FallLakes, FallMeshes, FallMist, FallRecord, FallRecordCheck, FallRecordCounters,
+  FallRecordError, FallRefusal, FallSound, FallWater, FallFile, FallFileStatus, FallFileCounters,
+} from "./sim/cp4/falls.ts";
 export {
   isMtm2Veg, parseMtm2Veg, writeMtm2Veg, vegTreeAt, vegClumpAt, VEG_UNITS_PER_FT, VEG_KIND_PLACED, VEG_KIND_GROUND,
   VEG_FLAG_CAST_SHADOW, VEG_FLAG_FAR_SHADOW, VEG_FLAG_CROSSFADE, VEG_FLAG_FACING, VEG_COLLIDE,
@@ -233,7 +248,7 @@ export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 
 /** The library version, as published in package.json. */
-export const VERSION = "1.7.2";
+export const VERSION = "1.7.3";
 export { parseMtmPlayerPro, writeMtmPlayerPro, newMtmDriver, PLAYER_PRO_VERSION } from "./mtm/player-pro.ts";
 export type { MtmDriver, MtmPlayerPro } from "./mtm/player-pro.ts";
 export { parseMtmHighScores, writeMtmHighScores, decipherHighScores, encipherHighScores, HIGH_SCORES_FILE } from "./mtm/high-scores.ts";

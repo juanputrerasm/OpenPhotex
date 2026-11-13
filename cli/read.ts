@@ -18,7 +18,7 @@ import {
   parseFlyScf, parseFlySceneryObjects, parseFlyBsp, parseFlyAlt, parseFlyTex, parseFlyTyp, parseFlyRef, parseFlyAl2, findPodEntry,
   parseDfm, parseSkl, parseKfm, parseCth, parseNocturneGeo, parseNocturneFog, parseNocturneSet,
   parseNocturneThm, parseNocturneZth, parseKlp, parseMtmAmbientSounds, parseMtmSun, parseLoc, parseTrn, parseCockpitLayout, smkInfo,
-  parseWtr, parseMtm2Veg, isMtm2Veg, parseCpt, parseSrf, readTxvInfo, parseTxv, isWtr,
+  parseWtr, parseMtm2Veg, isMtm2Veg, parseCpt, parseSrf, readTxvInfo, parseTxv, isWtr, isWfl, parseWfl,
   type PodArchive, type PodEntry,
 } from "openphotex";
 import { CliError, EXIT, printJson, usageError } from "./output.ts";
@@ -60,6 +60,7 @@ const READERS: Record<string, { reader: string; read: (bytes: Uint8Array, name: 
   "evo-veg": { reader: "parseEvoVeg", read: (b, n) => parseEvoVeg(b, n) },
   "mtm2-veg": { reader: "parseMtm2Veg", read: (b) => parseMtm2Veg(b) },
   "mtm2-wtr": { reader: "parseWtr", read: (b) => parseWtr(b) },
+  "mtm2-wfl": { reader: "parseWfl", read: (b) => parseWfl(b) },
   "mtm2-txv": { reader: "readTxvInfo", read: (b) => ({ info: readTxvInfo(b), lines: parseTxv(b) }) },
   "mtm2-cpt": { reader: "parseCpt", read: (b) => parseCpt(b) },
   "mtm2-srf": { reader: "parseSrf", read: (b) => parseSrf(b) },
@@ -167,6 +168,7 @@ function detect(name: string, bytes: Uint8Array, archive: PodArchive | null, arc
     case "TTY": return "tty";
     case "VEG": return isMtm2Veg(bytes) ? "mtm2-veg" : "evo-veg";
     case "WTR": return isWtr(bytes) ? "mtm2-wtr" : "";
+    case "WFL": return isWfl(bytes) ? "mtm2-wfl" : "";
     case "TXV": return "mtm2-txv";
     case "CPT": return "mtm2-cpt";
     case "SRF": return "mtm2-srf";
