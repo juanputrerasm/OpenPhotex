@@ -40,6 +40,7 @@ export { FACE_DEPTH_FT, collideTruckFace, createFace } from "./collide/truck-fac
 export type { SimFace } from "./collide/truck-face.ts";
 export { stepBox, postStepBox, boxInertia } from "./collide/box-step.ts";
 export { stepMovingObject, groundBoxHeightAt } from "./collide/moving-object.ts";
+export type { GroundBoxScale } from "./collide/moving-object.ts";
 export { collideTruckRamp, createRamp, insideRamp, rampEdges, rampHeightAt, rampSlopeNormal } from "./collide/ramp.ts";
 export { createEdgeState, edgeAgainstTruck, lineDistance } from "./collide/edges.ts";
 export { collideTruckTopCrush, createTopCrush, crushCorners } from "./collide/top-crush.ts";

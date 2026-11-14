@@ -103,14 +103,19 @@ export type { HeightGrid, CellSplit } from "./terrain/height.ts";
 export {
   parseMtmSit, parseMtmLvl, parseTexList, parseTty, detectSitOrigin, sitTrackTypeName, sitWorldTriplet, sitFeetTriplet,
   BOX_LIGHT, BOX_MOVING, parseSitLight, BOX_FOG, parseSitFog, formatSitFogLine, SIT_FOG_HEADER,
+  MTM2_SITUATION_EXTENSIONS, mtm2SituationExtension, isMtm2V6Situation,
 } from "./mtm/sit.ts";
+export type { Mtm2SituationExtension } from "./mtm/sit.ts";
 export type { MtmSit, MtmLvl, TtyEntry, SitBox, SitCourse, SitCourseSegment, SitTruck, SitTruckState, SitArena, SitOrigin, SitLight, SitFog } from "./mtm/sit.ts";
 export { parseTvLvl, detectTvLvlOrigin, isNullAssetName, tvLvlFallbackName } from "./tv/lvl.ts";
 export type { TvLvl, TvLvlOrigin } from "./tv/lvl.ts";
 export { parseDef, defPlacementToEditor, TR_ANGLE_TO_RAD } from "./tv/def.ts";
 export type { DefFile, DefDefinition, DefPlacement } from "./tv/def.ts";
 export { SKY_PALETTE_FIRST_SLOT, SKY_ACT_FIRST_COLOUR, SKY_GRADIENT_COLOURS, skyGradient, skyHorizon } from "./texture/sky.ts";
-export { decodeClrWord, encodeClrWord, decodeClrGrid, encodeClrGrid, decodeGroundBoxes, encodeGroundBoxes } from "./terrain/ground-boxes.ts";
+export {
+  decodeClrWord, encodeClrWord, decodeClrGrid, encodeClrGrid, decodeGroundBoxes, encodeGroundBoxes,
+  MTM2_GRID_BYTES_PER_CELL, checkMtm2GridSize, mtm2GroundBoxDepth, mtm2GroundBoxHeightFt,
+} from "./terrain/ground-boxes.ts";
 export type { GroundBox, GroundBoxCell } from "./terrain/ground-boxes.ts";
 export { HB_UNDERGROUND_BIAS, decodeHbUnderground } from "./terrain/hb-underground.ts";
 export type { HbUnderground } from "./terrain/hb-underground.ts";
@@ -146,19 +151,23 @@ export {
 } from "./mtm/write.ts";
 export { MTM2_SAVED_GAME_HEADER, parseMtm2SavedGame, writeMtm2SavedGame } from "./mtm/saved-game.ts";
 export type { Mtm2SavedGame, Mtm2SavedTruck } from "./mtm/saved-game.ts";
-export { parseTxv, txvValue, writeTxv, readTxvInfo } from "./mtm/txv.ts";
-export type { TxvLine, TxvInfo } from "./mtm/txv.ts";
+export {
+  parseTxv, txvValue, writeTxv, readTxvInfo, setTxvValues, readTxvV6, txvUsesV6Keys,
+  TXV_V6_KEYS, TXV_V6_ONLY_KEYS, TXV_FORMAT_VERSION_V6, MTM2_WORLD_CELLS, MTM2_HEIGHT_STEPS,
+} from "./mtm/txv.ts";
+export type { TxvLine, TxvInfo, TxvV6 } from "./mtm/txv.ts";
 export {
   decodeMtm2Heights, decodeMtm2HeightPng, resolveMtm2TerrainMode, parseTerrainGridKey, mtm2HeightsToFeet, mtm2EngineHeightsFt,
+  decodeMtm2V6Heights, mtm2V6HeightsH128, mtm2V6HeightsFt, mtm2V6StepAndBase, mtm2V6SamplesFromFt, encodeMtm2HeightRaw16,
   MTM2_H16_PER_FT, MTM2_RAW_LENGTH_8BIT, MTM2_RAW_LENGTH_16BIT, MTM2_RAW_LENGTH_FINE, MTM2_FINE_CELL_FT,
 } from "./mtm/heights.ts";
-export type { Mtm2Heights, Mtm2TerrainMode } from "./mtm/heights.ts";
-export { isWtr, parseWtr, writeWtr, wtrLakeAt, WTR_HEIGHT_FT, WTR_FLAG_REFLECTIVE, WTR_TILES } from "./mtm/wtr.ts";
+export type { Mtm2Heights, Mtm2TerrainMode, Mtm2V6Heights } from "./mtm/heights.ts";
+export { isWtr, parseWtr, writeWtr, wtrLakeAt, wtrHeightRange, WTR_HEIGHT_FT, WTR_FLAG_REFLECTIVE, WTR_TILES } from "./mtm/wtr.ts";
 export type { Wtr, WtrLake, WtrWriteLake } from "./mtm/wtr.ts";
-export { isWfl, parseWfl, writeWfl, wflPointsFt, WFL_MAX_FALLS, WFL_MAX_POINTS, WFL_POINT_FT, WFL_SPEED_FT, WFL_HEIGHT_FT, WFL_FLAG_FREEZE, WFL_FLAG_SPLASH, WFL_FLAG_SOUND } from "./mtm/wfl.ts";
+export { isWfl, parseWfl, writeWfl, wflPointsFt, wflFallFitsV1, WFL_MAX_FALLS, WFL_MAX_POINTS, WFL_POINT_FT, WFL_SPEED_FT, WFL_HEIGHT_FT, WFL_FLAG_FREEZE, WFL_FLAG_SPLASH, WFL_FLAG_SOUND } from "./mtm/wfl.ts";
 export type { Wfl, WflFall, WflWriteFall } from "./mtm/wfl.ts";
 export {
-  buildFallMeshes, checkFallRecords, validateFall, fallDebugColumns, fallGround, fallTerrainHeight, fallWater, fallMist, fallMists, fallMistSlotFree,
+  buildFallMeshes, checkFallRecords, validateFall, fallHeightRange, fallDebugColumns, fallGround, fallTerrainHeight, fallWater, fallMist, fallMists, fallMistSlotFree,
   fallSound, fallSoundGain, fallLook, fallRippleFrame, fallTextureName, readFallFile, FALL_FILE_STATUS_TEXT,
   FALL_SPACINGS_FT, FALL_MAX_COLUMNS, FALL_VERTEX_FLOATS, FALL_MAX_FALL_VERTICES, FALL_MAX_TRACK_VERTICES, FALL_MAX_TRACK_INDICES,
   FALL_MAX_BUILT, FALL_MAX_ROWS, FALL_WALK, FALL_VERTEX, FALL_VERTEX_UNITS_PER_FT, FALL_END_WATER, FALL_END_REST, FALL_END_LIMIT,
@@ -168,10 +177,10 @@ export {
 } from "./sim/cp4/falls.ts";
 export type {
   BuiltFall, FallBuildOptions, FallDebugColumn, FallGround, FallLakes, FallMeshes, FallMist, FallRecord, FallRecordCheck, FallRecordCounters,
-  FallRecordError, FallRefusal, FallSound, FallWater, FallFile, FallFileStatus, FallFileCounters,
+  FallRecordError, FallRefusal, FallSound, FallWater, FallFile, FallFileStatus, FallFileCounters, FallHeights,
 } from "./sim/cp4/falls.ts";
 export {
-  isMtm2Veg, parseMtm2Veg, writeMtm2Veg, vegTreeAt, vegClumpAt, VEG_UNITS_PER_FT, VEG_KIND_PLACED, VEG_KIND_GROUND,
+  isMtm2Veg, parseMtm2Veg, writeMtm2Veg, checkMtm2VegBounds, vegTreeAt, vegClumpAt, VEG_UNITS_PER_FT, VEG_KIND_PLACED, VEG_KIND_GROUND,
   VEG_FLAG_CAST_SHADOW, VEG_FLAG_FAR_SHADOW, VEG_FLAG_CROSSFADE, VEG_FLAG_FACING, VEG_COLLIDE,
 } from "./mtm/veg.ts";
 export type { Veg, VegSpecies, VegTrees, VegClumps, VegGrassTile } from "./mtm/veg.ts";
@@ -181,6 +190,7 @@ export { parseSrf, srfTypeOf, srfTypeCode, SRF_TYPES, SRF_TYPE_CODES, SRF_MAX_LI
 export type { Srf, SrfType } from "./mtm/srf.ts";
 export { terrainSplineExpand, terrainSplineSeg, TERRAIN_SPLINE_VERSION } from "./terrain/spline.ts";
 export { isPng, decodePngSamples } from "./texture/png.ts";
+export { encodeGreyPng, deflateZlib, crc32 } from "./texture/png-write.ts";
 export type { PngSamples } from "./texture/png.ts";
 export { inflateRaw, inflateZlib } from "./texture/inflate.ts";
 export type {

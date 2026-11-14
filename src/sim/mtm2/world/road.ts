@@ -38,6 +38,7 @@ export interface RoadGround extends Mtm2Ground {
 }
 
 export function createRoadGround(base: Mtm2Ground, road: RoadTriangles): RoadGround {
+  const worldFt = base.worldFt;
   const p = road.positions;
   const count = Math.floor(p.length / 9);
   // Per triangle: the plane y = y0 + sx * (x - x0) + sz * (z - z0), and its unit normal.
@@ -74,7 +75,7 @@ export function createRoadGround(base: Mtm2Ground, road: RoadTriangles): RoadGro
   let found = 0;
   function triangleAt(x: number, z: number, limit = Infinity): number {
     // The road is in the one world: a point a world away is over the same triangle.
-    x = wrapCoord(x); z = wrapCoord(z);
+    x = wrapCoord(x, worldFt); z = wrapCoord(z, worldFt);
     const list = buckets.get(key(Math.floor(x / BUCKET_FT), Math.floor(z / BUCKET_FT)));
     if (!list) return -1;
     let best = -1;

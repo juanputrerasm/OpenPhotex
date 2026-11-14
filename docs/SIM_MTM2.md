@@ -190,7 +190,7 @@ const mist = fallMist(m.falls[0], m.falls[0]);   // or null
 
 | Function | Does |
 |---|---|
-| `readFallFile(bytes)` | the engine's parser (12.1.2), which never throws: `status` 0..7 (`FALL_FILE_STATUS_TEXT` names those the "damaged (%s)" message shows, 12.1.3; 4 is the "newer build" one), only the first FALL entry, the count clamped to the chunk (`counters.truncated`), and bad records kept for `checkFallRecords` (a point count outside 2..8, a name without a NUL), where Traxx's `parseWfl` refuses the whole file |
+| `readFallFile(bytes, { cells })` | the engine's parser (12.1.2), which never throws: `status` 0..7 (`FALL_FILE_STATUS_TEXT` names those the "damaged (%s)" message shows, 12.1.3; 4 is the "newer build" one), only the first FALL entry, the count clamped to the chunk (`counters.truncated`), and bad records kept for `checkFallRecords` (a point count outside 2..8, a name without a NUL), where Traxx's `parseWfl` refuses the whole file |
 | `checkFallRecords(falls)` | the parser's record checks (12.1.2) in its order: id 1..255 and unique (taken before the later checks), 2..8 points, coordinates below 0x20000, speed 16..1600, height 1..4096, flags within 7, names within 15 characters, 64 accepted (`over`); opacity clamped to 100, mist and volume to 200. Returns the accepted records, the rejected ones and the counters |
 | `validateFall(fall, { lakes, tileMap })` | null or the REFUSED reason (12.1.4) in the engine's order: `FALL_POINTS` (a segment under 2 ft, wrapped differences), `FALL_TURN` (consecutive segments with a negative dot), `FALL_WIDTH` (crest over 1024 ft), then for a lake-fed fall `FALL_SOURCE` (no loaded lake with that id), `FALL_HEIGHT` (stored height not exactly the lake's), `FALL_DIRECTION` (some point's 1 ft probe behind the crest, nudged up to 0.5 ft along an adjacent segment, is not on a source-lake tile) |
 | `fallGround(heights)` | the walk's ground (12.2.3) from `decodeMtm2Heights`: terrain only, the engine's integer triangles on v >> 1 at 1/64 ft, times 4, 16.16 fractions, `(a * b) >> 16`, the parity split; the 32 ft grid for classic, the 1024 x 1024 8 ft grid for spline and Full Map. `fallTerrainHeight(corners, cells, x, z)` is the same on a raw grid. Any `(x, z) => ft` callback may stand in |
@@ -302,6 +302,29 @@ move whatever it draws from. The game takes no distance the short way round. The
 `collideTrucks` tests the second truck as the copy nearest the first, `withNearest(s, x, z, test)` does the same for a
 truck against anything at (x, z), `groundBoxesAround` places a box beside the point across the map's edge, and
 `createRoadGround` reads its triangles wrapped. `wrapCoord`, `wrapDelta` and `nearestShift` are the arithmetic.
+
+**World size (track format version 6).** A version 6 track may have N = 512 cells a side instead of 256, a world
+W = 32 N = 16,384 ft (https://openmtm2.github.io/proposals/track-format-v6, section 8.1). The cell stays 32 ft and the
+fine cell 8 ft; only the constants follow N, and every one has a parameter that defaults to the retail world:
+
+| Constant | Where | Parameter |
+| --- | --- | --- |
+| cell mask `& (N - 1)`, row stride N | terrain, lakes (`terrain.ts`), surface (`surface.ts`), ground boxes (`box.ts`, `moving-object.ts`) | `createTerrain(heights, water, cells)`, `createTerrainFt(heightsFt, water, fine, cells)`, `createSurfaceMap(clr, values, cells)`, `groundBoxesAround(..., stepFt, cells, baseFt)`; the terrain's `cells` for `groundBoxHeightAt` and `stepMovingObject` |
+| fine grid 4N | `terrain.ts` | a fine grid must be a multiple of N |
+| position wrap every frame at W | `wrapTruck(s, worldFt)`, `stepMovingObject` (from the terrain) | `worldFt` |
+| negative load positions + W | `wrapLoadCoord(v, worldFt)`, `createTopCrush(..., worldFt)` | `worldFt` |
+| nearest copy at W / 2 | `wrapDelta`, `nearestShift`, `withNearest`, `collideTrucks(..., rules, worldFt)` | `worldFt` |
+
+`terrainCells(t)` and `terrainWorldFt(t)` read a terrain's N and W; `createTerrainGround` puts W on the ground as
+`worldFt`, which `createRoadGround` uses. `worldFtOf(cells)` is 32 N. A 16-bit ground box layer (section 8.3) passes its
+u16 grids with `stepFt = 1 / terrainHeightStep` and the terrain's base (`baseFt`, or `GroundBoxScale` for
+`groundBoxHeightAt`). Heights of a version 6 terrain go in through `createTerrainFt` in feet
+(`mtm2V6HeightsFt`, exact). The waterfall build (`cp4Sim`, `falls.ts`) takes the world too (section 9.3): `readFallFile(bytes, { cells })` reads
+major 1 (a 256 world only) and major 2 (N x N), `fallGround(heights, { cells, h128: true })` walks the version 6 heights
+in their 32-bit h128 store (`mtm2V6HeightsH128`, the coarse N x N or fine 4N x 4N grid), `fallWater` and
+`validateFall` take `cells` beside `lakes` and `tileMap` (the N x N map, segments wrapped at W), and `buildFallMeshes`
+takes `cells` and `heightRange` (`fallHeightRange(major, { step, base })`: 1..4096 half-feet for version 1, a version 2
+lake's range for version 2). A built fall carries `worldFt`, which `fallMist` and `fallSound` wrap at.
 
 ## Vehicles of other games
 

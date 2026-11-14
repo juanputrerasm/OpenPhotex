@@ -126,7 +126,8 @@ test(".WTR round trip and tile lookup", () => {
   assert.deepEqual(w.lakes[1]!.seeds, [{ x: 11, z: 20 }, { x: 11, z: 21 }]);
   assert.equal(wtrLakeAt(w, 10 * 32 + 5, 20 * 32 + 31), 1);
   assert.equal(wtrLakeAt(w, 11 * 32 + 8192, 20 * 32), 2);
-  const newer = bytes.slice(); newer[4] = 2;
+  // Major 2 is track format version 6's .WTR (test/track-format-v6.test.ts); 3 is newer than any reader knows.
+  const newer = bytes.slice(); newer[4] = 3;
   assert.throws(() => parseWtr(newer), /newer/);
 });
 

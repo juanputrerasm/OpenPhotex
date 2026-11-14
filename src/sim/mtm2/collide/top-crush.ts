@@ -65,12 +65,15 @@ export interface TopCrushSource {
 }
 
 /** A car at load (`0x54a000`): a model's bounds replace that part's sizes (length z, width x, height y). */
-export function createTopCrush(src: TopCrushSource, bodyBounds: ModelBounds | null = null, cabBounds: ModelBounds | null = null): SimTopCrush {
+export function createTopCrush(
+  src: TopCrushSource, bodyBounds: ModelBounds | null = null, cabBounds: ModelBounds | null = null, worldFt = 8192,
+): SimTopCrush {
   const sizes = (bounds: ModelBounds | null, size: ArrayLike<number> | null): [number, number, number] =>
     bounds ? [bounds.max[2] - bounds.min[2], bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1]] : [size?.[0] ?? 0, size?.[1] ?? 0, size?.[2] ?? 0];
   const [L, W, H] = sizes(bodyBounds, src.sizeFt);
   const [L2, W2, H2] = sizes(cabBounds, src.size2Ft);
-  const wrap = (v: number) => (v < 0 ? v + 8192 : v);
+  // A negative position at load gets a world added: 8192 ft, W in a track format version 6 world.
+  const wrap = (v: number) => (v < 0 ? v + worldFt : v);
   const pos: V3 = [wrap(src.positionFt[0]), src.positionFt[1], wrap(src.positionFt[2])];
   const pos2: V3 = [wrap(src.position2Ft[0]), pos[1] - H / 2 + H2 / 2, wrap(src.position2Ft[2])];
   const matrix = new Float64Array(9);

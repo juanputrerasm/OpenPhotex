@@ -8,8 +8,11 @@
   the landing statistics (12.2.11); then the mist fog volume (12.4), the sound (12.7) and the looks
   (12.8) as plain data. Falls never touch the simulation (12.10).
 
-  Feet throughout, unwrapped from the crest's point 0 (positions may leave [0, 8192); the ground and
-  water lookups wrap). The engine computes in floats; this computes in doubles and stores the buffer as
+  Feet throughout, unwrapped from the crest's point 0 (positions may leave [0, W); the ground and
+  water lookups wrap). W is 8,192 ft, or 32 N ft for a track format version 6 world of N cells, whose
+  .WFL version 2 (the specification's section 9.3) takes every world constant from N: the header's
+  size, the crest points below 16 W, the wrap at W, the lake map N x N, and the walk's ground on the
+  track's 32-bit heights (its section 7.3). The engine computes in floats; this computes in doubles and stores the buffer as
   Float32Array, so counts and rules match and values agree to float precision.
 */
 import type { WflFall } from "../../mtm/wfl.ts";
@@ -93,32 +96,62 @@ export type FallWater = (x: number, z: number, source: number) => number | null;
 /** The loaded lake table and tile map (a parsed .WTR fits): the lakes the WTR loader kept. */
 export interface FallLakes {
   lakes?: ReadonlyArray<{ id: number; height: number }>;
+  /** N x N lake ids, index z * N + x. */
   tileMap?: Uint8Array | null;
+  /** The world's cells a side, N (track format version 6); 256 when absent. */
+  cells?: number;
+}
+
+/** A height grid for the walk: 1/128 ft samples (u16 as CP4 reads them, or a version 6 track's 32-bit h128). */
+export interface FallHeights {
+  mode: Mtm2Heights["mode"];
+  coarse: ArrayLike<number> | null;
+  fine: ArrayLike<number> | null;
+}
+
+const worldFtOf = (cells: number | undefined) => 32 * (cells ?? 256);
+
+/**
+ * The crest height range in half-feet a record may hold: 1..4096 in a version 1 file; in version 2 the terrain's
+ * range, as a version 2 lake's (track format version 6, sections 9.1 and 9.3), from the track's step and base
+ * (128 and 0 without a terrainHeightMap).
+ */
+export function fallHeightRange(major: number, terrain: { step?: number; base?: number } = {}): { min: number; max: number } {
+  if (major < 2) return { min: 1, max: 4096 };
+  const step = terrain.step ?? 128, base = terrain.base ?? 0;
+  return { min: 2 * base + 1, max: 2 * (base + 65536 / step) };
 }
 
 /**
  * The engine's ground for the walk (12.2.3): terrain only, the integer triangle rule. Classic (8 or 16-bit) on the
  * 256 x 256 corners at 32 ft, spline and Full Map on the 1024 x 1024 grid at 8 ft; heights as the engine holds them
  * (v >> 1 at 1/64 ft, times 4), the fraction in 16.16, `(a * b) >> 16` per edge, the parity split. Feet in, feet out.
+ *
+ * `cells` (N) and `h128` are track format version 6's: the corners are N x N (or 4N x 4N) and the samples are the
+ * 32-bit h128 store of its section 7.3, kept whole (times 2 to 1/256 ft) instead of CP4's v >> 1.
  */
-export function fallGround(heights: Pick<Mtm2Heights, "mode" | "coarse" | "fine">): FallGround {
+export function fallGround(heights: FallHeights, opts: { cells?: number; h128?: boolean } = {}): FallGround {
   const fine = heights.mode === "spline" || heights.mode === "fine";
   const src = fine ? heights.fine : heights.coarse;
-  const cells = fine ? 1024 : 256;
+  const n = opts.cells ?? 256;
+  const cells = fine ? 4 * n : n;
   if (!src || src.length !== cells * cells) throw new RangeError(`fallGround: needs ${cells} x ${cells} heights`);
   const corners = new Int32Array(src.length);
-  for (let i = 0; i < src.length; i++) corners[i] = src[i]! >> 1;
-  return fine ? (x, z) => fallTerrainHeight(corners, 1024, x, z) : (x, z) => fallTerrainHeight(corners, 256, x, z);
+  if (opts.h128) corners.set(Array.from(src, (v) => Math.trunc(v)));
+  else for (let i = 0; i < src.length; i++) corners[i] = src[i]! >> 1;
+  const scale = opts.h128 ? 2 : 4;
+  return (x, z) => fallTerrainHeight(corners, cells, x, z, scale);
 }
 
 const fmul = (a: number, b: number) => Math.floor((a * b) / 65536);
 
 /**
  * Terrain height in feet at (x, z) on a grid of `cells` x `cells` corner heights in 1/64 ft (rows along z): 256 for
- * the classic 32 ft grid, 1024 for the 8 ft fine grid (12.2.3).
+ * the classic 32 ft grid, 1024 for the 8 ft fine grid (12.2.3). A version 6 world's grids are 512 (32 ft) and 2048
+ * (8 ft); `scale` takes a corner to 1/256 ft (4 for 1/64 ft, 2 for the 1/128 ft h128 store).
  */
-export function fallTerrainHeight(corners: ArrayLike<number>, cells: 256 | 1024, x: number, z: number): number {
-  const shift = cells === 256 ? 13 : 11;
+export function fallTerrainHeight(corners: ArrayLike<number>, cells: number, x: number, z: number, scale = 4): number {
+  const shift = cells >= 1024 ? 11 : 13;
   const cellMask = (1 << shift) - 1;
   const fracMul = 65536 >> shift;
   const m = cells - 1;
@@ -126,7 +159,7 @@ export function fallTerrainHeight(corners: ArrayLike<number>, cells: 256 | 1024,
   const x1 = (xi >> shift) & m, z1 = (zi >> shift) & m;
   const x2 = (x1 + 1) & m, z2 = (z1 + 1) & m;
   const xf = (xi & cellMask) * fracMul, zf = (zi & cellMask) * fracMul;
-  const Y = (tx: number, tz: number) => corners[tz * cells + tx]! * 4;
+  const Y = (tx: number, tz: number) => corners[tz * cells + tx]! * scale;
   let r: number;
   if ((x1 & 1) === (z1 & 1)) {
     const y0 = Y(x1, z1);
@@ -149,12 +182,13 @@ export function fallTerrainHeight(corners: ArrayLike<number>, cells: 256 | 1024,
  * no water.
  */
 export function fallWater(wtr: FallLakes | null, lvlWaterFt: number | null): FallWater {
+  const n = wtr?.cells ?? 256, m = n - 1;
   const lvl = lvlWaterFt !== null && Math.floor(lvlWaterFt * 256) >= 1 ? lvlWaterFt : null;
   const surface = new Float64Array(256).fill(Number.NaN);
   for (const k of wtr?.lakes ?? []) if (k.id >= 1 && k.id <= 255) surface[k.id] = k.height * 0.5;
   const map = wtr?.tileMap ?? null;
   return (x, z, source) => {
-    const tile = map ? map[((Math.floor(z * 256) >> 13) & 255) * 256 + ((Math.floor(x * 256) >> 13) & 255)]! : 0;
+    const tile = map ? map[((Math.floor(z * 256) >> 13) & m) * n + ((Math.floor(x * 256) >> 13) & m)]! : 0;
     if (tile === 0 || tile === source) return lvl;
     const s = surface[tile]!;
     return Number.isNaN(s) ? null : s;
@@ -166,6 +200,7 @@ export function fallWater(wtr: FallLakes | null, lvlWaterFt: number | null): Fal
 /**
  * The engine parser's status (12.1.2): 0 read, 1 empty file, 2 bad magic, 3 truncated header, 4 a major other than
  * 1 (the "needs a newer build" message), 5 a directory past the end, 6 another terrain size, 7 no usable FALL list.
+ * A version 6 reader also reads major 2 (the specification's 9.3), a 512-cell world's: the world's size picks the version.
  */
 export type FallFileStatus = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -203,7 +238,8 @@ export interface FallFile {
  * the status codes of the on-screen messages, only the first FALL entry considered, the record count clamped to the
  * chunk (truncated), and bad records left to the record checks instead of refusing the file. Never throws.
  */
-export function readFallFile(bytes: Uint8Array): FallFile {
+export function readFallFile(bytes: Uint8Array, opts: { cells?: number } = {}): FallFile {
+  const cells = opts.cells ?? 256;
   const counters: FallFileCounters = { unknown: 0, duplicate: 0, outOfBounds: 0, badVersion: 0, badStride: 0, truncated: 0 };
   const out = (status: FallFileStatus, major = 0, minor = 0, stride = 0, falls: WflFall[] = []): FallFile => ({ status, major, minor, stride, counters, falls });
   const size = bytes.length;
@@ -214,10 +250,11 @@ export function readFallFile(bytes: Uint8Array): FallFile {
   if (bytes[0] !== 0x4d || bytes[1] !== 0x57 || bytes[2] !== 0x46 || bytes[3] !== 0x4c) return out(2);
   if (size < 0x20) return out(3);
   const major = r16(4), minor = r16(6);
-  if (major !== 1) return out(4, major, minor);
+  if (major !== 1 && major !== 2) return out(4, major, minor);
   const dir = r32(8), count = r32(12);
   if (dir < 0x20 || dir + count * 16 > size) return out(5, major, minor);
-  if (r16(0x10) !== 256 || r16(0x12) !== 256) return out(6, major, minor);
+  // The world's size picks the version (9.3): version 1 is a 256-cell world's, version 2 a 512-cell one's.
+  if (r16(0x10) !== cells || r16(0x12) !== cells || cells !== (major === 1 ? 256 : 512)) return out(6, major, minor);
   let chunk: [number, number] | null = null, seen = false;
   for (let i = 0; i < count; i++) {
     const e = dir + i * 16;
@@ -248,7 +285,7 @@ export function readFallFile(bytes: Uint8Array): FallFile {
   for (let i = 0; i < n; i++) {
     const r = off + 8 + i * stride;
     const np = bytes[r + 2]!;
-    const flags = r16(r + 4), speed = r16(r + 6), height = r32(r + 8);
+    const flags = r16(r + 4), speed = r16(r + 6), height = major === 2 ? r32(r + 8) | 0 : r32(r + 8);
     const points = np >= 2 && np <= 8
       ? Array.from({ length: np }, (_, k) => ({ x: r32(r + 12 + 8 * k), z: r32(r + 16 + 8 * k) }))
       : Array.from({ length: np }, () => ({ x: 0, z: 0 }));
@@ -289,14 +326,18 @@ export interface FallRecordCheck {
  * points, coordinates below 0x20000, speed 16..1600, height 1..4096, no flag above bit 2, names that fit 15
  * characters, at most 64 accepted. parseWfl already refuses a point count outside 2..8 and more than 64 records; a
  * stem without a NUL in its 16 bytes cannot reach here from parseWfl, so badName only catches a longer name passed in.
+ *
+ * Version 2 (track format version 6): coordinates below 16 W for a world of `cells`, heights in `heightRange`
+ * (`fallHeightRange`).
  */
-export function checkFallRecords(falls: readonly WflFall[]): FallRecordCheck {
+export function checkFallRecords(falls: readonly WflFall[], opts: { cells?: number; heightRange?: { min: number; max: number } } = {}): FallRecordCheck {
+  const limits = { coord: 16 * worldFtOf(opts.cells), ...(opts.heightRange ?? { min: 1, max: 4096 }) };
   const counters: FallRecordCounters = { badId: 0, dupId: 0, badPoints: 0, badCoord: 0, badSpeed: 0, badHeight: 0, badFlags: 0, badName: 0, over: 0 };
   const accepted: FallRecordCheck["accepted"] = [];
   const rejected: FallRecordCheck["rejected"] = [];
   const used = new Uint8Array(256);
   falls.forEach((f, index) => {
-    const reason = recordError(f, used, accepted.length);
+    const reason = recordError(f, used, accepted.length, limits);
     if (reason) { counters[reason]++; rejected.push({ index, id: f.id, reason }); return; }
     const size = (v: number) => (v ? Math.min(v, 250) : 100);
     accepted.push({
@@ -311,25 +352,25 @@ export function checkFallRecords(falls: readonly WflFall[]): FallRecordCheck {
   return { accepted, rejected, counters };
 }
 
-function recordError(f: WflFall, used: Uint8Array, nAccepted: number): FallRecordError | null {
+function recordError(f: WflFall, used: Uint8Array, nAccepted: number, limits: { coord: number; min: number; max: number }): FallRecordError | null {
   if (!Number.isInteger(f.id) || f.id < 1 || f.id > 255) return "badId";
   if (used[f.id]) return "dupId";
   used[f.id] = 1;
   if (f.points.length < 2 || f.points.length > 8) return "badPoints";
-  for (const p of f.points) if (!(p.x >= 0 && p.x < 0x20000 && p.z >= 0 && p.z < 0x20000)) return "badCoord";
+  for (const p of f.points) if (!(p.x >= 0 && p.x < limits.coord && p.z >= 0 && p.z < limits.coord)) return "badCoord";
   if (!(f.speed >= 16 && f.speed <= 1600)) return "badSpeed";
-  if (!(f.height >= 1 && f.height <= 4096)) return "badHeight";
+  if (!(f.height >= limits.min && f.height <= limits.max)) return "badHeight";
   if ((f.flags & 0xfff8) !== 0) return "badFlags";
   if (f.soundName.length > 15 || f.textureName.length > 15) return "badName";
   if (nAccepted >= FALL_MAX_BUILT) return "over";
   return null;
 }
 
-/** The world wraps at 8192 ft: b - a brought into [-4096, 4096) (12.1.4). */
-function wrapDiff(a: number, b: number): number {
-  let d = b - a + 4096;
-  d -= Math.floor(d / 8192) * 8192;
-  return d - 4096;
+/** The world wraps at W (8192 ft): b - a brought into [-W/2, W/2) (12.1.4). */
+function wrapDiff(a: number, b: number, w: number): number {
+  let d = b - a + w / 2;
+  d -= Math.floor(d / w) * w;
+  return d - w / 2;
 }
 
 interface Crest {
@@ -344,12 +385,12 @@ interface Crest {
   pfx: number[]; pfz: number[];
 }
 
-function crestOf(fall: Pick<WflFall, "points">): Crest {
+function crestOf(fall: Pick<WflFall, "points">, w = 8192): Crest {
   const n = fall.points.length;
   const px = [fall.points[0]!.x * 0.0625], pz = [fall.points[0]!.z * 0.0625];
   for (let k = 1; k < n; k++) {
-    px.push(px[k - 1]! + wrapDiff(fall.points[k - 1]!.x * 0.0625, fall.points[k]!.x * 0.0625));
-    pz.push(pz[k - 1]! + wrapDiff(fall.points[k - 1]!.z * 0.0625, fall.points[k]!.z * 0.0625));
+    px.push(px[k - 1]! + wrapDiff(fall.points[k - 1]!.x * 0.0625, fall.points[k]!.x * 0.0625, w));
+    pz.push(pz[k - 1]! + wrapDiff(fall.points[k - 1]!.z * 0.0625, fall.points[k]!.z * 0.0625, w));
   }
   const cum = [0], ux: number[] = [], uz: number[] = [], seg: number[] = [], sfx: number[] = [], sfz: number[] = [];
   for (let j = 0; j < n - 1; j++) {
@@ -376,7 +417,8 @@ function crestOf(fall: Pick<WflFall, "points">): Crest {
  * SOURCE, HEIGHT and DIRECTION. `lakes` are the loaded WTR bodies (a refused lake has no entry), `tileMap` the TMAP.
  */
 export function validateFall(fall: Pick<WflFall, "points" | "source" | "height">, ctx: FallLakes = {}): FallRefusal | null {
-  const c = crestOf(fall);
+  const cells = ctx.cells ?? 256, m = cells - 1;
+  const c = crestOf(fall, worldFtOf(cells));
   const n = fall.points.length;
   for (let j = 0; j < n - 1; j++) if (c.seg[j]! < 2) return "FALL_POINTS";
   for (let j = 0; j + 1 < n - 1; j++) if (c.ux[j]! * c.ux[j + 1]! + c.uz[j]! * c.uz[j + 1]! < 0) return "FALL_TURN";
@@ -392,8 +434,8 @@ export function validateFall(fall: Pick<WflFall, "points" | "source" | "height">
     for (const j of segs) {
       const nudge = Math.min(0.5 * c.seg[j]!, 0.5) * (j === k ? 1 : -1);
       const bx = c.px[k]! + nudge * c.ux[j]!, bz = c.pz[k]! + nudge * c.uz[j]!;
-      const tx = Math.floor((bx - c.sfx[j]!) / 32) & 255, tz = Math.floor((bz - c.sfz[j]!) / 32) & 255;
-      if ((map ? map[tz * 256 + tx]! : 0) === fall.source) { pass = true; break; }
+      const tx = Math.floor((bx - c.sfx[j]!) / 32) & m, tz = Math.floor((bz - c.sfz[j]!) / 32) & m;
+      if ((map ? map[tz * cells + tx]! : 0) === fall.source) { pass = true; break; }
     }
     if (!pass) return "FALL_DIRECTION";
   }
@@ -560,8 +602,8 @@ export interface FallDebugColumn {
  * Re-walk every column of a fall at one spacing (as waterfallDebug does, 12.1.6): the rows of the count pass before
  * the row cut, with the trim's verdict. Null when the spacing has no columns.
  */
-export function fallDebugColumns(fall: Pick<WflFall, "points" | "source" | "height" | "speed">, spacing: number, opts: Pick<FallBuildOptions, "ground" | "water">): FallDebugColumn[] | null {
-  const p = countPass(crestOf(fall), spacing, fall.height * 0.5, fall.speed * 0.0625, opts.ground, opts.water, fall.source);
+export function fallDebugColumns(fall: Pick<WflFall, "points" | "source" | "height" | "speed">, spacing: number, opts: Pick<FallBuildOptions, "ground" | "water" | "cells">): FallDebugColumn[] | null {
+  const p = countPass(crestOf(fall, worldFtOf(opts.cells)), spacing, fall.height * 0.5, fall.speed * 0.0625, opts.ground, opts.water, fall.source);
   if (!p) return null;
   return p.cols.map((c, i) => {
     const r = p.rows[i]!;
@@ -582,6 +624,8 @@ export interface BuiltFall {
   id: number;
   source: number;
   flags: number;
+  /** The world's side the fall wraps at, ft: 8,192, or 32 N on a track format version 6 world. */
+  worldFt: number;
   /** The anchor, crest point 0 at the crest height: ft, and the engine's ints in 1/256 ft (x0 * 16, height * 128, z0 * 16). */
   anchorFt: [number, number, number];
   anchor: [number, number, number];
@@ -623,6 +667,8 @@ export interface BuiltFall {
 export interface FallBuildOptions extends FallLakes {
   ground: FallGround;
   water: FallWater;
+  /** The record check's height range (`fallHeightRange`); version 1's 1..4096 when absent. */
+  heightRange?: { min: number; max: number };
 }
 
 export interface FallMeshes {
@@ -649,7 +695,7 @@ export interface FallMeshes {
  * track vertex and index buffer, at the first spacing that fits its budget, or shortened at the coarsest.
  */
 export function buildFallMeshes(falls: readonly WflFall[], opts: FallBuildOptions): FallMeshes {
-  const check = checkFallRecords(falls);
+  const check = checkFallRecords(falls, { cells: opts.cells, heightRange: opts.heightRange });
   const refused: FallMeshes["refused"] = [];
   const dropped: FallMeshes["dropped"] = [];
   const built: BuiltFall[] = [];
@@ -680,7 +726,8 @@ function buildOne(
   vb: Float32Array, base: number, ib: Uint32Array, ibase: number,
 ): BuiltFall | null {
   const { ground, water } = opts;
-  const crest = crestOf(fall);
+  const worldFt = worldFtOf(opts.cells);
+  const crest = crestOf(fall, worldFt);
   if (crest.len < 1e-6) return null;
   const crestY = fall.height * 0.5, speed = fall.speed * 0.0625;
   const fits = (p: CountPass, R: number) => { const t = totals(p, R); return t.verts <= budget && 3 * t.tris <= room; };
@@ -885,7 +932,7 @@ function buildOne(
   for (const m of colCount) { if (m < rowsMin) rowsMin = m; if (m > rowsMax) rowsMax = m; }
   const p0 = fall.points[0]!;
   return {
-    slot, index, id: fall.id, source: fall.source, flags: fall.flags,
+    slot, index, id: fall.id, source: fall.source, flags: fall.flags, worldFt,
     anchorFt: [x0, crestY, z0], anchor: [p0.x * 16, fall.height * 128, p0.z * 16],
     firstVertex: base, vertexCount: w - base, sheetVertexCount: sheetEnd - base, foamVertexCount: w - foamStart,
     firstIndex: ibase, indexCount: q - ibase,
@@ -917,7 +964,7 @@ export interface FallMist {
   widthFt: number;
   lengthFt: number;
   heightFt: number;
-  /** Centre x, z in [0, 8192) and the floor y, ft. */
+  /** Centre x, z in [0, W) and the floor y, ft. */
   centre: [number, number];
   floorFt: number;
   /** Unit horizontal axes of W and L. */
@@ -942,7 +989,8 @@ export function fallMist(fall: BuiltFall, record: MistRecord = fall, opts: { wat
   const heightFt = Math.min(Math.min(0.7 * drop, 120) * record.mistHeight / 100, 240);
   const { dirX, dirZ } = fall.landing;
   const has = Math.hypot(dirX, dirZ) > 1e-6;
-  const wrap = (v: number) => { const r = v % 8192; return r < 0 ? r + 8192 : r; };
+  const w = fall.worldFt ?? 8192;
+  const wrap = (v: number) => { const r = v % w; return r < 0 ? r + w : r; };
   const cx = wrap(fall.landing.x + (has ? 0.3 * lengthFt * dirX : 0));
   const cz = wrap(fall.landing.z + (has ? 0.3 * lengthFt * dirZ : 0));
   const vis = Math.min(Math.max(120 / density, 20), 1000);
@@ -992,7 +1040,8 @@ export function fallSound(fall: BuiltFall, record: Pick<WflFall, "flags" | "soun
   if (record.soundName === "") return { silent: "no-stem" };
   if (opts.snow && record.flags & FALL_FLAG_FREEZE) return { silent: "frozen" };
   const sl = fall.crestSpeedFtPerSec * fall.crestLengthFt;
-  const wrap = (v: number) => { const r = v % 8192; return r < 0 ? r + 8192 : r; };
+  const w = fall.worldFt ?? 8192;
+  const wrap = (v: number) => { const r = v % w; return r < 0 ? r + w : r; };
   return {
     silent: null, stem: record.soundName, file: `sound\\${record.soundName}.WAV`,
     position: [wrap(fall.landing.x), fall.landing.y, wrap(fall.landing.z)],

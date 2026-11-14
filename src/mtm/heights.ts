@@ -161,3 +161,163 @@ export function mtm2HeightsToFeet(v: Uint16Array): Float32Array {
   for (let i = 0; i < v.length; i++) out[i] = v[i]! / MTM2_H16_PER_FT;
   return out;
 }
+
+/*
+  Track format version 6 heights (https://openmtm2.github.io/proposals/track-format-v6, section 7).
+
+  A .SI3 track names its heights with the .TXV key terrainHeightMap: a grey PNG (colour type 0 or
+  4, 8 or 16-bit, alpha ignored) or a RAW of unsigned 16-bit samples, N x N (32 ft spacing) or
+  4N x 4N (8 ft), N being worldCells (256 or 512). Any other size is refused. A sample means
+
+    height_ft = terrainHeightBase + sample / terrainHeightStep
+
+  with an 8-bit PNG sample b counting as b << 8. The grid mode is CP4's table with N for 256:
+
+    file        classic              spline                fine
+    N square    flat 32 ft           expanded to 4N        classic, with a warning
+    4N square   fine, with a warning fine, with a warning  8 ft as stored
+
+  and, with no terrainGrid key, classic for N and fine for 4N. The spline runs on the samples,
+  wrapping at N, before step and base. Heights are held as 32-bit integers at 1/128 ft
+  (mtm2V6HeightsH128), the spec's recommended store: every step converts with a shift, so every
+  engine gets the same value to the bit.
+*/
+
+/** The version 6 heights of a track, in sample units (apply step and base with mtm2V6HeightsH128 or mtm2V6HeightsFt). */
+export interface Mtm2V6Heights {
+  mode: "classic" | "spline" | "fine";
+  /** N, cells a side. */
+  cells: number;
+  /** N x N corner samples (for fine: every fourth fine sample). */
+  coarse: Uint16Array;
+  /** 4N x 4N at 8 ft for spline (expanded) and fine; null for classic. */
+  fine: Uint16Array | null;
+  step: number;
+  base: number;
+  /** 8 for an 8-bit PNG (samples are b << 8), else 16. */
+  bitDepth: 8 | 16;
+  warning: string | null;
+}
+
+/** log2 of an allowed terrainHeightStep, or a RangeError. */
+function stepShift(step: number): number {
+  const shift = Math.log2(step);
+  if (!Number.isInteger(shift) || shift < 0 || shift > 7) throw new RangeError(`terrainHeightStep=${step}; allowed: 1, 2, 4, 8, 16, 32, 64 or 128`);
+  return shift;
+}
+
+function v6Mode(side: number, cells: number, terrainGrid: string | null | undefined): { mode: Mtm2V6Heights["mode"]; warning: string | null } {
+  const key = terrainGrid == null || terrainGrid === "" ? null : terrainGrid.toLowerCase();
+  if (key !== null && key !== "classic" && key !== "spline" && key !== "fine") throw new RangeError(`TXV: terrainGrid=${terrainGrid}; allowed: classic, spline or fine`);
+  if (side === 4 * cells) {
+    return { mode: "fine", warning: key === null || key === "fine" ? null : `terrainGrid=${key} but the height file is ${side} x ${side}: read as 8 ft heights` };
+  }
+  if (key === "spline") return { mode: "spline", warning: null };
+  if (key === "fine") return { mode: "classic", warning: `terrainGrid=fine but the height file is ${side} x ${side}: read as a 32 ft grid` };
+  return { mode: "classic", warning: null };
+}
+
+/**
+ * Decode a version 6 terrainHeightMap entry. `name` (the key's value) says PNG or RAW by its
+ * extension; `cells` is worldCells; `step` and `base` the .TXV's (they are carried, not applied).
+ * A file of the wrong size, depth or colour type is refused with a RangeError.
+ */
+export function decodeMtm2V6Heights(
+  bytes: Uint8Array, opts: { name: string; cells: number; step?: number; base?: number; terrainGrid?: string | null },
+): Mtm2V6Heights {
+  const { name, cells } = opts;
+  const step = opts.step ?? 128, base = opts.base ?? 0;
+  stepShift(step);
+  if (cells !== 256 && cells !== 512) throw new RangeError(`worldCells=${cells}; allowed: 256 or 512`);
+  const fineSide = 4 * cells;
+  let side: number, samples: Uint16Array, bitDepth: 8 | 16 = 16;
+  if (/\.png$/i.test(name)) {
+    const png = decodePngSamples(bytes);
+    if (png.colorType !== 0 && png.colorType !== 4) throw new RangeError(`${name}: a height PNG must be greyscale (colour type 0 or 4), not colour type ${png.colorType}`);
+    if (png.bitDepth !== 8 && png.bitDepth !== 16) throw new RangeError(`${name}: a height PNG must be 8 or 16-bit, not ${png.bitDepth}-bit`);
+    if (png.width !== png.height || (png.width !== cells && png.width !== fineSide)) {
+      throw new RangeError(`${name} is ${png.width} x ${png.height}; a ${cells}-cell world needs ${cells} x ${cells} or ${fineSide} x ${fineSide}`);
+    }
+    side = png.width;
+    bitDepth = png.bitDepth;
+    samples = new Uint16Array(side * side);
+    for (let i = 0; i < samples.length; i++) {
+      const s = png.samples[i * png.channels]!;
+      samples[i] = bitDepth === 8 ? s << 8 : s;
+    }
+  } else if (/\.raw$/i.test(name)) {
+    const coarseBytes = 2 * cells * cells, fineBytes = 2 * fineSide * fineSide;
+    if (bytes.length !== coarseBytes && bytes.length !== fineBytes) {
+      throw new RangeError(`${name} is ${bytes.length} bytes; a ${cells}-cell world needs ${coarseBytes} (${cells} x ${cells}) or ${fineBytes} (${fineSide} x ${fineSide}) bytes of u16 samples`);
+    }
+    side = bytes.length === coarseBytes ? cells : fineSide;
+    samples = u16le(bytes, side * side);
+  } else {
+    throw new RangeError(`terrainHeightMap=${name}; it must name a .PNG or a .RAW`);
+  }
+  const { mode, warning } = v6Mode(side, cells, opts.terrainGrid);
+  let coarse: Uint16Array, fine: Uint16Array | null = null;
+  if (side === fineSide) {
+    fine = samples;
+    coarse = new Uint16Array(cells * cells);
+    for (let z = 0; z < cells; z++) for (let x = 0; x < cells; x++) coarse[z * cells + x] = fine[4 * z * fineSide + 4 * x]!;
+  } else {
+    coarse = samples;
+    if (mode === "spline") fine = terrainSplineExpand(coarse, cells);
+  }
+  const warning8 = bitDepth === 8 && side === fineSide ? "8-bit fine height PNG: 256 sample steps only" : null;
+  return { mode, cells, coarse, fine, step, base, bitDepth, warning: warning ?? warning8 };
+}
+
+/** Samples to the recommended engine store (section 7.3): h128 = (sample << (7 - log2 step)) + base * 128, in 1/128 ft. */
+export function mtm2V6HeightsH128(samples: Uint16Array, step: number, base: number): Int32Array {
+  const shift = 7 - stepShift(step), offset = base * 128;
+  const out = new Int32Array(samples.length);
+  for (let i = 0; i < samples.length; i++) out[i] = (samples[i]! << shift) + offset;
+  return out;
+}
+
+/** Samples to feet, base + sample / step. Exact in a Float32 (the 1/128 ft store fits its 24-bit mantissa). */
+export function mtm2V6HeightsFt(samples: Uint16Array, step: number, base: number): Float32Array {
+  const shift = 7 - stepShift(step), offset = base * 128;
+  const out = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i++) out[i] = ((samples[i]! << shift) + offset) / 128;
+  return out;
+}
+
+/**
+ * The step and base a writer picks for heights spanning lowFt..highFt (section 11): base the
+ * floor of the lowest point, step the largest power of two up to 128 with (high - base) * step at
+ * most 65535. A span over 65535 ft cannot be stored and throws.
+ */
+export function mtm2V6StepAndBase(lowFt: number, highFt: number): { step: number; base: number } {
+  if (!Number.isFinite(lowFt) || !Number.isFinite(highFt) || highFt < lowFt) throw new RangeError(`heights ${lowFt}..${highFt} ft are not a range`);
+  const base = Math.floor(lowFt);
+  if (base < -32768 || base > 32767) throw new RangeError(`lowest point ${lowFt} ft: terrainHeightBase must be -32768..32767`);
+  for (let step = 128; step >= 1; step >>= 1) if ((highFt - base) * step <= 65535) return { step, base };
+  throw new RangeError(`heights span ${highFt - base} ft; the most a track can hold is 65535 ft`);
+}
+
+/** Feet to samples for a step and base: round(( ft - base) * step), refused outside 0..65535. */
+export function mtm2V6SamplesFromFt(feet: ArrayLike<number>, step: number, base: number): Uint16Array {
+  stepShift(step);
+  const out = new Uint16Array(feet.length);
+  for (let i = 0; i < feet.length; i++) {
+    const s = Math.round((feet[i]! - base) * step);
+    if (!(s >= 0 && s <= 65535)) throw new RangeError(`height ${feet[i]} ft does not fit terrainHeightBase=${base}, terrainHeightStep=${step}`);
+    out[i] = s;
+  }
+  return out;
+}
+
+/** A u16 RAW height file (little-endian samples, row by row): the .RAW form of terrainHeightMap. */
+export function encodeMtm2HeightRaw16(samples: ArrayLike<number>): Uint8Array {
+  const out = new Uint8Array(2 * samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    const v = samples[i]!;
+    if (!(Number.isInteger(v) && v >= 0 && v <= 65535)) throw new RangeError(`height sample ${i} = ${v} is not a u16`);
+    out[2 * i] = v & 0xff;
+    out[2 * i + 1] = v >> 8;
+  }
+  return out;
+}

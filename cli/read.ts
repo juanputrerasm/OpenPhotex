@@ -146,7 +146,7 @@ export function read(source: string | undefined, selector: string | undefined, o
 /*
   Which reader a file wants. Extensions come first; content settles the extensions two games
   share (.SIT, .TRK, .NAV, .TEX); the archive settles .LVL, where the content cannot: a POD2 is
-  4x4 Evolution, and a POD1 carrying any .SIT or .SI2 belongs to the MTM family.
+  4x4 Evolution, and a POD1 carrying any .SIT, .SI2 or .SI3 belongs to the MTM family.
 */
 function detect(name: string, bytes: Uint8Array, archive: PodArchive | null, archiveBytes: Uint8Array): string {
   const title = podPathTitle(name);
@@ -155,10 +155,10 @@ function detect(name: string, bytes: Uint8Array, archive: PodArchive | null, arc
   const evoArchive = archive?.format === "pod2";
   switch (ext) {
     case "BIN": return "bin";
-    case "SIT": case "SI2": return isEvoSit(bytes) ? "evo-sit" : "mtm-sit";
+    case "SIT": case "SI2": case "SI3": return isEvoSit(bytes) ? "evo-sit" : "mtm-sit";
     case "LVL": {
       if (evoArchive || text().includes("$")) return "evo-lvl";
-      if (archive) return archive.entries.some((e) => /\.SI[T2]$/.test(e.title)) ? "mtm-lvl" : "tv-lvl";
+      if (archive) return archive.entries.some((e) => /\.SI[T23]$/.test(e.title)) ? "mtm-lvl" : "tv-lvl";
       return "";
     }
     case "WAT": return "evo-wat";

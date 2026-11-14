@@ -22,6 +22,8 @@ import {
 import { terrainHeightAt, terrainLakeAt, type Mtm2Terrain } from "./terrain.ts";
 
 export interface Mtm2SurfaceMap {
+  /** N, cells a side: 256, or 512 in a track format version 6 world. Absent means 256. */
+  cells?: number;
   /** The level `.CLR`: one texture word per terrain cell, row-major, rows along z. */
   clr: Uint16Array;
   /** The type value (`type * 100 + depth`) of each texture index. */
@@ -43,11 +45,11 @@ export function textureTypeValues(
   return out;
 }
 
-export function createSurfaceMap(clr: Uint16Array, textureValues: Int32Array): Mtm2SurfaceMap {
-  if (clr.length !== TERRAIN_CELLS * TERRAIN_CELLS) {
-    throw new RangeError(`surface map needs ${TERRAIN_CELLS * TERRAIN_CELLS} cells, got ${clr.length}`);
+export function createSurfaceMap(clr: Uint16Array, textureValues: Int32Array, cells: number = TERRAIN_CELLS): Mtm2SurfaceMap {
+  if (clr.length !== cells * cells) {
+    throw new RangeError(`surface map needs ${cells * cells} cells, got ${clr.length}`);
   }
-  return { clr, textureValues };
+  return cells === TERRAIN_CELLS ? { clr, textureValues } : { cells, clr, textureValues };
 }
 
 /** The type value of a texture word (unknown textures read 0). */
@@ -75,9 +77,10 @@ export function terrainSurfaceValue(
     if (Math.floor((snow && height < level ? level : height) * 256) === 0) return 0;
     if (height <= level) return (snow ? FROZEN_WATER_TYPE : DEEP_WATER_TYPE) * 100;
   }
-  const col = (Math.trunc(x * 256) >> 13) & (TERRAIN_CELLS - 1);
-  const row = (Math.trunc(z * 256) >> 13) & (TERRAIN_CELLS - 1);
-  return textureWordValue(map, map.clr[row * TERRAIN_CELLS + col]);
+  const n = map.cells ?? TERRAIN_CELLS;
+  const col = (Math.trunc(x * 256) >> 13) & (n - 1);
+  const row = (Math.trunc(z * 256) >> 13) & (n - 1);
+  return textureWordValue(map, map.clr[row * n + col]);
 }
 
 export function surfaceType(value: number): number {

@@ -60,9 +60,9 @@ export interface TruckContact { hull: boolean; wheels: boolean }
  * truck's `extForce` / `extMoment`; the faster truck is moved out of the slower one. Returns what
  * met (for a host's sounds and effects).
  */
-export function collideTrucks(a: TruckBody, b: TruckBody, dt: number, rules: Mtm2Rules = MTM2_RULES): TruckContact {
+export function collideTrucks(a: TruckBody, b: TruckBody, dt: number, rules: Mtm2Rules = MTM2_RULES, worldFt = 8192): TruckContact {
   // Across the world's seam the two are a world apart by their numbers: `b` is tested as the copy nearest `a`.
-  return withNearest(b.s, a.s.pos[0], a.s.pos[2], () => collideNear(a, b, dt, rules));
+  return withNearest(b.s, a.s.pos[0], a.s.pos[2], () => collideNear(a, b, dt, rules), worldFt);
 }
 
 function collideNear(a: TruckBody, b: TruckBody, dt: number, rules: Mtm2Rules): TruckContact {

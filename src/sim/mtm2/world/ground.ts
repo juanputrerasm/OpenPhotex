@@ -10,7 +10,7 @@
 */
 import type { Vec3 } from "../math.ts";
 import { rampHeightAt, type SimRamp } from "../collide/ramp.ts";
-import { groundHeightAt, groundNormalAt, terrainWaterLevelAt, type Mtm2Terrain } from "./terrain.ts";
+import { groundHeightAt, groundNormalAt, terrainWaterLevelAt, terrainWorldFt, type Mtm2Terrain } from "./terrain.ts";
 import { MTM2_RULES, weatherGrip, type Mtm2Rules } from "../constants.ts";
 import { terrainSurfaceValue, type Mtm2SurfaceMap } from "./surface.ts";
 
@@ -36,6 +36,8 @@ export interface Mtm2Ground {
   ramps: SimRamp[];
   /** Which game's rules apply (constants.ts); MTM2's when absent. */
   rules?: Mtm2Rules;
+  /** W, the world's side in feet (8192, or 32 N in a track format version 6 world); 8192 when absent. */
+  worldFt?: number;
 }
 
 /** The grip factor of the ground's weather under its rules. */
@@ -66,5 +68,6 @@ export function createTerrainGround(
     weather,
     ramps,
     rules,
+    worldFt: terrainWorldFt(terrain),
   };
 }

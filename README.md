@@ -62,7 +62,7 @@ Details: [docs/TRUCKS.md](docs/TRUCKS.md).
 
 | Format | Games | Contents | Example |
 |---|---|---|---|
-| `.SIT`, `.SI2` | MTM1, MTM2, CPR | Scene script: ramps, boxes, checkpoints, courses, trucks | `openphotex read SUMMIT1.POD SUMMIT1.SIT` |
+| `.SIT`, `.SI2`, `.SI3` | MTM1, MTM2, CPR | Scene script: ramps, boxes, checkpoints, courses, trucks (`.SI3`: MTM2 track format version 6) | `openphotex read SUMMIT1.POD SUMMIT1.SIT` |
 | `.LVL` | MTM1, MTM2, CPR | Level file: terrain, colours, palette, textures, sky, sun | `openphotex read SUMMIT1.POD SUMMIT1.LVL` |
 | `.TEX` | MTM, CPR, TV family | Terrain texture list | `openphotex read SUMMIT1.POD SUMMIT1.TEX` |
 | `.TTY` | MTM, CPR, TV family | Terrain texture types | `openphotex read SUMMIT1.POD SUMMIT1.TTY` |
@@ -292,7 +292,7 @@ openphotex read TRUCK2.POD BIGFOOT.BIN --json --full   # typed arrays in full
 openphotex read LOOSE.LVL --as tv-lvl                  # a loose file, reader named
 ```
 
-`read` picks the reader from the file's extension, then its content, then the archive it came from: `.SIT` is 4x4 Evolution or MTM by content, a CPR road `.TRK` by its `CRaceTrack.trackCount` label, a Hellbender `.NAV` by its `!priority,time` sections, and a `.LVL` by the archive (POD2 is Evo; a POD1 carrying a `.SIT` or `.SI2` is MTM, any other is the Terminal Velocity family). A `.TEX` inside an EPD is a Fly! texture list. A Fly! `.REF` or `.AL2` is laid out by its quadrant's `.TYP`, so it is read from its archive, never loose. A loose `.LVL` has no archive to ask, so give `--as`. `openphotex --help` lists every format id. Files with no standalone reader (grids such as `.CLR` and `.RA0`, sound, video) fail with `UNSUPPORTED_FORMAT`.
+`read` picks the reader from the file's extension, then its content, then the archive it came from: `.SIT` is 4x4 Evolution or MTM by content, a CPR road `.TRK` by its `CRaceTrack.trackCount` label, a Hellbender `.NAV` by its `!priority,time` sections, and a `.LVL` by the archive (POD2 is Evo; a POD1 carrying a `.SIT`, `.SI2` or `.SI3` is MTM, any other is the Terminal Velocity family). A `.TEX` inside an EPD is a Fly! texture list. A Fly! `.REF` or `.AL2` is laid out by its quadrant's `.TYP`, so it is read from its archive, never loose. A loose `.LVL` has no archive to ask, so give `--as`. `openphotex --help` lists every format id. Files with no standalone reader (grids such as `.CLR` and `.RA0`, sound, video) fail with `UNSUPPORTED_FORMAT`.
 
 `texture` draws with, in order:
 

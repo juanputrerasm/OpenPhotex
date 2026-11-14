@@ -496,7 +496,7 @@ test("readFallFile: the engine's status codes, in its order (12.1.2)", () => {
   assert.equal(readFallFile(ok.slice(0, 3)).status, 3, "under 4 bytes");
   assert.equal(readFallFile(Uint8Array.from([0x4d, 0x57, 0x46, 0x58, ...ok.slice(4)])).status, 2, "bad magic");
   assert.equal(readFallFile(ok.slice(0, 0x1f)).status, 3, "under the header");
-  assert.equal(readFallFile(poke16(ok, 4, 2)).status, 4, "major 2");
+  assert.equal(readFallFile(poke16(ok, 4, 3)).status, 4, "major 3");
   assert.equal(readFallFile(poke16(ok, 4, 0)).status, 4, "major 0");
   assert.equal(readFallFile(poke32(ok, 8, 0x10)).status, 5, "directory inside the header");
   assert.equal(readFallFile(poke32(ok, 12, 99)).status, 5, "directory past the end");
