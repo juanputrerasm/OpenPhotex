@@ -162,9 +162,9 @@ export {
   MTM2_H16_PER_FT, MTM2_RAW_LENGTH_8BIT, MTM2_RAW_LENGTH_16BIT, MTM2_RAW_LENGTH_FINE, MTM2_FINE_CELL_FT,
 } from "./mtm/heights.ts";
 export type { Mtm2Heights, Mtm2TerrainMode, Mtm2V6Heights } from "./mtm/heights.ts";
-export { isWtr, parseWtr, writeWtr, wtrLakeAt, wtrHeightRange, WTR_HEIGHT_FT, WTR_FLAG_REFLECTIVE, WTR_TILES } from "./mtm/wtr.ts";
+export { isWtr, parseWtr, writeWtr, wtrLakeAt, wtrHeightRange, WTR_HEIGHT_FT, WTR_FLAG_REFLECTIVE, WTR_HEADER_EDGE_RULE, WTR_TILES } from "./mtm/wtr.ts";
 export type { Wtr, WtrLake, WtrWriteLake } from "./mtm/wtr.ts";
-export { isWfl, parseWfl, writeWfl, wflPointsFt, wflFallFitsV1, WFL_MAX_FALLS, WFL_MAX_POINTS, WFL_POINT_FT, WFL_SPEED_FT, WFL_HEIGHT_FT, WFL_FLAG_FREEZE, WFL_FLAG_SPLASH, WFL_FLAG_SOUND } from "./mtm/wfl.ts";
+export { isWfl, parseWfl, writeWfl, wflPointsFt, wflFallFitsV1, WFL_MAX_FALLS, WFL_MAX_POINTS, WFL_POINT_FT, WFL_SPEED_FT, WFL_HEIGHT_FT, WFL_FLAG_FREEZE, WFL_FLAG_SPLASH, WFL_FLAG_SOUND, WFL_ROUGH_DEFAULT, WFL_ROUGH_OFF, WFL_ROUGH_DEFAULT_FT } from "./mtm/wfl.ts";
 export type { Wfl, WflFall, WflWriteFall } from "./mtm/wfl.ts";
 export {
   buildFallMeshes, checkFallRecords, validateFall, fallHeightRange, fallDebugColumns, fallGround, fallTerrainHeight, fallWater, fallMist, fallMists, fallMistSlotFree,
@@ -174,11 +174,18 @@ export {
   FALL_FLAG_FREEZE, FALL_FLAG_SPLASH, FALL_FLAG_SOUND, FALL_WEATHER_SNOW, FOG_VOLUME_SLOTS, FALL_MIST_WEATHER_ALL, FALL_MIST_WEATHER_NO_SNOW,
   FALL_SOUND_LOOP_ROOM, FALL_SOUND_RANGE, FALL_LOOK_ORIGINAL, FALL_LOOK_ENHANCED, FALL_LOOK_REALISTIC, FALL_LOOK_ICE, FALL_GPU_DRAW,
   FALL_GPU_ICE, FALL_RIPPLE_FRAMES, FALL_RIPPLE_FRAME_TICKS, FALL_RIPPLE_FRAME_SEC, FALL_GRAPHICS_DEFAULTS,
+  FALL_MAX_STREAMS, FALL_KIND_SHEET, FALL_KIND_FOAM, FALL_KIND_BACK,
 } from "./sim/cp4/falls.ts";
 export type {
   BuiltFall, FallBuildOptions, FallDebugColumn, FallGround, FallLakes, FallMeshes, FallMist, FallRecord, FallRecordCheck, FallRecordCounters,
-  FallRecordError, FallRefusal, FallSound, FallWater, FallFile, FallFileStatus, FallFileCounters, FallHeights,
+  FallRecordError, FallRefusal, FallSound, FallWater, FallFile, FallFileStatus, FallFileCounters, FallHeights, FallStream,
 } from "./sim/cp4/falls.ts";
+export { buildFallSheet, fallCountBack, fallRibbonWidth, fallSlabThickness, FALL_SHEET } from "./sim/cp4/fall-sheet.ts";
+export type { Sheet as FallSheet, SheetColumn as FallSheetColumn, SheetOptions as FallSheetOptions } from "./sim/cp4/fall-sheet.ts";
+export {
+  createFallDroplets, stepFallDroplets, fallDropletHash, fallSprayHash, FALL_DROPLETS, FALL_SPRAY,
+} from "./sim/cp4/fall-droplets.ts";
+export type { FallDropletBurst, FallDropletState, FallDropletStep } from "./sim/cp4/fall-droplets.ts";
 export {
   isMtm2Veg, parseMtm2Veg, writeMtm2Veg, checkMtm2VegBounds, vegTreeAt, vegClumpAt, VEG_UNITS_PER_FT, VEG_KIND_PLACED, VEG_KIND_GROUND,
   VEG_FLAG_CAST_SHADOW, VEG_FLAG_FAR_SHADOW, VEG_FLAG_CROSSFADE, VEG_FLAG_FACING, VEG_COLLIDE,

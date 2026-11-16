@@ -17,7 +17,7 @@ const wf = (pts: Array<[number, number]>, height: number, source = 0): WflWriteF
 const asRecord = (f: WflWriteFall, id = 1): WflFall => ({
   id, source: f.source, flags: f.flags, freeze: false, splash: true, sound: true, speed: f.speed, speedFtPerSec: f.speed / 16,
   height: f.height, heightFt: f.height / 2, points: f.points.map((p) => ({ ...p })), opacity: 100, mist: 100, volume: 100,
-  mistDepth: 100, mistHeight: 100, soundName: f.soundName ?? "", textureName: "",
+  mistDepth: 100, mistHeight: 100, roughFrom: 0, soundName: f.soundName ?? "", textureName: "",
 });
 
 test("WFL v2: a 512 world's header, i32 heights and points beyond 8,192 ft round-trip", () => {

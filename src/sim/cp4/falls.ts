@@ -1,12 +1,15 @@
 /*
-  Community Patch 4 beta 0.53's waterfalls (OpenMTM2 docs/CP4_EXE_ANALYSIS.md 12, read from monster.exe and
-  trid3d11.dll; its author published no source code). The .WFL holds only crests (mtm/wfl.ts); the engine
-  builds each fall's sheet at load by walking water from the crest over the terrain into the water, and
-  this module is that build: the record checks and REFUSED reasons (12.1.2, 12.1.4), the walk (12.2.4),
-  the trailing-flat trim (12.2.5), the spacing, budget and shortening (12.2.6), the 16-float vertices
-  with the sink vertex (12.2.7), normals (12.2.8), global indices (12.2.9), the foam strip (12.2.10) and
-  the landing statistics (12.2.11); then the mist fog volume (12.4), the sound (12.7) and the looks
-  (12.8) as plain data. Falls never touch the simulation (12.10).
+  Community Patch 4's waterfalls (OpenMTM2 docs/CP4_EXE_ANALYSIS.md 12 for beta 0.53 and 16 for its hotfix 3, read
+  from monster.exe and trid3d11.dll; its author published no source code). The .WFL holds only crests (mtm/wfl.ts);
+  the engine builds each fall's sheet at load by walking water from the crest over the terrain into the water, and
+  this module is that build as hotfix 3 does it (OpenMTM2 plays its tracks with the current engine): the record
+  checks and REFUSED reasons (12.1.2, 12.1.4, roughFrom 16.2.2), the walk (12.2.4), the trailing-flat trim
+  (12.2.5), the per-row air flags and the dry landing row (16.3.2), the spacing, budget (with the back face, 16.3.3)
+  and shortening (12.2.6), the 16-float vertices with the sink vertex (12.2.7); then the hotfix's sheet
+  (fall-sheet.ts: flow tubes, the split, ribbons, the across u, ADVECT, the relaxation, the slab with its back face,
+  16.3.4 .. 16.3.11), the foam strip (12.2.10), the landings, one per stream (16.3.12); then the mist fog volumes per
+  stream (16.4), the sound (12.7) and the looks (12.8) as plain data. The droplets' emitter is fall-droplets.ts
+  (16.5). Falls never touch the simulation (12.10).
 
   Feet throughout, unwrapped from the crest's point 0 (positions may leave [0, W); the ground and
   water lookups wrap). W is 8,192 ft, or 32 N ft for a track format version 6 world of N cells, whose
@@ -18,6 +21,7 @@
 import type { WflFall } from "../../mtm/wfl.ts";
 import type { Mtm2Heights } from "../../mtm/heights.ts";
 import type { SitFog } from "../../mtm/sit.ts";
+import { buildFallSheet, fallCountBack, type SheetColumn } from "./fall-sheet.ts";
 
 // ---- Constants ----
 
@@ -27,8 +31,8 @@ export const FALL_SPACINGS_FT: readonly number[] = [2, 3, 4, 6, 8];
 export const FALL_MAX_COLUMNS = 1100;
 /** Floats per vertex (64 bytes). */
 export const FALL_VERTEX_FLOATS = 16;
-/** Vertex budget of one fall (12.1.5). */
-export const FALL_MAX_FALL_VERTICES = 16384;
+/** Vertex budget of one fall (16.2.3; beta 0.53's was 16384). */
+export const FALL_MAX_FALL_VERTICES = 32768;
 /** The track's vertex buffer (16 MiB of 64-byte vertices) and index buffer (6 MiB of u32). */
 export const FALL_MAX_TRACK_VERTICES = 262144;
 export const FALL_MAX_TRACK_INDICES = 1572864;
@@ -70,8 +74,15 @@ export const FALL_VERTEX = {
   posX: 0, posY: 1, posZ: 2, u: 3, tau: 4, speed: 5, air: 6, edge: 7,
   end: 8, kind: 9, fall: 10, drop: 11, normalX: 12, normalY: 13, normalZ: 14, path: 15,
 } as const;
+/** The vertex `kind` field: the sheet and its ribbons, the foam strip, the slab's back face (16.3.10). */
+export const FALL_KIND_SHEET = 0;
+export const FALL_KIND_FOAM = 1;
+export const FALL_KIND_BACK = 2;
 /** Vertex positions are in this many units a foot, relative to the fall's anchor. */
 export const FALL_VERTEX_UNITS_PER_FT = 256;
+
+/** The streams (landings) a fall keeps at most (16.3.12). */
+export const FALL_MAX_STREAMS = 4;
 
 /** Column end kinds (12.2.4): 1 water, 2 at rest on the ground, 3 out of steps. */
 export const FALL_END_WATER = 1;
@@ -226,6 +237,11 @@ export interface FallFile {
   stride: number;
   counters: FallFileCounters;
   /**
+   * Records whose roughFrom (byte 0x82) was 251..254, which hotfix 3 reads as 0 (16.2.2): logged with waterBodyLog
+   * only, no message, not "skipped".
+   */
+  roughInvalid: number;
+  /**
    * Every record in the (clamped) count, as parseWfl shapes them, for `checkFallRecords` / `buildFallMeshes`: a point
    * count outside 2..8 keeps that many placeholder points (the record is rejected before its coordinates are read), and
    * a name without a NUL in its 16 bytes keeps all 16 characters (badName).
@@ -236,12 +252,14 @@ export interface FallFile {
 /**
  * Read a .WFL as the engine's parser does (12.1.2), which differs from Traxx's reader (`parseWfl`) on damaged files:
  * the status codes of the on-screen messages, only the first FALL entry considered, the record count clamped to the
- * chunk (truncated), and bad records left to the record checks instead of refusing the file. Never throws.
+ * chunk (truncated), and bad records left to the record checks instead of refusing the file. Hotfix 3 also reads
+ * roughFrom (byte 0x82 of a record of at least 0x84 bytes), 251..254 as 0 (`roughInvalid` counts them). Never throws.
  */
 export function readFallFile(bytes: Uint8Array, opts: { cells?: number } = {}): FallFile {
   const cells = opts.cells ?? 256;
   const counters: FallFileCounters = { unknown: 0, duplicate: 0, outOfBounds: 0, badVersion: 0, badStride: 0, truncated: 0 };
-  const out = (status: FallFileStatus, major = 0, minor = 0, stride = 0, falls: WflFall[] = []): FallFile => ({ status, major, minor, stride, counters, falls });
+  let roughInvalid = 0;
+  const out = (status: FallFileStatus, major = 0, minor = 0, stride = 0, falls: WflFall[] = []): FallFile => ({ status, major, minor, stride, counters, roughInvalid, falls });
   const size = bytes.length;
   const r16 = (o: number) => bytes[o]! | (bytes[o + 1]! << 8);
   const r32 = (o: number) => (bytes[o]! | (bytes[o + 1]! << 8) | (bytes[o + 2]! << 16) | (bytes[o + 3]! << 24)) >>> 0;
@@ -290,12 +308,16 @@ export function readFallFile(bytes: Uint8Array, opts: { cells?: number } = {}): 
       ? Array.from({ length: np }, (_, k) => ({ x: r32(r + 12 + 8 * k), z: r32(r + 16 + 8 * k) }))
       : Array.from({ length: np }, () => ({ x: 0, z: 0 }));
     const v11 = stride >= 0x84;
+    // roughFrom (16.2.2): 0 and 255 kept, 1..250 kept, 251..254 read as 0 and counted; no byte 0x82 below 0x84.
+    let roughFrom = v11 ? bytes[r + 0x82]! : 0;
+    if (roughFrom >= 251 && roughFrom <= 254) { roughFrom = 0; roughInvalid++; }
     falls.push({
       id: bytes[r]!, source: bytes[r + 1]!, flags,
       freeze: (flags & FALL_FLAG_FREEZE) !== 0, splash: (flags & FALL_FLAG_SPLASH) !== 0, sound: (flags & FALL_FLAG_SOUND) !== 0,
       speed, speedFtPerSec: speed * 0.0625, height, heightFt: height * 0.5, points,
       opacity: bytes[r + 0x4c]!, mist: bytes[r + 0x4d]!, volume: bytes[r + 0x4e]!,
       mistDepth: v11 ? bytes[r + 0x80]! : 100, mistHeight: v11 ? bytes[r + 0x81]! : 100,
+      roughFrom,
       soundName: name(r + 0x50), textureName: name(r + 0x60),
     });
   }
@@ -528,21 +550,55 @@ function walkColumn(col: Column, crestY: number, speed: number, sp: number, grou
   return r;
 }
 
-/** The trailing-flat trim (12.2.5): how many emitted rows a column keeps. */
-function trimmedRows(r: Rows, ground: FallGround): number {
-  const n = r.x.length;
-  if (r.end === FALL_END_WATER || n < 2) return n;
+/** The trim's "flat contact" per emitted row (12.2.5): air 0 on ground flatter than 10 deg. */
+function flatRows(r: Rows, ground: FallGround): boolean[] {
   const nv = [0, 1, 0];
-  const flat = (i: number) => r.air[i] === 0 && drapeNormal(ground, r.x[i]!, r.z[i]!, nv)[1]! > FALL_WALK.flatCos;
+  return r.x.map((x, i) => r.air[i] === 0 && drapeNormal(ground, x, r.z[i]!, nv)[1]! > FALL_WALK.flatCos);
+}
+
+/**
+ * The run-out start (12.2.5 steps 1..2, `1402581a0`): back over the trailing flat-contact rows, then forward while the
+ * row is still 1 ft above the last; -1 for a water column, fewer than 2 rows, no flat end, or a start at the last row.
+ */
+function runoutStart(r: Rows, flat: readonly boolean[]): number {
+  const n = r.x.length;
+  if (r.end === FALL_END_WATER || n < 2) return -1;
   let k = n;
-  while (k > 0 && flat(k - 1)) k--;
-  if (k === n) return n;
+  while (k > 0 && flat[k - 1]) k--;
+  if (k >= n) return -1;
   let s = Math.max(k - 1, 0);
   while (s < n && r.y[s]! - r.y[n - 1]! >= FALL_WALK.trimRiseFt) s++;
-  if (s >= n - 1 || r.path[n - 1]! - r.path[s]! <= FALL_WALK.trimPathFt) return n;
+  return s >= n - 1 ? -1 : s;
+}
+
+/** The trailing-flat trim (12.2.5): how many emitted rows a column keeps. */
+function trimmedRows(r: Rows, flat: readonly boolean[]): number {
+  const n = r.x.length;
+  const s = runoutStart(r, flat);
+  if (s < 0 || r.path[n - 1]! - r.path[s]! <= FALL_WALK.trimPathFt) return n;
   let i = s + 1;
   while (r.path[i]! - r.path[s]! <= FALL_WALK.trimPathFt) i++;
   return i + 1;
+}
+
+/**
+ * The dry landing row of a column (16.3.2, landPick) over its first `rows` written rows: -1 for a water column, fewer
+ * than 2 rows or an airborne last row. FALL: the airborne stretch touching down before the last row with the largest
+ * drop (the first on a tie), if at least half of crest to last row; else SLIDE: the run-out start, if in 1 .. rows - 1.
+ */
+function landPick(r: Rows, flags: ArrayLike<number>, rows: number, crestY: number, runout: number): number {
+  if (r.end === FALL_END_WATER || rows < 2 || flags[rows - 1]) return -1;
+  let best = -1, bestDrop = 0, i = 0;
+  while (i < rows) {
+    if (!flags[i]) { i++; continue; }
+    const a = i;
+    while (i < rows && flags[i]) i++;
+    if (i >= rows) break;
+    const d = r.y[a > 0 ? a - 1 : 0]! - r.y[i]!;
+    if (d > bestDrop) { bestDrop = d; best = i; }
+  }
+  if (best >= 0 && bestDrop >= 0.5 * (crestY - r.y[rows - 1]!)) return best;
+  return runout >= 1 && runout < rows ? runout : -1;
 }
 
 interface CountPass {
@@ -551,31 +607,47 @@ interface CountPass {
   /** Emitted rows kept (trimmed) per column, and the counted rows (plus the sink row of a water column). */
   kept: number[];
   counted: number[];
+  /** Per column, the counted rows' air flags (air != 0; row 0 takes row 1's, a sink the water row's) (16.3.2). */
+  flags: Uint8Array[];
+  /** Per column, the run-out start over the whole walk (16.3.2), -1 for none. */
+  runout: number[];
   maxRows: number;
 }
 
 function countPass(c: Crest, sp: number, crestY: number, speed: number, ground: FallGround, water: FallWater, source: number): CountPass | null {
   const cols = columnsOf(c, sp);
   if (cols.length === 0) return null;
-  const rows: Rows[] = [], kept: number[] = [], counted: number[] = [];
+  const rows: Rows[] = [], kept: number[] = [], counted: number[] = [], flags: Uint8Array[] = [], runout: number[] = [];
   let maxRows = 0;
   for (const col of cols) {
     const r = walkColumn(col, crestY, speed, sp, ground, water, source);
-    const k = trimmedRows(r, ground);
-    rows.push(r); kept.push(k);
-    const m = k + (r.end === FALL_END_WATER ? 1 : 0);
+    const flat = flatRows(r, ground);
+    const k = trimmedRows(r, flat);
+    rows.push(r); kept.push(k); runout.push(runoutStart(r, flat));
+    const sink = r.end === FALL_END_WATER;
+    const m = k + (sink ? 1 : 0);
     counted.push(m);
+    const f = new Uint8Array(m);
+    for (let i = 0; i < k; i++) f[i] = r.air[i] !== 0 ? 1 : 0;
+    if (k >= 2) f[0] = f[1]!;
+    if (sink) f[k] = f[k - 1]!;
+    flags.push(f);
     if (m > maxRows) maxRows = m;
   }
-  return { cols, rows, kept, counted, maxRows };
+  return { cols, rows, kept, counted, flags, runout, maxRows };
 }
 
-/** Totals(R) of 12.2.6: vertices and triangles with every column cut at R rows. */
-function totals(p: CountPass, R: number): { verts: number; tris: number } {
+/**
+ * Totals(R) of 12.2.6 with the back face (16.3.3): vertices (sheet, foam, back) and triangles with every column cut at
+ * R rows, on the full grid before the flow tubes.
+ */
+function totals(p: CountPass, R: number): { verts: number; tris: number; back: number } {
   let verts = 0, tris = 0, run = 0;
   const n = p.counted.length;
+  const cut: number[] = [];
   for (let i = 0; i < n; i++) {
     const m = Math.min(p.counted[i]!, R);
+    cut.push(m);
     verts += m;
     if (i > 0) tris += Math.min(p.counted[i - 1]!, R) + m - 2;
     const foam = p.rows[i]!.end === FALL_END_WATER && p.counted[i]! <= R;
@@ -585,7 +657,8 @@ function totals(p: CountPass, R: number): { verts: number; tris: number } {
       if (!foam) run = 0;
     }
   }
-  return { verts, tris };
+  const back = fallCountBack(cut, p.flags);
+  return { verts: verts + back.verts, tris: tris + back.tris, back: back.verts };
 }
 
 export interface FallDebugColumn {
@@ -614,7 +687,21 @@ export function fallDebugColumns(fall: Pick<WflFall, "points" | "source" | "heig
   });
 }
 
-// ---- The build (12.2.6 .. 12.2.12) ----
+// ---- The build (12.2.6 .. 12.2.12, 16.3) ----
+
+/** One landing stream (16.3.12, the built table's +0x98 + 36 s): ft, unwrapped. */
+export interface FallStream {
+  x: number; y: number; z: number;
+  /** Across the flow, ft, and the mean drop from the crest. */
+  width: number;
+  drop: number;
+  /** The landing direction (unit, horizontal). */
+  dirX: number; dirZ: number;
+  /** Live columns that land here. */
+  columns: number;
+  /** Whether it lands in water (all of a fall's streams are water, or all dry). */
+  water: boolean;
+}
 
 export interface BuiltFall {
   /** Build slot 0..63 (the vertex `fall` field). */
@@ -631,11 +718,21 @@ export interface BuiltFall {
   anchor: [number, number, number];
   firstVertex: number;
   vertexCount: number;
+  /** Buffer order (16.3.11): sheet (column by column), ribbons (2 a ribbon vertex), back face, foam strip. */
   sheetVertexCount: number;
+  ribbonVertexCount: number;
+  backVertexCount: number;
   foamVertexCount: number;
-  /** Into the track's index buffer; the indices are global (the fall's vertex base added). */
+  /** Written vertices per column (after the flow tubes: a merged column ends at its junction, without a sink). */
+  columnRows: number[];
+  /** Into the track's index buffer; the indices are global (the fall's vertex base added). Back face first. */
   firstIndex: number;
   indexCount: number;
+  backTriangleCount: number;
+  ribbonTriangleCount: number;
+  /** Columns merged into a neighbour (16.3.4) and sheet triangles the split dropped (16.3.5). */
+  mergedColumns: number;
+  droppedTriangles: number;
   spacing: number;
   shortened: boolean;
   /** The row cut R when shortened, else null. */
@@ -646,9 +743,13 @@ export interface BuiltFall {
   rowsMax: number;
   /** Columns that ended in water (kept or cut by R), at rest, out of steps. */
   ends: { water: number; rest: number; limit: number };
-  /** Vertex units (1/256 ft, anchor-relative), foam included. */
+  /** Vertex units (1/256 ft, anchor-relative), every part included. */
   bounds: { min: [number, number, number]; max: [number, number, number] };
-  /** ft, unwrapped; (dirX, dirZ) the landing direction. */
+  /** The landing streams (16.3.12), at most 4, in column order. */
+  streams: FallStream[];
+  /** Columns over the kept streams (+0x94). */
+  totalColumns: number;
+  /** The main landing: the stream with the most columns (the sound's place, 12.7); ft, unwrapped. */
   landing: { x: number; y: number; z: number; width: number; drop: number; dirX: number; dirZ: number };
   crestLengthFt: number;
   crestSpeedFtPerSec: number;
@@ -658,6 +759,8 @@ export interface BuiltFall {
   volume: number;
   mistDepth: number;
   mistHeight: number;
+  /** The record's roughFrom (16.2.2; the shader's per-fall [3].y): 0 default, 1..250 ft/s, 255 off. */
+  roughFrom: number;
   soundName: string;
   textureName: string;
   /** The per-fall droplet RNG seed, id * 0x3c6ef362 + 0x9e3779b1 (u32). */
@@ -669,6 +772,9 @@ export interface FallBuildOptions extends FallLakes {
   water: FallWater;
   /** The record check's height range (`fallHeightRange`); version 1's 1..4096 when absent. */
   heightRange?: { min: number; max: number };
+  /** `[Graphics] wfDepthScale` and `waterfallBulk`, percent (16.2.1): 100 when absent, clamped to 1..1000. */
+  wfDepthScale?: number;
+  waterfallBulk?: number;
 }
 
 export interface FallMeshes {
@@ -690,9 +796,13 @@ export interface FallMeshes {
   tooBig: boolean;
 }
 
+/** A `[Graphics]` percent key as the hotfix's loader takes it: 1..1000 (16.2.1). */
+const pctKey = (v: number | undefined) => Math.min(Math.max(Math.round(v ?? 100), 1), 1000);
+
 /**
- * The loader's build (12.1.5, 12.2): the record checks, the validation, then each accepted fall in order into one
- * track vertex and index buffer, at the first spacing that fits its budget, or shortened at the coarsest.
+ * The loader's build (12.1.5, 12.2, 16.3): the record checks, the validation, then each accepted fall in order into
+ * one track vertex and index buffer, at the first spacing that fits its budget (sheet, foam and back face), or
+ * shortened at the coarsest.
  */
 export function buildFallMeshes(falls: readonly WflFall[], opts: FallBuildOptions): FallMeshes {
   const check = checkFallRecords(falls, { cells: opts.cells, heightRange: opts.heightRange });
@@ -701,6 +811,7 @@ export function buildFallMeshes(falls: readonly WflFall[], opts: FallBuildOption
   const built: BuiltFall[] = [];
   const vb = new Float32Array(FALL_MAX_TRACK_VERTICES * FALL_VERTEX_FLOATS);
   const ib = new Uint32Array(FALL_MAX_TRACK_INDICES);
+  const slab = { depthScale: pctKey(opts.wfDepthScale) / 100, bulk: pctKey(opts.waterfallBulk) / 100 };
   let usedV = 0, usedI = 0;
   for (const { index, fall } of check.accepted) {
     if (built.length >= FALL_MAX_BUILT) break;
@@ -708,7 +819,7 @@ export function buildFallMeshes(falls: readonly WflFall[], opts: FallBuildOption
     if (reason) { refused.push({ index, id: fall.id, reason }); continue; }
     const budget = Math.min(FALL_MAX_FALL_VERTICES, FALL_MAX_TRACK_VERTICES - usedV);
     const room = FALL_MAX_TRACK_INDICES - usedI;
-    const b = budget < 1 ? null : buildOne(fall, index, built.length, opts, budget, room, vb, usedV, ib, usedI);
+    const b = budget < 1 ? null : buildOne(fall, index, built.length, opts, slab, budget, room, vb, usedV, ib, usedI);
     if (!b) { dropped.push({ index, id: fall.id, left: budget }); continue; }
     built.push(b);
     usedV += b.vertexCount; usedI += b.indexCount;
@@ -722,8 +833,8 @@ export function buildFallMeshes(falls: readonly WflFall[], opts: FallBuildOption
 }
 
 function buildOne(
-  fall: FallRecord, index: number, slot: number, opts: FallBuildOptions, budget: number, room: number,
-  vb: Float32Array, base: number, ib: Uint32Array, ibase: number,
+  fall: FallRecord, index: number, slot: number, opts: FallBuildOptions, slab: { depthScale: number; bulk: number },
+  budget: number, room: number, vb: Float32Array, base: number, ib: Uint32Array, ibase: number,
 ): BuiltFall | null {
   const { ground, water } = opts;
   const worldFt = worldFtOf(opts.cells);
@@ -750,29 +861,24 @@ function buildOne(
     R = lo; shortened = true;
   }
 
-  const F = FALL_VERTEX_FLOATS, U = FALL_VERTEX_UNITS_PER_FT;
-  const x0 = crest.px[0]!, z0 = crest.pz[0]!;
+  // The build pass (12.2.7): each column's written rows, ft, with the sink of a kept water column.
   const ncols = pass.cols.length;
-  const colStart: number[] = [], colCount: number[] = [], colSink: boolean[] = [];
-  let w = base;
-  const put = (at: number, x: number, y: number, z: number, u: number, tau: number, spd: number, air: number, edge: number,
-    end: number, kind: number, drop: number, path: number) => {
-    const o = at * F;
-    vb[o] = (x - x0) * U; vb[o + 1] = (y - crestY) * U; vb[o + 2] = (z - z0) * U;
-    vb[o + 3] = u; vb[o + 4] = tau; vb[o + 5] = spd; vb[o + 6] = air; vb[o + 7] = edge;
-    vb[o + 8] = end; vb[o + 9] = kind; vb[o + 10] = slot; vb[o + 11] = drop;
-    vb[o + 12] = 0; vb[o + 13] = 1; vb[o + 14] = 0; vb[o + 15] = path;
-  };
+  const sheetCols: SheetColumn[] = [];
+  const pathRows: number[] = [];
   for (let c = 0; c < ncols; c++) {
     const col = pass.cols[c]!, r = pass.rows[c]!;
     const edge = Math.min(Math.min(c, ncols - 1 - c) / 3, 1);
     const cap = r.end === FALL_END_WATER ? Infinity : pass.kept[c]!;
-    const start = w;
-    let sm = speed, sink = false;
+    const sc: SheetColumn = { x: [], y: [], z: [], tau: [], speed: [], air: [], path: [], end: [], drop: [], sink: false, s: col.s, fx: col.fx, fz: col.fz, edge };
+    const put = (x: number, y: number, z: number, tau: number, spd: number, air: number, path: number) => {
+      sc.x.push(x); sc.y.push(y); sc.z.push(z); sc.tau.push(tau); sc.speed.push(spd); sc.air.push(air); sc.path.push(path);
+      sc.end.push(0); sc.drop.push(crestY - y);
+    };
+    let sm = speed;
     const n = r.x.length;
     for (let i = 0; i < n && i < R && i < cap; i++) {
       if (i > 0) sm = Math.max(r.spd[i]!, sm * Math.exp(-(r.path[i]! - r.path[i - 1]!) / FALL_WALK.speedDecayFt));
-      put(w++, r.x[i]!, r.y[i]!, r.z[i]!, col.s, r.t[i]!, i === 0 ? speed : sm, r.air[i]!, edge, r.path[i]!, 0, crestY - r.y[i]!, r.path[i]!);
+      put(r.x[i]!, r.y[i]!, r.z[i]!, r.t[i]!, i === 0 ? speed : sm, r.air[i]!, r.path[i]!);
       if (i === n - 1 && r.end === FALL_END_WATER && i > 0 && i + 1 < R) {
         const dx = r.x[i]! - r.x[i - 1]!, dy = r.y[i]! - r.y[i - 1]!, dz = r.z[i]! - r.z[i - 1]!;
         const dl = Math.hypot(dx, dy, dz);
@@ -780,59 +886,55 @@ function buildOne(
         const S = FALL_WALK.sinkFt;
         if (dl > 1e-9 && -dy / dl >= 0.5) { ox = (S / -dy) * dx; oz = (S / -dy) * dz; }
         const step = Math.hypot(ox, S, oz);
-        put(w++, r.x[i]! + ox, r.y[i]! - S, r.z[i]! + oz, col.s, r.t[i]! + S / Math.max(r.spd[i]!, 0.5),
-          Math.exp(-step / FALL_WALK.speedDecayFt) * sm, r.air[i]!, edge, 0, 0, crestY - (r.y[i]! - S), r.path[i]! + step);
-        sink = true;
+        put(r.x[i]! + ox, r.y[i]! - S, r.z[i]! + oz, r.t[i]! + S / Math.max(r.spd[i]!, 0.5),
+          Math.exp(-step / FALL_WALK.speedDecayFt) * sm, r.air[i]!, r.path[i]! + step);
+        sc.sink = true;
       }
     }
     // The end field: 1 on a water column with its sink (0 on the sink), else the fade over the last 6 ft of path.
-    const rowsWritten = w - start - (sink ? 1 : 0);
-    const pLast = r.path[rowsWritten - 1]!;
-    for (let k = 0; k < rowsWritten; k++) {
-      const o = (start + k) * F;
-      if (sink) vb[o + 8] = 1;
-      else { const e = (pLast - r.path[k]!) / FALL_WALK.endFadeFt; vb[o + 8] = e < 0 ? 0 : e > 1 ? 1 : e; }
+    const written = sc.x.length - (sc.sink ? 1 : 0);
+    const pLast = r.path[written - 1]!;
+    for (let k = 0; k < written; k++) {
+      if (sc.sink) sc.end[k] = 1;
+      else { const e = (pLast - r.path[k]!) / FALL_WALK.endFadeFt; sc.end[k] = e < 0 ? 0 : e > 1 ? 1 : e; }
     }
-    colStart.push(start); colCount.push(w - start); colSink.push(sink);
-  }
-  const sheetEnd = w;
-
-  // Normals (12.2.8), on the stored positions.
-  const pos = (c: number, r: number, k: number) => vb[(colStart[c]! + r) * F + k]!;
-  for (let c = 0; c < ncols; c++) {
-    const col = pass.cols[c]!, m = colCount[c]!;
-    for (let r = 0; r < m; r++) {
-      const ra = Math.min(r + 1, m - 1), rb = Math.max(r - 1, 0);
-      let Dx = pos(c, ra, 0) - pos(c, rb, 0), Dy = pos(c, ra, 1) - pos(c, rb, 1), Dz = pos(c, ra, 2) - pos(c, rb, 2);
-      if (Dx * Dx + Dy * Dy + Dz * Dz < 1e-6) { Dx = col.fx; Dy = 0; Dz = col.fz; }
-      const cn = c + 1 < ncols && colCount[c + 1]! > r ? c + 1 : c;
-      const cp = c - 1 >= 0 && colCount[c - 1]! > r ? c - 1 : c;
-      let Ax = pos(cn, r, 0) - pos(cp, r, 0), Ay = pos(cn, r, 1) - pos(cp, r, 1), Az = pos(cn, r, 2) - pos(cp, r, 2);
-      if (Ax * Ax + Ay * Ay + Az * Az < 1e-6) { Ax = -col.fz; Ay = 0; Az = col.fx; }
-      let nx = Dy * Az - Dz * Ay, ny = Dz * Ax - Dx * Az, nz = Dx * Ay - Dy * Ax;
-      const l = Math.hypot(nx, ny, nz);
-      if (l < 1e-12) { nx = 0; ny = 1; nz = 0; } else { nx /= l; ny /= l; nz /= l; }
-      if (nx * col.fx + ny + nz * col.fz < 0) { nx = -nx; ny = -ny; nz = -nz; }
-      const o = (colStart[c]! + r) * F;
-      vb[o + 12] = nx; vb[o + 13] = ny; vb[o + 14] = nz;
-    }
-  }
-  for (let c = 0; c < ncols; c++) {
-    if (!colSink[c]) continue;
-    const o = (colStart[c]! + colCount[c]! - 1) * F;
-    vb[o + 12] = vb[o - F + 12]!; vb[o + 13] = vb[o - F + 13]!; vb[o + 14] = vb[o - F + 14]!;
+    sheetCols.push(sc); pathRows.push(written);
   }
 
-  // Foam strip (12.2.10): runs of at least 2 kept water columns.
+  // The hotfix's sheet (16.3.4 .. 16.3.10).
+  const sheet = buildFallSheet(sheetCols, { spacing, crestY, speed, ground, depthScale: slab.depthScale, bulk: slab.bulk, slot });
+  const live = (c: number) => !sheet.merged[c];
+
+  // The landing row of each column: a water column's water row; a dry one's landPick row (16.3.2), else its last.
   const keptWater = (c: number) => pass.rows[c]!.end === FALL_END_WATER && pass.counted[c]! <= R;
+  const landRow = (c: number) => {
+    const rows = pathRows[c]!;
+    if (pass.rows[c]!.end === FALL_END_WATER) return rows - 1;
+    const pick = landPick(pass.rows[c]!, pass.flags[c]!, Math.min(rows, R), crestY, pass.runout[c]!);
+    return pick >= 1 && pick < rows ? pick : rows - 1;
+  };
+
+  // Foam strip (12.2.10; hotfix: runs of live kept-water columns, broken over 3 x spacing between landings).
   const runs: number[][] = [];
-  for (let c = 0; c < ncols;) {
-    if (!keptWater(c)) { c++; continue; }
-    const run: number[] = [];
-    while (c < ncols && keptWater(c)) run.push(c++);
-    if (run.length >= 2) runs.push(run);
+  {
+    const split2 = (3 * spacing) ** 2;
+    let run: number[] = [];
+    const close = () => { if (run.length >= 2) runs.push(run); run = []; };
+    for (let c = 0; c < ncols; c++) {
+      if (!live(c)) continue;
+      if (!keptWater(c)) { close(); continue; }
+      if (run.length) {
+        const a = pass.rows[run[run.length - 1]!]!, b = pass.rows[c]!;
+        const la = a.x.length - 1, lb = b.x.length - 1;
+        if ((b.x[lb]! - a.x[la]!) ** 2 + (b.y[lb]! - a.y[la]!) ** 2 + (b.z[lb]! - a.z[la]!) ** 2 > split2) close();
+      }
+      run.push(c);
+    }
+    close();
   }
-  const foamStart = w;
+  const foam: number[] = [];
+  const foamVert = (x: number, y: number, z: number, u: number, tau: number, spd: number, edge: number, end: number, drop: number) =>
+    foam.push(x, y, z, u, tau, spd, 0, edge, end, FALL_KIND_FOAM, slot, drop, 0, 1, 0, 0);
   for (const run of runs) {
     for (const c of run) {
       const col = pass.cols[c]!, r = pass.rows[c]!;
@@ -847,105 +949,179 @@ function buildOne(
       const ax = fz * wd / 2, az = -fx * wd / 2;
       const edge = Math.min(Math.min(c, ncols - 1 - c) / 3, 1);
       const y = r.y[L]! + 0.1;
-      put(w++, r.x[L]! + ax, y, r.z[L]! + az, col.s, r.t[L]!, r.spd[L]!, 0, edge, 0, 1, drop, 0);
-      put(w++, r.x[L]!, y, r.z[L]!, col.s, r.t[L]!, r.spd[L]!, 0, edge, 1, 1, drop, 0);
-      put(w++, r.x[L]! - ax, y, r.z[L]! - az, col.s, r.t[L]!, r.spd[L]!, 0, edge, 0, 1, drop, 0);
+      foamVert(r.x[L]! + ax, y, r.z[L]! + az, col.s, r.t[L]!, r.spd[L]!, edge, 0, drop);
+      foamVert(r.x[L]!, y, r.z[L]!, col.s, r.t[L]!, r.spd[L]!, edge, 1, drop);
+      foamVert(r.x[L]! - ax, y, r.z[L]! - az, col.s, r.t[L]!, r.spd[L]!, edge, 0, drop);
     }
   }
+  const foamCount = foam.length / FALL_VERTEX_FLOATS;
 
-  // Indices (12.2.9, 12.2.10), global.
+  // Room: the ribbons may take a fall past its budget (16.3.3), never past the track's buffers.
+  const sheetAll = sheet.verts.length / FALL_VERTEX_FLOATS;
+  const total = sheetAll + foamCount;
+  const foamTris: number[] = [];
+  {
+    let fb = sheetAll;
+    for (const run of runs) {
+      for (let i = 0; i + 1 < run.length; i++) {
+        const a = fb + 3 * i, b2 = a + 3;
+        foamTris.push(a, b2, b2 + 1, a, b2 + 1, a + 1, a + 1, b2 + 1, b2 + 2, a + 1, b2 + 2, a + 2);
+      }
+      fb += 3 * run.length;
+    }
+  }
+  const nIdx = sheet.tris.length + foamTris.length;
+  if (base + total > FALL_MAX_TRACK_VERTICES || nIdx > room) return null;
+
+  // The vertices, anchor-relative in 1/256 ft.
+  const F = FALL_VERTEX_FLOATS, Uu = FALL_VERTEX_UNITS_PER_FT;
+  const x0 = crest.px[0]!, z0 = crest.pz[0]!;
+  const write = (src: ArrayLike<number>, n: number, at: number) => {
+    for (let v = 0; v < n; v++) {
+      const o = (at + v) * F, i = v * F;
+      for (let k = 0; k < F; k++) vb[o + k] = src[i + k]!;
+      vb[o] = (src[i]! - x0) * Uu; vb[o + 1] = (src[i + 1]! - crestY) * Uu; vb[o + 2] = (src[i + 2]! - z0) * Uu;
+    }
+  };
+  write(sheet.verts, sheetAll, base);
+  write(foam, foamCount, base + sheetAll);
   let q = ibase;
-  const tri = (a: number, b2: number, c2: number) => { ib[q++] = a; ib[q++] = b2; ib[q++] = c2; };
-  for (let a = 0; a + 1 < ncols; a++) {
-    const A = colStart[a]!, B = colStart[a + 1]!, ma = colCount[a]!, mb = colCount[a + 1]!;
-    const m = Math.min(ma, mb);
-    for (let i = 0; i <= m - 2; i++) { tri(A + i, B + i, B + i + 1); tri(A + i, B + i + 1, A + i + 1); }
-    if (ma < mb) for (let i = m - 1; i <= mb - 2; i++) tri(A + m - 1, B + i, B + i + 1);
-    if (mb < ma) for (let i = m - 1; i <= ma - 2; i++) tri(A + i, B + m - 1, A + i + 1);
-  }
-  let fb = foamStart;
-  for (const run of runs) {
-    for (let i = 0; i + 1 < run.length; i++) {
-      const a = fb + 3 * i, b2 = a + 3;
-      tri(a, b2, b2 + 1); tri(a, b2 + 1, a + 1); tri(a + 1, b2 + 1, b2 + 2); tri(a + 1, b2 + 2, a + 2);
-    }
-    fb += 3 * run.length;
-  }
+  for (const v of sheet.tris) ib[q++] = base + v;
+  for (const v of foamTris) ib[q++] = base + v;
 
-  // Bounds, foam included.
+  // Bounds, every part included.
   const min: [number, number, number] = [Infinity, Infinity, Infinity], max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
-  for (let v = base; v < w; v++) for (let k = 0; k < 3; k++) {
+  for (let v = base; v < base + total; v++) for (let k = 0; k < 3; k++) {
     const p = vb[v * F + k]!;
     if (p < min[k]!) min[k] = p;
     if (p > max[k]!) max[k] = p;
   }
 
-  // Landing statistics (12.2.11).
+  // Landings: one per stream (16.3.12).
   const ends = { water: 0, rest: 0, limit: 0 };
   for (const r of pass.rows) {
     if (r.end === FALL_END_WATER) ends.water++;
     else if (r.end === FALL_END_REST) ends.rest++;
     else if (r.end === FALL_END_LIMIT) ends.limit++;
   }
-  let sdx = 0, sdz = 0;
-  for (let k = 0; k < crest.pfx.length; k++) { sdx += crest.pfx[k]!; sdz += crest.pfz[k]!; }
-  const fallback = (): [number, number] => {
-    const l = Math.hypot(sdx, sdz);
-    return l > 1e-6 ? [sdx / l, sdz / l] : [0, 1];
-  };
-  const kept: number[] = [];
-  for (let c = 0; c < ncols; c++) if (keptWater(c)) kept.push(c);
+  const streams = fallStreams(pass, sheet, { crest, crestY, spacing, R, water, source: fall.source, ground, keptWater, landRow, pathRows });
+  let main = 0;
+  streams.forEach((s, i) => { if (s.columns > streams[main]!.columns) main = i; });
   let landing: BuiltFall["landing"];
-  if (kept.length > 0) {
-    let sy = 0, hx = 0, hz = 0;
-    for (const c of kept) {
-      const r = pass.rows[c]!, L = r.x.length - 1;
-      sy += r.y[L]!;
-      const dx = r.x[L]! - r.x[L - 1]!, dz = r.z[L]! - r.z[L - 1]!, l = Math.hypot(dx, dz);
-      if (l > 1e-6) { hx += dx / l; hz += dz / l; }
-    }
-    const hl = Math.hypot(hx, hz);
-    const [fx, fz] = hl > 1e-6 ? [hx / hl, hz / hl] : fallback();
-    let amin = Infinity, amax = -Infinity, sb = 0;
-    for (const c of kept) {
-      const r = pass.rows[c]!, L = r.x.length - 1;
-      const a = r.z[L]! * fx - r.x[L]! * fz, b2 = r.x[L]! * fx + r.z[L]! * fz;
-      if (a < amin) amin = a;
-      if (a > amax) amax = a;
-      sb += b2;
-    }
-    const mb = sb / kept.length, ma = (amin + amax) / 2, landY = sy / kept.length;
-    landing = { x: mb * fx - ma * fz, y: landY, z: mb * fz + ma * fx, width: amax - amin + spacing, drop: crestY - landY, dirX: fx, dirZ: fz };
+  if (streams.length) {
+    const m = streams[main]!;
+    landing = { x: m.x, y: m.y, z: m.z, width: m.width, drop: m.drop, dirX: m.dirX, dirZ: m.dirZ };
   } else {
-    // No column here has a sink (a sink means kept water), so the last written vertex is row colCount - 1.
-    let lowC = 0, lowY = Infinity;
-    for (let c = 0; c < ncols; c++) {
-      const y = pass.rows[c]!.y[colCount[c]! - 1]!;
-      if (y < lowY) { lowY = y; lowC = c; }
-    }
-    const r = pass.rows[lowC]!, L = colCount[lowC]! - 1;
-    const [fx, fz] = fallback();
-    landing = { x: r.x[L]!, y: lowY, z: r.z[L]!, width: 0, drop: crestY - lowY, dirX: fx, dirZ: fz };
+    // (Not reached: a fall keeps at least one live column.) The 0.53 dry rule.
+    const r = pass.rows[0]!, L = pathRows[0]! - 1;
+    landing = { x: r.x[L]!, y: r.y[L]!, z: r.z[L]!, width: 0, drop: crestY - r.y[L]!, dirX: 0, dirZ: 1 };
   }
 
   let rowsMin = Infinity, rowsMax = 0;
-  for (const m of colCount) { if (m < rowsMin) rowsMin = m; if (m > rowsMax) rowsMax = m; }
+  for (const m of sheet.rows) { if (m < rowsMin) rowsMin = m; if (m > rowsMax) rowsMax = m; }
   const p0 = fall.points[0]!;
   return {
     slot, index, id: fall.id, source: fall.source, flags: fall.flags, worldFt,
     anchorFt: [x0, crestY, z0], anchor: [p0.x * 16, fall.height * 128, p0.z * 16],
-    firstVertex: base, vertexCount: w - base, sheetVertexCount: sheetEnd - base, foamVertexCount: w - foamStart,
-    firstIndex: ibase, indexCount: q - ibase,
+    firstVertex: base, vertexCount: total, sheetVertexCount: sheet.sheetCount, ribbonVertexCount: sheet.ribbonCount,
+    backVertexCount: sheet.backCount, foamVertexCount: foamCount, columnRows: sheet.rows.slice(),
+    firstIndex: ibase, indexCount: q - ibase, backTriangleCount: sheet.backTris, ribbonTriangleCount: sheet.ribbonTris,
+    mergedColumns: sheet.merges, droppedTriangles: sheet.droppedTris,
     spacing, shortened, rowLimit: shortened ? R : null, columns: ncols, rowsMin, rowsMax, ends,
-    bounds: { min, max }, landing,
+    bounds: { min, max }, streams, totalColumns: streams.reduce((n, s) => n + s.columns, 0), landing,
     crestLengthFt: crest.len, crestSpeedFtPerSec: speed, crestYFt: crestY,
     opacity: fall.opacity, mist: fall.mist, volume: fall.volume, mistDepth: fall.mistDepth, mistHeight: fall.mistHeight,
+    roughFrom: fall.roughFrom ?? 0,
     soundName: fall.soundName, textureName: fall.textureName,
     rngSeed: (Math.imul(fall.id, 0x3c6ef362) + 0x9e3779b1) >>> 0,
   };
 }
 
-// ---- Mist (12.4) ----
+/**
+ * Whether two neighbouring landings are one stream (16.3.12, landContinuous): sampled every foot along the straight
+ * line between them, water landings need water above the ground at every sample, dry ones ground no more than 2 ft
+ * above the line.
+ */
+function landContinuous(a: [number, number, number], b: [number, number, number], wet: boolean, ground: FallGround, water: FallWater, source: number): boolean {
+  const dx = b[0] - a[0], dz = b[2] - a[2];
+  const n = Math.ceil(Math.hypot(dx, dz));
+  for (let k = 1; k < n; k++) {
+    const t = k / n, x = a[0] + dx * t, z = a[2] + dz * t, g = ground(x, z);
+    if (wet) {
+      const w = water(x, z, source);
+      if (w === null || !(w > g)) return false;
+    } else if (g > a[1] + (b[1] - a[1]) * t + 2.0) return false;
+  }
+  return true;
+}
+
+/** The streams of a fall (16.3.12): candidates, groups, the 4 largest, their measures. */
+function fallStreams(pass: CountPass, sheet: ReturnType<typeof buildFallSheet>, o: {
+  crest: Crest; crestY: number; spacing: number; R: number; water: FallWater; source: number; ground: FallGround;
+  keptWater: (c: number) => boolean; landRow: (c: number) => number; pathRows: number[];
+}): FallStream[] {
+  const C = pass.cols.length;
+  const liveCols: number[] = [];
+  for (let c = 0; c < C; c++) if (!sheet.merged[c] && o.pathRows[c]! >= 1) liveCols.push(c);
+  const anyWater = liveCols.some((c) => o.keptWater(c));
+  const cand = (c: number) => (anyWater ? o.keptWater(c) : true);
+  const point = (c: number): [number, number, number] => { const r = pass.rows[c]!, L = o.landRow(c); return [r.x[L]!, r.y[L]!, r.z[L]!]; };
+  const groups: number[][] = [];
+  let cur: number[] = [];
+  for (const c of liveCols) {
+    if (!cand(c)) { if (cur.length) groups.push(cur); cur = []; continue; }
+    if (cur.length && !landContinuous(point(cur[cur.length - 1]!), point(c), anyWater, o.ground, o.water, o.source)) { groups.push(cur); cur = []; }
+    cur.push(c);
+  }
+  if (cur.length) groups.push(cur);
+  let keep = groups.map((_, i) => i);
+  if (groups.length > FALL_MAX_STREAMS) {
+    const used = new Set<number>();
+    keep = [];
+    for (let k = 0; k < FALL_MAX_STREAMS; k++) {
+      let b = -1;
+      groups.forEach((g, i) => { if (!used.has(i) && (b < 0 || g.length > groups[b]!.length)) b = i; });
+      used.add(b); keep.push(b);
+    }
+    keep.sort((a, b) => a - b);
+  }
+  let sdx = 0, sdz = 0;
+  for (let k = 0; k < o.crest.pfx.length; k++) { sdx += o.crest.pfx[k]!; sdz += o.crest.pfz[k]!; }
+  return keep.map((gi) => {
+    const g = groups[gi]!;
+    let sy = 0, hx = 0, hz = 0;
+    for (const c of g) {
+      const r = pass.rows[c]!, L = o.landRow(c);
+      sy += r.y[L]!;
+      if (L >= 1) {
+        const dx = r.x[L]! - r.x[L - 1]!, dz = r.z[L]! - r.z[L - 1]!, l = Math.hypot(dx, dz);
+        if (l > 1e-6) { hx += dx / l; hz += dz / l; }
+      }
+    }
+    let fx: number, fz: number;
+    const hl = Math.hypot(hx, hz), cl = Math.hypot(sdx, sdz);
+    if (hl > 1e-6) { fx = hx / hl; fz = hz / hl; }
+    else if (cl > 1e-6) { fx = sdx / cl; fz = sdz / cl; }
+    else { fx = 0; fz = 1; }
+    let amin = Infinity, amax = -Infinity, sb = 0;
+    for (const c of g) {
+      const [x, , z] = point(c);
+      const a = z * fx - x * fz, b = x * fx + z * fz;
+      if (a < amin) amin = a;
+      if (a > amax) amax = a;
+      sb += b;
+    }
+    const mb = sb / g.length, ma = (amin + amax) / 2, y = sy / g.length;
+    let width = amax - amin + o.spacing;
+    if (g.length === 1) {
+      const w = sheet.ribbonWidth[sheet.base[g[0]!]! + o.landRow(g[0]!)] ?? 0;
+      if (w > 0) width = w;
+    }
+    return { x: mb * fx - ma * fz, y, z: mb * fz + ma * fx, width, drop: o.crestY - y, dirX: fx, dirZ: fz, columns: g.length, water: anyWater };
+  });
+}
+
+// ---- Mist (12.4, 16.4) ----
 
 /** Fog volume slots, shared by the .SIT fog volumes (type 14) and the falls' mist. */
 export const FOG_VOLUME_SLOTS = 64;
@@ -976,27 +1152,34 @@ export interface FallMist {
 
 type MistRecord = Pick<WflFall, "mist" | "mistDepth" | "mistHeight" | "flags">;
 
-/** A built fall's mist fog volume (12.4), or null when it has none. `waterfallMistPct` is `[Graphics] waterfallMist`. */
-export function fallMist(fall: BuiltFall, record: MistRecord = fall, opts: { waterfallMistPct?: number } = {}): FallMist | null {
+/**
+ * A built fall's mist fog volume for one stream (16.4), or null when it has none: `stream` (default 0) indexes
+ * `fall.streams`. Dry streams have mist too (beta 0.53 gave a fall without a water end none). The density takes the
+ * stream's share of the columns before the clamp; the box is W = width + 2 clamp(0.05 drop + 2, 2, 6) (at least 6)
+ * across, L along, H up, from the stream's landing. `waterfallMistPct` is `[Graphics] waterfallMist`.
+ */
+export function fallMist(fall: BuiltFall, record: MistRecord = fall, opts: { waterfallMistPct?: number; stream?: number } = {}): FallMist | null {
   const pct = Math.max(0, opts.waterfallMistPct ?? 100);
-  if (!(record.mist > 0) || fall.ends.water <= 0) return null;
-  const drop = fall.landing.drop;
-  const k = fall.crestSpeedFtPerSec * fall.crestLengthFt * drop / 7200;
+  const st = fall.streams?.[opts.stream ?? 0];
+  if (!(record.mist > 0) || !st) return null;
+  const drop = st.drop;
+  const share = fall.totalColumns >= 1 ? st.columns / fall.totalColumns : 1;
+  const k = (fall.crestSpeedFtPerSec * fall.crestLengthFt * drop / 7200) * share;
   const density = (record.mist / 100) * Math.min(Math.max(k, 0.25), 2) * (pct / 100);
   if (!(density > 0)) return null;
   const lengthFt = Math.max(0.6 * drop, 20) * record.mistDepth / 100;
-  const widthFt = Math.max(fall.landing.width + 0.6 * drop, 20);
+  const widthFt = Math.max(st.width + 2 * Math.min(Math.max(0.05 * drop + 2, 2), 6), 6);
   const heightFt = Math.min(Math.min(0.7 * drop, 120) * record.mistHeight / 100, 240);
-  const { dirX, dirZ } = fall.landing;
+  const { dirX, dirZ } = st;
   const has = Math.hypot(dirX, dirZ) > 1e-6;
   const w = fall.worldFt ?? 8192;
   const wrap = (v: number) => { const r = v % w; return r < 0 ? r + w : r; };
-  const cx = wrap(fall.landing.x + (has ? 0.3 * lengthFt * dirX : 0));
-  const cz = wrap(fall.landing.z + (has ? 0.3 * lengthFt * dirZ : 0));
+  const cx = wrap(st.x + (has ? 0.3 * lengthFt * dirX : 0));
+  const cz = wrap(st.z + (has ? 0.3 * lengthFt * dirZ : 0));
   const vis = Math.min(Math.max(120 / density, 20), 1000);
   const wmask = record.flags & FALL_FLAG_FREEZE ? FALL_MIST_WEATHER_NO_SNOW : FALL_MIST_WEATHER_ALL;
   return {
-    density, widthFt, lengthFt, heightFt, centre: [cx, cz], floorFt: fall.landing.y - 2,
+    density, widthFt, lengthFt, heightFt, centre: [cx, cz], floorFt: st.y - 2,
     axisW: has ? [-dirZ, dirX] : [1, 0], axisL: has ? [dirX, dirZ] : [0, 1],
     fog: {
       w: widthFt, l: lengthFt, h: heightFt, base: 0, vis, color: [0.75, 0.78, 0.82], half: heightFt * 0.5,
@@ -1005,17 +1188,23 @@ export function fallMist(fall: BuiltFall, record: MistRecord = fall, opts: { wat
   };
 }
 
-/** Every built fall's mist in build order, with the 64 shared slots: `noSlot` lists falls that found none. */
+/**
+ * Every built fall's mists (16.4), with the 64 shared slots: the stream index outside, the falls inside, so every
+ * fall's first stream takes a slot before any second stream. `noSlot` lists the streams that found none.
+ */
 export function fallMists(falls: readonly BuiltFall[], opts: { sitFogVolumes?: number; waterfallMistPct?: number } = {}): {
-  mists: Array<{ slot: number; mist: FallMist }>; noSlot: number[];
+  mists: Array<{ slot: number; stream: number; mist: FallMist }>; noSlot: Array<{ slot: number; stream: number }>;
 } {
   const sit = opts.sitFogVolumes ?? 0;
-  const mists: Array<{ slot: number; mist: FallMist }> = [], noSlot: number[] = [];
-  for (const f of falls) {
-    const m = fallMist(f, f, opts);
-    if (!m) continue;
-    if (!fallMistSlotFree(sit, mists.length)) { noSlot.push(f.slot); continue; }
-    mists.push({ slot: f.slot, mist: m });
+  const mists: Array<{ slot: number; stream: number; mist: FallMist }> = [], noSlot: Array<{ slot: number; stream: number }> = [];
+  for (let stream = 0; stream < FALL_MAX_STREAMS; stream++) {
+    for (const f of falls) {
+      if (stream >= (f.streams?.length ?? 0)) continue;
+      const m = fallMist(f, f, { waterfallMistPct: opts.waterfallMistPct, stream });
+      if (!m) continue;
+      if (!fallMistSlotFree(sit, mists.length)) { noSlot.push({ slot: f.slot, stream }); continue; }
+      mists.push({ slot: f.slot, stream, mist: m });
+    }
   }
   return { mists, noSlot };
 }
@@ -1032,7 +1221,7 @@ export type FallSound =
   | { silent: "no-sound-flag" | "no-stem" | "frozen" };
 
 /**
- * A built fall's looping sound (12.7): the landing point, wrapped, its volume and hearing. Silent without the SOUND
+ * A built fall's looping sound (12.7): the main landing (the largest stream, 16.6), wrapped, its volume and hearing. Silent without the SOUND
  * flag (no log line), with an empty stem (there is no default roar) and, with `snow`, on a FREEZE fall.
  */
 export function fallSound(fall: BuiltFall, record: Pick<WflFall, "flags" | "soundName" | "volume"> = fall, opts: { snow?: boolean } = {}): FallSound {
@@ -1095,8 +1284,11 @@ export function fallTextureName(stem: string): string {
   return stem.includes(".") ? stem : `${stem}.RAW`;
 }
 
-/** The `[Graphics]` keys the falls read, with their defaults (12.0.1, 12.1.1, 12.4, 12.5). */
+/**
+ * The `[Graphics]` keys the falls read, with their defaults (12.0.1, 12.1.1, 12.4, 12.5, 16.2.1): wfDepthScale and
+ * waterfallBulk (percent, 1..1000) set the hotfix's slab thickness (`buildFallMeshes` options).
+ */
 export const FALL_GRAPHICS_DEFAULTS = {
-  waterfalls: 1, waterBodyLog: 0, waterfallDebug: 0, waterfallMist: 100, waterfallDroplets: 100,
+  waterfalls: 1, waterBodyLog: 0, waterfallDebug: 0, waterfallMist: 100, waterfallDroplets: 100, wfDepthScale: 100, waterfallBulk: 100,
   wfRingDecay: 15, wfRingStrength: 100, wfChurn: 100, wfEdge: 100, wfLift: 40, wfDepthPull: 4, wfFoam: 100,
 } as const;

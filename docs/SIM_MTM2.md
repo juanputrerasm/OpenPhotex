@@ -53,7 +53,9 @@ plain arrays and objects, so a state can be posted between workers or saved as i
 | `../cp4/coll-shape.ts` | CP4's collision shapes: k-DOP hull test, grid, ray, tire-cylinder and point queries |
 | `../cp4/truck-tri.ts` | CP4's truck against a box's triangles: hull points, the nine-spoke support, cylinder and hold, walls, phantom corners |
 | `../cp4/surface-mesh.ts` | CP4's .SRF grip: the typed model face under a tire (`withSurfaceMeshes`, `Mtm2Ground.tireSurface`) |
-| `../cp4/falls.ts` | CP4 beta 0.53's waterfall build from a .WFL: validation, the walk, the sheet and foam mesh, mist, sound, looks (never read by the step) |
+| `../cp4/falls.ts` | CP4's waterfall build from a .WFL as beta 0.53 hotfix 3 does it: validation, the walk, the mesh, landing streams, mist, sound, looks (never read by the step) |
+| `../cp4/fall-sheet.ts` | hotfix 3's sheet stages: flow tubes, the split, ribbons, the across u, ADVECT, the relaxation, the slab and its back face |
+| `../cp4/fall-droplets.ts` | hotfix 3's droplet emitter: per-stream burst schedules and parameters for a host's spray |
 | `../../model/coll-soup.ts` | a .BIN's faces as a collision triangle soup |
 
 A step is `applyKeyboard` (or the autopilot), `stepTruck`, then (after collisions)
@@ -173,7 +175,8 @@ cylinder meets a truck is not traced.
 Beta 0.53 adds waterfalls (`WORLD\<stem>.WFL`, read by `parseWfl`, docs/LEVELS.md). The file holds only crests; the
 engine builds each fall's sheet at load by walking water from the crest over the terrain into the water. `src/sim/cp4/falls.ts`
 is that build, from OpenMTM2 `docs/CP4_EXE_ANALYSIS.md` 12 (read from monster.exe and trid3d11.dll; the CP4 author
-published no source code). Section numbers below are that document's. Falls never touch the simulation (12.10): this
+published no source code), as its hotfix 3 does it (section 16 there): the sections below give 0.53's walk and budget,
+and **Hotfix 3** what it changes after them. Section numbers below are that document's. Falls never touch the simulation (12.10): this
 is load-time geometry and parameters for a renderer, sound and fog. Exported from `cp4Sim` and the package root.
 
 ```js
@@ -197,7 +200,7 @@ const mist = fallMist(m.falls[0], m.falls[0]);   // or null
 | `fallWater(wtr, lvlWaterFt)` | the walk's water (12.2.3): the tile's lake surface, but the track's .LVL water on a dry tile or on the fall's own source lake, and none when that is below 1/256 ft |
 | `buildFallMeshes(falls, { ground, water, lakes, tileMap })` | the loader (12.1.5, 12.2): record checks, validation, then each fall in order into one track buffer. `skipped` and `tooBig` are the two on-screen messages of 12.1.3 |
 | `fallDebugColumns(fall, spacing, { ground, water })` | the walk's rows of every column before the row cut, with the trim's verdict (what `waterfallDebug` re-walks, 12.1.6) |
-| `fallMist(built, record, { waterfallMistPct })` | null or the mist fog volume (12.4); `fallMists(built, { sitFogVolumes })` applies the 64 slots shared with the .SIT fog volumes (`fallMistSlotFree`) |
+| `fallMist(built, record, { waterfallMistPct, stream })` | null or one stream's mist fog volume (12.4, 16.4); `fallMists(built, { sitFogVolumes })` applies the 64 slots shared with the .SIT fog volumes (`fallMistSlotFree`), first streams first |
 | `fallSound(built, record, { snow })` | `{ silent: "no-sound-flag" \| "no-stem" \| "frozen" }` or the loop: `sound\<stem>.WAV` at the landing (x, z wrapped), volume and hearing (12.7). The 30-loop room (`FALL_SOUND_LOOP_ROOM`, shared with the SIT continuous sounds) and the distance order are the host's; `fallSoundGain` is the falloff |
 | `fallLook(...)`, `FALL_RIPPLE_FRAMES`, `fallTextureName` | the look rule (12.8.3), the default ripple (RIPPL100 .. RIPPL800 .. RIPPL200, 14 frames of 0.25 s, 12.8.1), ".RAW" for a stem without a '.' |
 
@@ -234,6 +237,32 @@ box W = max(width + 0.6 drop, 20), L = max(0.6 drop, 20) * mist depth %, H = min
 most 240; centre 0.3 L ahead of the landing, wrapped; floor 2 ft below the landing; vis clamp(120 / density, 20, 1000)
 and the SIT fog defaults the engine sets (colour 0.75, 0.78, 0.82, edge 20, top 5, wisps 0.6 of 25 ft at 2 ft/s); the
 weather mask without Snow on a FREEZE fall.
+
+**Hotfix 3** (16). The build's result is hotfix 3's, which replaces 0.53's (there is no switch):
+- `readFallFile` reads roughFrom (byte 0x82 of a record of at least 0x84 bytes; 251..254 become 0, counted in
+  `roughInvalid`); a built fall carries it (`roughFrom`, the shader's per-fall rough-water speed: 0 default 25 ft/s, 255 off).
+- The budget is min(32768, track room) and counts the slab's back face (`fallCountBack`: the corners of every sheet
+  triangle with an airborne corner, row 0 taking row 1's flag, none under 3 columns).
+- After the build pass (`fall-sheet.ts` `buildFallSheet`): flow tubes merge a column into its neighbour when its path step
+  comes within 0.25 x spacing of the neighbour's polyline (the one farther from the crest's middle merges, ending at the
+  junction without its sink); strips zipped along the flow and junction triangles replace 0.53's quads, and a triangle
+  with a vertex torn from the other column (over 3 x spacing, past a dry end or behind ground 8 ft above both) is
+  dropped; a vertex no triangle uses gets a ribbon (two vertices W / 2 either side, W = clamp(0.35 w s, 2, w s),
+  `fallRibbonWidth`); u is measured across the water per row (the anchor column, 1-2-3-2-1 smoothing); speeds are
+  averaged across ([1 2 1]) and limited to 1.25 ft/s a foot of path; path and tau are relaxed where neighbours differ by
+  more than half a spacing; the slab's thickness (`fallSlabThickness`, `wfDepthScale` and `waterfallBulk` options,
+  percent, 1..1000) pushes the front out, after a fold clamp and a zipper, and a back face (kind 2, normal turned over,
+  air its flag) is copied unpushed. Buffer order: sheet, ribbons, back, foam; indices back face first.
+- The foam strip runs over the live (unmerged) kept water columns, broken where two landings are over 3 x spacing apart.
+- Landings: up to 4 streams (`streams`, `FALL_MAX_STREAMS`): the kept water columns if any, else every live column at
+  its dry landing row (an airborne drop of at least half the fall, else the run-out's start); neighbours are one stream
+  while the water (or, dry, the ground within 2 ft of the line) is continuous between them. `landing` is the largest.
+- Mist (`fallMist(built, record, { stream })`, `fallMists`): one volume a stream, dry ones included, the density by the
+  stream's share of the columns before the clamp, W = width + 2 clamp(0.05 drop + 2, 2, 6) at least 6; the slots go to
+  every fall's first stream before any second (`noSlot` lists `{ slot, stream }`).
+- Droplets (`fall-droplets.ts`): `createFallDroplets(built)` and `stepFallDroplets(state, built, { dt, player, enabled,
+  weather })` give each frame's bursts per stream (a bank of 500 a second, at most 80, 6 a stream a frame, within 150 ft,
+  SPLASH, not on a FREEZE fall in Snow, dry streams too); `FALL_SPRAY` holds the DLL's spray model a host draws them with.
 
 **Fidelity.** The rules, constants and counts are the engine's. It computes in floats; this module in doubles,
 stored as Float32Array, so positions agree to float precision and a column that lands within a rounding error of a

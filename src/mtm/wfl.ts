@@ -6,12 +6,12 @@
   walks the water from the crest and builds the sheet itself; the file holds only what the author
   set. Up to 64 falls a track.
 
-  Layout, little-endian (Traxx 1.7.1 TrackPODFalls.cpp BuildWFL / ParseWFL):
+  Layout, little-endian (Traxx 1.7.3 TrackPODFalls.cpp BuildWFL / ParseWFL):
 
     0    "MWFL"
     4    u16 major = 1 for a 256-cell world, 2 for a 512-cell one (track format version 6, section
          9.3: the world's size picks it; 0 and a newer major are refused)
-    6    u16 minor = 0, or 1 when the records carry the mist size (v1.1, v2.1)
+    6    u16 minor = 0, or 1 when the records carry the mist size or a rough-water speed (v1.1, v2.1)
     8    u32 header size = 32
     12   u32 chunk count = 1
     16   u16 tiles X, u16 tiles Z: 256 x 256 in version 1, 512 x 512 in version 2
@@ -35,7 +35,10 @@
           80  char[16] sound stem (SOUND\<stem>.WAV; empty = no sound of its own), NUL-padded
           96  char[16] texture stem (a pod texture or .ANI base name; empty = the default), NUL-padded
           112 16 bytes zero
-          v1.1 only: 128 u8 mist depth %, 129 u8 mist height % (0 means 100, capped at 250), 130 u16 0
+          v1.1 only: 128 u8 mist depth %, 129 u8 mist height % (0 means 100, capped at 250),
+                     130 u8 rough from: where the whitewater starts, ft/s (0 = the engine's default 25,
+                     1..250 ft/s, 255 = rough water off; 251..254 are invalid and beta 0.53 hotfix 3
+                     treats them as 0), 131 u8 0
 */
 
 export const WFL_MAGIC = "MWFL";
@@ -56,6 +59,11 @@ export const WFL_HEIGHT_FT = 0.5;
 export const WFL_FLAG_FREEZE = 1;
 export const WFL_FLAG_SPLASH = 2;
 export const WFL_FLAG_SOUND = 4;
+/** Rough from: 0 = the engine's default speed, 255 = rough water off. */
+export const WFL_ROUGH_DEFAULT = 0;
+export const WFL_ROUGH_OFF = 255;
+/** The engine's default rough-from speed, ft/s (beta 0.53 hotfix 3). */
+export const WFL_ROUGH_DEFAULT_FT = 25;
 
 export interface WflFall {
   /** The record's id byte (index + 1 as written; readers ignore it). */
@@ -80,6 +88,8 @@ export interface WflFall {
   /** Mist depth and height %, 100 when the file is v1.0. */
   mistDepth: number;
   mistHeight: number;
+  /** Rough from, the byte as stored (0 when the file is v1.0): 0 default, 1..250 ft/s, 255 off, 251..254 invalid. */
+  roughFrom: number;
   soundName: string;
   textureName: string;
 }
@@ -157,6 +167,7 @@ export function parseWfl(bytes: Uint8Array, opts: { cells?: number } = {}): Wfl 
       opacity: bytes[r + 76]!, mist: bytes[r + 77]!, volume: bytes[r + 78]!,
       mistDepth: stride >= WFL_STRIDE_V11 ? size11(bytes[r + 128]!) : 100,
       mistHeight: stride >= WFL_STRIDE_V11 ? size11(bytes[r + 129]!) : 100,
+      roughFrom: stride >= WFL_STRIDE_V11 ? bytes[r + 130]! : 0,
       soundName: readName(bytes, r + 80), textureName: readName(bytes, r + 96),
     });
   }
@@ -176,6 +187,8 @@ export interface WflWriteFall {
   /** 0 or 100 is the default; anything else makes the file v1.1. */
   mistDepth?: number;
   mistHeight?: number;
+  /** Rough from (byte 130): 0 (the default) keeps v1.0; anything else makes the file v1.1. */
+  roughFrom?: number;
   soundName?: string;
   textureName?: string;
 }
@@ -198,8 +211,8 @@ export function wflFallFitsV1(f: Pick<WflWriteFall, "height">): boolean {
 }
 
 /**
- * Write a .WFL exactly as Traxx 1.7.1 lays one out: v1.0 (128-byte records) unless some fall's mist
- * depth or height is neither 0 nor 100, then v1.1 (132). Fall i gets id i + 1. Validation of the
+ * Write a .WFL exactly as Traxx 1.7.3 lays one out: v1.0 (128-byte records) unless some fall's mist
+ * depth or height is neither 0 nor 100, or its rough from is not 0, then v1.1 (132). Fall i gets id i + 1. Validation of the
  * falls themselves (crest shape, source, names in the pod) is the caller's: this checks only what
  * the file cannot hold.
  *
@@ -213,7 +226,7 @@ export function writeWfl(falls: readonly WflWriteFall[], opts: { cells?: number 
   const major = cells === 512 ? 2 : 1;
   const pointLimit = 16 * 32 * cells;
   const custom = (v: number | undefined) => v !== undefined && v !== 0 && v !== 100;
-  const stride = falls.some((f) => custom(f.mistDepth) || custom(f.mistHeight)) ? WFL_STRIDE_V11 : WFL_STRIDE;
+  const stride = falls.some((f) => custom(f.mistDepth) || custom(f.mistHeight) || (f.roughFrom ?? 0) !== 0) ? WFL_STRIDE_V11 : WFL_STRIDE;
   const chunkOff = WFL_HEADER + WFL_DIRENTRY;
   const chunkSize = WFL_CHUNKHEAD + falls.length * stride;
   const out = new Uint8Array(chunkOff + chunkSize);
@@ -260,6 +273,7 @@ export function writeWfl(falls: readonly WflWriteFall[], opts: { cells?: number 
     if (stride === WFL_STRIDE_V11) {
       out[p + 128] = f.mistDepth ? byte(f.mistDepth, "mist depth") : 100;
       out[p + 129] = f.mistHeight ? byte(f.mistHeight, "mist height") : 100;
+      out[p + 130] = byte(f.roughFrom ?? 0, "rough from");
     }
   });
   return out;

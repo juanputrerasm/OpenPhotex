@@ -6,6 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { cp4Sim as C, mtm2Sim as S, MRGL, writeBin } from "../src/index.ts";
+import { truckRadius } from "../src/sim/mtm2/truck/recovery.ts";
 
 type T3 = [number, number, number];
 
@@ -195,4 +196,25 @@ test("SRF grip: CP4 counts the first 64 surface boxes; a host may lift the limit
   assert.equal(cp4.tireSurface!(last[0], 111, last[2]), 200);
   const all = C.withSurfaceMeshes(S.createTerrainGround(S.createTerrain(new Uint8Array(65536).fill(50)), null, 0, null, C.CP4_RULES), decks, { limit: Infinity });
   assert.equal(all.tireSurface!(last[0], 111, last[2]), 800);
+});
+
+test("early out: a model standing above its origin is met over its whole height, not only the box's (CP4 11.2)", () => {
+  // A deck 40 x 16 x 40 ft whose model runs from its origin up (y 0..16): the box, centred on the origin, reaches 8 ft up.
+  const deck = boxTris([20, 8, 20]);
+  for (let k = 1; k < deck.length; k += 3) deck[k]! += 8;
+  const box = S.createBox([4000, 100, 4000], [40, 16, 40], 0);
+  box.type = 0;
+  box.shape = C.buildCollShape(deck);
+  const rules = C.cp4Rules("triangles");
+  const { state, params, step } = scene(rules, [4000, 130, 4000], [box]);
+  // A truck resting on the deck (its top at 116 ft) stands further over the box's centre than the box's top and its radius.
+  state.pos[1] = 116 + 6;
+  assert.ok(state.pos[1] - box.pos[1] - truckRadius(params) > box.half[1]);
+  assert.equal(S.truckBoxSeparated(state, params, box, 1 / 60, rules), false, "the triangles reach 16 ft up");
+  assert.equal(S.truckBoxSeparated(state, params, box, 1 / 60), true, "classic boxes keep the box's own faces");
+  // Dropped onto the deck, it comes to rest on it, its wheels over the deck's top.
+  state.pos[1] = 130;
+  for (let i = 0; i < 240; i++) step();
+  assert.ok(state.pos[1] > 116 + 2, `rests on the deck: ${state.pos[1].toFixed(2)}`);
+  assert.ok(state.tires.every((t) => t.onGround), "every wheel on the deck");
 });
