@@ -14,7 +14,7 @@ import type { Vec3 } from "../truck/common.ts";
 import { MTM_WHEEL_KEYS } from "../truck/mtm-trk.ts";
 import { encodeWindows1252 } from "../text.ts";
 import type { MtmSit, SitBox, SitCourse, SitFog, SitTruck } from "./sit.ts";
-import { SIT_FOG_HEADER, formatSitFogLine } from "./sit.ts";
+import { SIT_FOG_HEADER, SIT_LIGHT_HEADER, SIT_LIGHT_HEADER_12, formatSitFogLine } from "./sit.ts";
 
 const CRLF = "\r\n";
 
@@ -112,7 +112,8 @@ export interface Mtm2SitBox extends Mtm2SitRamp {
   loopSound?: string;
   /**
    * The `L` block's twelve fields (rad, hgt, r, g, b, glow, glowRad, coneLen, coneRim, coneBase,
-   * bright, aimOff), written after the sounds when given. Community Patch 3 reads it on type 12.
+   * bright, aimOff), or thirteen with allWx (Community Patch 4 beta 0.53 hotfix 4, Traxx 1.8; the header then names
+   * it), written after the sounds when given. Community Patch 3 reads it on type 12.
    */
   light?: readonly SitValue[];
   /** Community Patch 4's `F` block (type 14 fog volumes), written after the sounds and any light block. */
@@ -240,7 +241,7 @@ export function writeMtm2Sit(sit: Mtm2Sit): Uint8Array {
     record(out, box);
     out.push("!type,flags", `${box.type},${box.flags ?? 0}`, "priority", String(box.priority ?? 0),
       "@sound effect entries", box.hitSound ?? "NULL.WAV", box.loopSound ?? "NULL.WAV", "0,0");
-    if (box.light) out.push("Llight rad,hgt,r,g,b,glow,glowRad,coneLen,coneRim,coneBase,bright,aimOff", box.light.map(num).join(","));
+    if (box.light) out.push(box.light.length > 12 ? SIT_LIGHT_HEADER : SIT_LIGHT_HEADER_12, box.light.map(num).join(","));
     if (box.fog) out.push(SIT_FOG_HEADER, formatSitFogLine(box.fog));
   }
   out.push("*** Cylinders ***", String(sit.cylinders?.count ?? 0), ...(sit.cylinders?.lines ?? []));

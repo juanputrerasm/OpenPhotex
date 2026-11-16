@@ -102,7 +102,7 @@ export {
 export type { HeightGrid, CellSplit } from "./terrain/height.ts";
 export {
   parseMtmSit, parseMtmLvl, parseTexList, parseTty, detectSitOrigin, sitTrackTypeName, sitWorldTriplet, sitFeetTriplet,
-  BOX_LIGHT, BOX_MOVING, parseSitLight, BOX_FOG, parseSitFog, formatSitFogLine, SIT_FOG_HEADER,
+  BOX_LIGHT, BOX_MOVING, parseSitLight, SIT_LIGHT_HEADER, SIT_LIGHT_HEADER_12, BOX_FOG, parseSitFog, formatSitFogLine, SIT_FOG_HEADER,
   MTM2_SITUATION_EXTENSIONS, mtm2SituationExtension, isMtm2V6Situation,
 } from "./mtm/sit.ts";
 export type { Mtm2SituationExtension } from "./mtm/sit.ts";

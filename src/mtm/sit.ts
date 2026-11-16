@@ -78,17 +78,23 @@ export interface SitBox {
  * A Community Patch 3 track light (box type 12). Feet unless noted. `rad` is the lit pool's radius on the ground, `hgt` the lamp
  * head's height above the box's origin, `glow` 0 (no visible source), 1 (a glow sprite) or 2 (glow and cone), `bright` how
  * strongly it lights the ground (0.25 to 3.75; 1 is a truck headlight), `aimOff` how far along the box's facing the pool lands.
+ * `allWx` (Community Patch 4 beta 0.53 hotfix 4, Traxx 1.8, the 13th field, an integer, 0 when absent): non-zero draws the
+ * glow and cone in every weather (stadium lights); the ground pool is unaffected. Older engines ignore it.
  */
 export interface SitLight {
   rad: number; hgt: number; color: [number, number, number]; glow: number; glowRad: number;
-  coneLen: number; coneRim: number; coneBase: number; bright: number; aimOff: number;
+  coneLen: number; coneRim: number; coneBase: number; bright: number; aimOff: number; allWx: number;
 }
 
 /** The box types Community Patch 3 added: a static light, and a mover with no train sound, horn or light. */
 export const BOX_LIGHT = 12;
 export const BOX_MOVING = 13;
 
-const LIGHT_DEFAULTS: readonly number[] = [64, 8, 1, 1, 1, 0, 6, 125, 10, 3.5, 1, 0];
+const LIGHT_DEFAULTS: readonly number[] = [64, 8, 1, 1, 1, 0, 6, 125, 10, 3.5, 1, 0, 0];
+
+/** The `L` block's header line as hotfix 4 and Traxx 1.8 write it (13 fields), and the 12-field one before. */
+export const SIT_LIGHT_HEADER = "Llight rad,hgt,r,g,b,glow,glowRad,coneLen,coneRim,coneBase,bright,aimOff,allWx";
+export const SIT_LIGHT_HEADER_12 = "Llight rad,hgt,r,g,b,glow,glowRad,coneLen,coneRim,coneBase,bright,aimOff";
 
 /**
  * The `L` block's data line, read as the engine reads it: tolerantly, missing trailing fields keeping their defaults and
@@ -100,10 +106,10 @@ export function parseSitLight(line: string | null | undefined): SitLight {
     const v = Number.parseFloat(part);
     if (Number.isFinite(v)) values[i] = v;
   });
-  const [rad, hgt, r, g, b, glow, glowRad, coneLen, coneRim, coneBase, bright, aimOff] = values;
+  const [rad, hgt, r, g, b, glow, glowRad, coneLen, coneRim, coneBase, bright, aimOff, allWx] = values;
   return {
     rad: Math.min(4095, Math.max(0, rad)), hgt, color: [r, g, b], glow: Math.trunc(glow), glowRad, coneLen, coneRim, coneBase,
-    bright: Math.min(3.75, Math.max(0.25, Math.round(bright * 4) / 4)), aimOff,
+    bright: Math.min(3.75, Math.max(0.25, Math.round(bright * 4) / 4)), aimOff, allWx: Math.trunc(allWx),
   };
 }
 

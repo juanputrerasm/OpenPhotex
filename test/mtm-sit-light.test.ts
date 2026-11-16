@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BOX_LIGHT, parseMtmSit, parseSitLight } from "../src/index.ts";
+import { BOX_LIGHT, SIT_LIGHT_HEADER, parseMtmSit, parseSitLight } from "../src/index.ts";
 
 test("a Community Patch 3 light block: all twelve fields, a short line with defaults, and the clamps", () => {
   const full = parseSitLight("64.000000,8.000000,1.000000,0.500000,0.250000,2,6.000000,125.000000,10.000000,3.500000,0.600000,12.000000");
@@ -13,7 +13,11 @@ test("a Community Patch 3 light block: all twelve fields, a short line with defa
   assert.equal(short.aimOff, 0);
   assert.equal(parseSitLight("9000,8,1,1,1,0,6,125,10,3.5,9,0").rad, 4095);
   assert.equal(parseSitLight("9000,8,1,1,1,0,6,125,10,3.5,9,0").bright, 3.75);
-  assert.deepEqual(parseSitLight(null), { rad: 64, hgt: 8, color: [1, 1, 1], glow: 0, glowRad: 6, coneLen: 125, coneRim: 10, coneBase: 3.5, bright: 1, aimOff: 0 });
+  assert.deepEqual(parseSitLight(null), { rad: 64, hgt: 8, color: [1, 1, 1], glow: 0, glowRad: 6, coneLen: 125, coneRim: 10, coneBase: 3.5, bright: 1, aimOff: 0, allWx: 0 });
+  // Hotfix 4's 13th field: allWx, an integer; absent reads 0.
+  assert.equal(full.allWx, 0);
+  assert.equal(parseSitLight("64,8,1,1,1,2,6,125,10,3.5,1,0,1").allWx, 1);
+  assert.equal(SIT_LIGHT_HEADER.length, 78, "with its newline the 80-byte line buffer holds it exactly");
 });
 
 import { writeMtm2Sit } from "../src/index.ts";
@@ -43,4 +47,21 @@ test("a type 12 box carries its light block; a type 12 box without one gets the 
   assert.equal(boxes[0].light?.aimOff, 10);
   assert.equal(boxes[1].light?.rad, 64);
   assert.equal(boxes[2].light, undefined);
+});
+
+test("the writer: twelve light values under the old header, thirteen under hotfix 4's with allWx", () => {
+  const truck = (x: number): Mtm2SitTruck => ({ position: [x, 10, 200], orient: [0, 0, 0] });
+  const sitWith = (light: number[]) => new TextDecoder().decode(writeMtm2Sit({
+    lvlName: "TEST.LVL", trackName: "Test", localeName: "Here", pictureBmp: "UI\\TESTS.BMP", iconBmp: "UI\\TESTL.BMP",
+    descriptionTxt: "TEST.TXT", trackLength: 100, yourTruck: truck(1), vehicles: [truck(2)],
+    boxes: [{ position: [10, 20, 30], orient: [0, 0, 0], modelName: "LAMP.BIN", type: 12, light }],
+    course: [{ start: [0, 0, 0], end: [100, 0, 0], speedLimit: 40, trackWidth: 60 }],
+    extendedCourses: [null, null],
+  }));
+  const old = sitWith([32, 20, 1, 1, 1, 2, 4, 90, 8, 2, 1, 0]);
+  assert.ok(old.includes("bright,aimOff\r\n") && !old.includes("allWx"));
+  const wx = sitWith([32, 20, 1, 1, 1, 2, 4, 90, 8, 2, 1, 0, 1]);
+  assert.ok(wx.includes(SIT_LIGHT_HEADER + "\r\n"));
+  const box = parseMtmSit(wx, "TEST.SI2").boxes.find((b) => b.type === BOX_LIGHT)!;
+  assert.equal(box.light!.allWx, 1);
 });
