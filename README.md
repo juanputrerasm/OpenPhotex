@@ -86,7 +86,7 @@ Heightfields (8-bit, and CPR's 10.6 fixed point) and ground boxes (`.RA0`, `.RA1
 | `.MOD` | MTM2 | ProTracker modules (`parseMod`, and `renderMod` plays one into stereo PCM) | library only |
 | `.WAV`, `.OGG`, `.MP3` | any | Sound files told apart by their first bytes, with the rate they were made at (`detectAudioFormat`, `audioSampleRate`); no decoding | library only |
 | `POWERBIG.200`/`.400`/`.480` | MTM2 | Cockpit layout per screen height | `openphotex read COCKPIT.POD POWERBIG.480` |
-| `.WTR`, `.VEG`, `.TXV`, `.SRF`, `.CPT` | MTM2 (Community Patch 4) | Lakes (with the `.WTR` header's edge-rule flag of Traxx 1.7.3), vegetation, the track's version and terrain keys, surface meshes, 3D cockpits ([docs/LEVELS.md](docs/LEVELS.md)) | `openphotex read fog_test.pod WORLD/FOGTEST.WTR` |
+| `.WTR`, `.VEG`, `.TXV`, `.SRF`, `.CPT` | MTM2 (Community Patch 4) | Lakes (with the `.WTR` header's edge-rule flag of Traxx 1.7.3), vegetation, the track's version and terrain keys, a track's own ambience (sky gradient and picture, haze, light tint: track format version 6, 9.6, `readTxvAmbience`), surface meshes, 3D cockpits ([docs/LEVELS.md](docs/LEVELS.md)) | `openphotex read fog_test.pod WORLD/FOGTEST.WTR` |
 | `.WFL` | MTM2 (CP4 beta 0.53) | Waterfalls: crests, source lake or spring height, flow speed, mist, sound, texture and the rough-water speed (byte 130, Traxx 1.7.3); `writeWfl` writes them, `buildFallMeshes` builds the game's sheets as beta 0.53 hotfix 3 does | `openphotex read fog_test.pod WORLD/FOGTEST.WFL` |
 
 Details: [docs/MTM2_FILES.md](docs/MTM2_FILES.md). The game's own simulation rules are in the library as `mtm2Sim` ([docs/SIM_MTM2.md](docs/SIM_MTM2.md)).

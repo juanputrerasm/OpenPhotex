@@ -218,3 +218,69 @@ export function txvUsesV6Keys(input: Uint8Array | string | readonly TxvLine[]): 
   const lines = Array.isArray(input) ? input as readonly TxvLine[] : parseTxv(input as Uint8Array | string);
   return TXV_V6_ONLY_KEYS.some((k) => txvValue(lines, k) !== null);
 }
+
+/*
+  Track ambience (track format version 6, "Ambience"; docs/LEVELS.md): optional keys for a track's
+  own sky, haze and light in Clear weather. Any track may carry them (a .SI2 one too); an engine
+  that does not know them skips them, as Community Patch 4 skips every key it does not parse.
+
+    skyTopColor=r,g,b      the sky straight up, 0 to 255
+    skyBottomColor=r,g,b   the sky at the horizon
+    skyHorizon=f           where between the horizon (0) and the zenith (1) the top colour is reached (default 0.25)
+    skyImage=ART\X.PNG     a full-colour picture round the horizon over the gradient (its alpha shows the gradient)
+    fogColor=r,g,b         the haze's colour
+    fogStartFt, fogEndFt   where the haze starts and where it is complete, feet
+    lightTint=r,g,b        the light's hue as multipliers, scaled to a mean of 1 (the scene's own level is kept)
+*/
+export const TXV_AMBIENCE_KEYS = ["skyTopColor", "skyBottomColor", "skyHorizon", "skyImage", "fogColor", "fogStartFt", "fogEndFt", "lightTint"] as const;
+
+export interface TxvAmbience {
+  skyTop: [number, number, number] | null;
+  skyBottom: [number, number, number] | null;
+  /** 0.01 to 1. */
+  skyHorizon: number;
+  /** The picture's entry as written (`ART\X.PNG`), or null. */
+  skyImage: string | null;
+  fogColor: [number, number, number] | null;
+  fogStartFt: number | null;
+  fogEndFt: number | null;
+  /** Scaled to a mean of 1, or null. */
+  lightTint: [number, number, number] | null;
+  /** Whether the track gives a sky of its own (a colour or a picture). */
+  sky: boolean;
+}
+
+const triple = (v: string | null): [number, number, number] | null => {
+  if (v == null) return null;
+  const parts = v.split(/[\s,]+/).filter(Boolean).map(Number);
+  return parts.length === 3 && parts.every(Number.isFinite) ? [parts[0], parts[1], parts[2]] : null;
+};
+const ranged = (v: string | null, lo: number, hi: number): number | null => {
+  if (v == null || v.trim() === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : null;
+};
+
+/** The ambience keys of a .TXV, or null when it has none of them. */
+export function readTxvAmbience(input: Uint8Array | string | readonly TxvLine[] | null): TxvAmbience | null {
+  if (input == null) return null;
+  const lines = Array.isArray(input) ? input as readonly TxvLine[] : parseTxv(input as Uint8Array | string);
+  const get = (k: string) => txvValue(lines, k);
+  const colour = (k: string) => triple(get(k))?.map((x) => Math.min(255, Math.max(0, Math.round(x)))) as [number, number, number] | undefined ?? null;
+  const rawTint = triple(get("lightTint"))?.map((x) => Math.min(4, Math.max(0, x))) ?? null;
+  const mean = rawTint ? (rawTint[0] + rawTint[1] + rawTint[2]) / 3 : 0;
+  const lightTint = rawTint && mean > 0 ? rawTint.map((x) => x / mean) as [number, number, number] : null;
+  const a = {
+    skyTop: colour("skyTopColor"),
+    skyBottom: colour("skyBottomColor"),
+    skyHorizon: ranged(get("skyHorizon"), 0.01, 1) ?? 0.25,
+    skyImage: get("skyImage")?.trim() || null,
+    fogColor: colour("fogColor"),
+    fogStartFt: ranged(get("fogStartFt"), 0, 1e6),
+    fogEndFt: ranged(get("fogEndFt"), 1, 1e6),
+    lightTint,
+  };
+  const sky = !!(a.skyTop || a.skyBottom || a.skyImage);
+  if (!sky && !a.fogColor && !a.lightTint) return null;
+  return { ...a, sky };
+}

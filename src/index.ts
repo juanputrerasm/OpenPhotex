@@ -152,10 +152,10 @@ export {
 export { MTM2_SAVED_GAME_HEADER, parseMtm2SavedGame, writeMtm2SavedGame } from "./mtm/saved-game.ts";
 export type { Mtm2SavedGame, Mtm2SavedTruck } from "./mtm/saved-game.ts";
 export {
-  parseTxv, txvValue, writeTxv, readTxvInfo, setTxvValues, readTxvV6, txvUsesV6Keys,
+  parseTxv, txvValue, writeTxv, readTxvInfo, setTxvValues, readTxvV6, txvUsesV6Keys, readTxvAmbience, TXV_AMBIENCE_KEYS,
   TXV_V6_KEYS, TXV_V6_ONLY_KEYS, TXV_FORMAT_VERSION_V6, MTM2_WORLD_CELLS, MTM2_HEIGHT_STEPS,
 } from "./mtm/txv.ts";
-export type { TxvLine, TxvInfo, TxvV6 } from "./mtm/txv.ts";
+export type { TxvLine, TxvInfo, TxvV6, TxvAmbience } from "./mtm/txv.ts";
 export {
   decodeMtm2Heights, decodeMtm2HeightPng, resolveMtm2TerrainMode, parseTerrainGridKey, mtm2HeightsToFeet, mtm2EngineHeightsFt,
   decodeMtm2V6Heights, mtm2V6HeightsH128, mtm2V6HeightsFt, mtm2V6StepAndBase, mtm2V6SamplesFromFt, encodeMtm2HeightRaw16,
@@ -265,7 +265,7 @@ export { PodFormatError } from "./errors.ts";
 export type { PodErrorCode } from "./errors.ts";
 
 /** The library version, as published in package.json. */
-export const VERSION = "1.7.3";
+export const VERSION = "1.7.4";
 export { parseMtmPlayerPro, writeMtmPlayerPro, newMtmDriver, PLAYER_PRO_VERSION } from "./mtm/player-pro.ts";
 export type { MtmDriver, MtmPlayerPro } from "./mtm/player-pro.ts";
 export { parseMtmHighScores, writeMtmHighScores, decipherHighScores, encipherHighScores, HIGH_SCORES_FILE } from "./mtm/high-scores.ts";
